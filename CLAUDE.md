@@ -45,11 +45,11 @@ Xcode 26).
 Feedini/
   App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
               TestHostApp under tests), AppDelegate (owns the model, saves at quit, Dock icon only with the window,
-              refresh after wake), LoginItem (SMAppService), AppModel (library on the main
-              actor, saving, refreshing), Preferences (UserDefaults), RuntimeEnvironment, Log (os.Logger categories)
+              refresh after wake), AppModel (library on the main actor, saving, refreshing, the AI queues),
+              Preferences (UserDefaults), LoginItem (SMAppService), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
-              state, removing feeds), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar selection, unread counts), ReadRules (pure:
-              what visiting a row and M do; ListRow)
+              state, removing feeds), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar
+              selection, unread counts), ReadRules (pure: what visiting a row and M do; ListRow)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
@@ -67,16 +67,17 @@ Feedini/
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
-              DetailView (StoryDetail, ArticleDetail, SourcePage), SummaryView, WebPageView (WKWebView), Reader (window state:
-              selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation (pure: what a
-              key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings + AISettings,
-              MenuBarContent
+              DetailView (StoryDetail, ArticleDetail, SourcePage), SummaryView, WebPageView (WKWebView), Reader
+              (window state: selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation
+              (pure: what a key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings +
+              AISettings, MenuBarContent (+ MenuBarLabel)
 FeediniTests/ Swift Testing tests, mirroring the app folders
-  Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs),
-              feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
-              content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML file
+  Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
+              with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
+              content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML
+              file
   Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), FakeCommandRunner
-              (canned CLI replies, recorded calls), model stubs (`referenceDate`, `Article.stub`, …)
+              (canned CLI replies, recorded calls), TestLibraryHost, model stubs (`referenceDate`, `Article.stub`, …)
 ```
 
 ## Conventions
@@ -177,8 +178,8 @@ Implementation:
   become bullet points. Without a summary yet: "Summarizing…" (or the error after repeated failures); an out-of-date
   one stays with "Updating summary…" while the AI works.
 - AI in the list: a loose article shows ✨ while the AI organizes (`AIStatus.organizing`); the status bar shows
-  "Organizing N new articles…" or "AI unavailable: …" next to the refresh state. Stories from several feeds have an
-  accent bar and source labels; "+N new" marks articles that joined a read story.
+  "Organizing N new articles…", "Summarizing N stories…" or "AI unavailable: …" next to the refresh state. Stories
+  from several feeds have an accent bar and source labels; "+N new" marks articles that joined a read story.
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
   in order. `entries` is cached until the library changes.
 
@@ -235,7 +236,6 @@ Implementation:
   where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), open at login (`LoginItem`, the
   system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
   count in the menu bar (`showsUnreadCount`, on by default). Values that aren't offered fall back to the default.
-
 - **AI** (`AISettings`): the summary language ("System (…)" first, then common languages by English name with
   their own name), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
@@ -345,17 +345,16 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   `summaryModel` (free text, default `claude-haiku-5-5`), `aiEffort` (`low` / `medium` / `high`, default `low`); a
   change calls `onAIChange`, which triggers the queues. `summaryLanguage` (a language code, empty = the system
   language from `Locale.current`) is the language of story titles, topics and summaries; the prompt gets its English
-  name (`OutputLanguage`). Haiku was as accurate as Sonnet for assigning and 1.1–3×
-  faster; for summaries it invented fewer facts than Sonnet in the lab.
+  name (`OutputLanguage`). Haiku was as accurate as Sonnet for assigning and 1.1–3× faster; for summaries it
+  invented fewer facts than Sonnet in the lab.
 
 ## Storage and retention
 
-- Fields added later are optional when decoding (`usage` via `decodeIfPresent`, `Story.summary`, `Topic.language`
-  as optionals), so older files load without a schema bump.
 - One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 1, "library": {…}}`, pretty-printed
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
-  migration in `LibraryStore.load()`.
+  migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage` via
+  `decodeIfPresent`, `Story.summary`, `Topic.language` as optionals), so older files load without a bump.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
   newer Feedini – is moved aside as `library.unreadable-<unix time>.json`, never overwritten, and Feedini starts
@@ -394,15 +393,20 @@ state transitions, the commands that were run), not just execute lines. There is
 total is dominated by the UI layer, which is deliberately not unit-tested.
 
 Aim for ~100 % in the pure types: `Model/`, `Store/`, `Feeds/`, `Refresh/` (the scheduler with `ManualSleeper`),
+`AI/` (the queues with `FakeCommandRunner`, `TestLibraryHost` and `ManualSleeper` for the backoff), `Debug/`,
 `KeyboardNavigation`, `RelativeTime`, `Preferences`, and `Reader` (tested with a real `AppModel` over a temporary
 store).
 
-Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp`, `AppDelegate`, `AppModel.start` and the non-test
-branch of `RuntimeEnvironment`) and `UI/` views. Keep these files pure wiring: logic that needs a test moves into a testable type. Do not add
-abstractions to production code just to cover lines.
+Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp`, `AppDelegate`, `LoginItem`, `AppModel.start` and the
+non-test branch of `RuntimeEnvironment`) and `UI/` views. Keep these files pure wiring: logic that needs a test
+moves into a testable type. Do not add abstractions to production code just to cover lines.
+
+Tests that wait for real time are slow and flaky; timer-driven code takes an injected `sleep` instead. The queues
+hold their `LibraryHost` unowned (the app's `AppModel` outlives them) – keep the test host in a local.
 
 ## Logs
 
-`os.Logger` subsystem `cz.jsyrovy.feedini`. Watch with
+`os.Logger` subsystem `cz.jsyrovy.feedini`, categories `refresh`, `feeds`, `ai` (one line per call with the metrics
+of the answer) and `store`. Watch with
 `/usr/bin/log stream --level info --predicate 'subsystem == "cz.jsyrovy.feedini"'` – in zsh, plain `log` is a shell
-builtin.
+builtin. The test host is also called Feedini; filter by `processID` to see only the running app.
