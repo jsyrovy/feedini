@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"duration_ms":2210,"duration_api_ms":2101,"num_turns":1,"result":"I can't produce that.","session_id":"00000000-0000-0000-0000-000000000000","total_cost_usd":0.0004,"usage":{"input_tokens":5,"output_tokens":12},"permission_denials":[],"uuid":"00000000-0000-0000-0000-000000000001"}

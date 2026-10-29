@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1500,"duration_api_ms":1400,"num_turns":2,"result":"","session_id":"00000000-0000-0000-0000-000000000000","total_cost_usd":0.0003,"usage":{"input_tokens":2,"output_tokens":20},"permission_denials":[],"structured_output":{"answer":"four"},"uuid":"00000000-0000-0000-0000-000000000001"}

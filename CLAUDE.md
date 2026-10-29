@@ -56,15 +56,19 @@ Feedini/
               adding: HTTPS only, a real feed, not subscribed yet)
   Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
+  AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
+              ClaudeClient (CLI arguments, envelope, errors)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
               selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation (pure: what a
               key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
-  Fixtures/   feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
+  Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs),
+              feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML file
-  Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), model stubs (`referenceDate`, `Article.stub`, …)
+  Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), FakeCommandRunner
+              (canned CLI replies, recorded calls), model stubs (`referenceDate`, `Article.stub`, …)
 ```
 
 ## Conventions
@@ -215,6 +219,31 @@ Implementation:
 - `Feed.lastSuccess` is the last full (200) download – tombstones are judged against it, so a feed answering "304
   Not Modified" for days keeps them; `lastChecked` includes 304s (shown in Settings).
 
+## AI pipeline
+
+### claude CLI
+
+```bash
+claude -p --model <model> --effort <effort> --system-prompt <prompt> --safe-mode --tools "" \
+  --no-session-persistence --output-format json --json-schema <schema> "Process the input."   < payload.json
+```
+
+- `--tools ""` (no tools at all) and `--safe-mode` (no user customizations, hooks or MCP servers): the content of
+  articles is data, and with nothing to call a prompt injection in a feed can't do anything. `--no-session-persistence`
+  keeps the calls out of the user's session history. The payload goes to stdin, never into arguments.
+- `ClaudeLocator` looks in `~/.local/bin` (native installer), `/opt/homebrew/bin`, `/usr/local/bin`, then `PATH`
+  (apps started from the Finder don't get the shell `PATH`); a path set in Settings wins. Looked up on every call.
+- The envelope (verified with claude 2.1.312) is one JSON object: `type: "result"`, `is_error`, `subtype`, `result`
+  (text; the error message when `is_error`), `structured_output` (the object matching the schema), `duration_ms`,
+  `duration_api_ms`, `total_cost_usd`, `usage.output_tokens`, plus `session_id` / `uuid` (never stored or committed).
+  `ClaudeClient.parse` maps everything else to a `ClaudeError` with a message for the user; `notFound` and
+  `launchFailed` are setup problems, the rest is worth retrying (`isTransient`).
+- `ProcessRunner` (from buddr): stdin is a pipe written from a background thread with `F_SETNOSIGPIPE` (a command
+  that exits without reading can't kill the app), a hard timeout that signals the whole process group, and output
+  awaited at most `outputGracePeriod` after exit.
+- The contract with the real CLI is not tested on CI; check it by hand after CLI updates (it costs a fraction of a
+  cent with Haiku).
+
 ## Storage and retention
 
 - One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 1, "library": {…}}`, pretty-printed
@@ -238,6 +267,8 @@ Implementation:
   `@testable import Feedini` works. Under tests the `@main` entry point (`FeediniMain`) runs an empty `TestHostApp`
   instead of `FeediniApp` (`RuntimeEnvironment.isRunningTests`), so no window, refresh or menu bar item starts and
   the real app code needs no test guards.
+- `claude` calls are tested through `FakeCommandRunner` and the envelope fixtures; `ProcessRunner` with real `/bin/sh`
+  processes (stdin, large input, a command that doesn't read it, timeouts, grandchildren holding the pipe).
 - Network code is tested through `StubURLProtocol` (`StubURLProtocol.session()`), never the real network. Every test
   uses unique hosts (`uniqueURL()`), so tests can run in parallel.
 - Checking the running app: `screencapture` needs the Screen Recording permission (without it: "could not create
