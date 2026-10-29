@@ -2,16 +2,25 @@ import SwiftUI
 
 /// The main window: sidebar (selection), story list and detail.
 struct MainWindow: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         NavigationSplitView {
-            List {}
-                .navigationSplitViewColumnWidth(min: 160, ideal: 200)
+            Sidebar()
+                .navigationSplitViewColumnWidth(min: 160, ideal: 210)
         } content: {
-            ContentUnavailableView("No Articles", systemImage: "newspaper")
-                .navigationSplitViewColumnWidth(min: 280, ideal: 360)
+            StoryListView()
+                .navigationSplitViewColumnWidth(min: 300, ideal: 380)
         } detail: {
-            ContentUnavailableView("No Selection", systemImage: "doc.text")
+            DetailView()
         }
-        .frame(minWidth: 800, minHeight: 480)
+        .frame(minWidth: 900, minHeight: 500)
+        .toolbar {
+            ToolbarItem {
+                Button("Refresh", systemImage: "arrow.clockwise") { model.refreshNow() }
+                    .help("Refresh Now (R)")
+                    .disabled(model.isRefreshing || model.library.feeds.isEmpty)
+            }
+        }
     }
 }

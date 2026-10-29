@@ -1,0 +1,132 @@
+import SwiftUI
+
+/// A story (or a loose article) in the list.
+struct StoryRow: View {
+    @Environment(AppModel.self) private var model
+    let entry: StoryEntry
+    let isExpanded: Bool
+    let toggleExpanded: () -> Void
+
+    var body: some View {
+        let feeds = entry.feedIDs.compactMap(model.library.feed)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            UnreadDot(isUnread: !entry.isRead)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    if entry.isMultiArticle {
+                        Button(action: toggleExpanded) {
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .frame(width: 10)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    }
+                    Text(entry.title)
+                        .fontWeight(entry.isRead ? .regular : .semibold)
+                        .foregroundStyle(entry.isRead ? .secondary : .primary)
+                        .lineLimit(3)
+                }
+                HStack(spacing: 4) {
+                    if feeds.count > 1 {
+                        ForEach(feeds.prefix(3)) { feed in
+                            SourceLabel(title: feed.title)
+                        }
+                        if feeds.count > 3 {
+                            Text("+\(feeds.count - 3)")
+                        }
+                    }
+                    Text(meta(feeds: feeds))
+                        .lineLimit(1)
+                    if !entry.newArticleIDs.isEmpty {
+                        Text("+\(entry.newArticleIDs.count) new")
+                            .foregroundStyle(Color.accentColor)
+                            .fontWeight(.semibold)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+        .padding(.leading, 4)
+        .overlay(alignment: .leading) {
+            if feeds.count > 1 {
+                // Stories covered by several sources stand out.
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+                    .padding(.vertical, 2)
+                    .offset(x: -6)
+            }
+        }
+    }
+
+    private func meta(feeds: [Feed]) -> String {
+        let age = RelativeTime.short(entry.date, now: .now)
+        guard entry.isMultiArticle else {
+            return [feeds.first?.title, age].compactMap { $0 }.joined(separator: " · ")
+        }
+        var parts: [String] = []
+        if feeds.count > 1 {
+            parts.append("\(feeds.count) sources")
+        }
+        parts += ["\(entry.articles.count) articles", age]
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// An article of an expanded story, indented under it.
+struct ArticleRow: View {
+    @Environment(AppModel.self) private var model
+    let article: Article
+    let isNew: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            UnreadDot(isUnread: !article.isRead)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(article.title)
+                    .foregroundStyle(article.isRead ? .secondary : .primary)
+                    .lineLimit(2)
+                HStack(spacing: 4) {
+                    if let feed = model.library.feed(article.feedID) {
+                        SourceLabel(title: feed.title)
+                    }
+                    Text(RelativeTime.short(article.date, now: .now))
+                    if isNew {
+                        Text("new").foregroundStyle(Color.accentColor).fontWeight(.semibold)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.leading, 22)
+        .padding(.vertical, 2)
+    }
+}
+
+struct UnreadDot: View {
+    let isUnread: Bool
+
+    var body: some View {
+        Circle()
+            .fill(isUnread ? Color.accentColor : .clear)
+            .frame(width: 7, height: 7)
+            .accessibilityLabel(isUnread ? "Unread" : "")
+    }
+}
+
+/// A feed's name in a small capsule.
+struct SourceLabel: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(.quaternary, in: Capsule())
+    }
+}

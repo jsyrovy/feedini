@@ -44,9 +44,11 @@ Xcode 26).
 ```
 Feedini/
   App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
-              TestHostApp under tests), RuntimeEnvironment, Log (os.Logger categories)
+              TestHostApp under tests), AppDelegate (owns the model, saves at quit), AppModel (library on the main
+              actor, saving, refreshing), Preferences (UserDefaults), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story, Topic, Tombstone (Codable, Sendable), Library (all of them, read state, removing
-              feeds)
+              feeds), StoryList (pure: entries, filtering by the sidebar selection, unread counts), ReadRules (pure:
+              what visiting a row and M do; ListRow)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
@@ -54,7 +56,10 @@ Feedini/
   Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   Support/    OneShotSignal (an awaitable one-time event)
-  UI/         MainWindow (NavigationSplitView), SettingsView, MenuBarContent
+  UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
+              DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
+              selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation (pure: what a
+              key does), RelativeTime, SettingsView, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML file
@@ -135,6 +140,25 @@ Three columns: sidebar (All, topics by unread count, feeds), story list (newest 
 
 Keys work in the list. While the web page has focus, only Esc works (it returns focus to the list).
 
+Implementation:
+
+- `StoryList.allEntries` turns the library into `StoryEntry`s: every story, plus every article no story holds yet
+  (`.loose`, shown like a one-article story), newest first by their newest article. A one-article story uses the
+  article's title. `entries(_:matching:keeping:)` filters by the sidebar selection (a feed shows every story with an
+  article of it) and hides read entries unless they are in `keeping`. Counts match what is shown.
+- `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story). Moving
+  onto a row (`visit`) applies `ReadRules` and adds the entry to `kept`, so it stays until the sidebar selection
+  changes or a refresh ends (then only the entry under the cursor stays). Shift+A doesn't keep anything: the list
+  empties. M keeps the entry too.
+- `KeyboardNavigation.action` decides what a key does from the cursor, the rows, the expanded stories, the default
+  way of opening pages and the shown page; `Reader.handle` carries it out. The story list's `onKeyPress` maps keys
+  (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus). A double click opens like V / Enter.
+- The source page (`WebPageView`): a `WKWebView` with the default persistent website data store (logins and cookies
+  work), JavaScript on, no script message handlers. Link clicks and new windows open in the default browser. Esc in
+  the page (`EscapableWebView`) returns to the feed text and focuses the list (`Reader.listFocusRequests`).
+- `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
+  in order. `entries` is cached until the library changes.
+
 ## Feeds
 
 - `FeedFetcher` downloads with an ephemeral `URLSession` without a cache (20 s per request, 60 s per resource,
@@ -214,8 +238,12 @@ Coverage is a tool for finding untested behaviour, not a goal. A test must asser
 state transitions, the commands that were run), not just execute lines. There is no global percentage target; the
 total is dominated by the UI layer, which is deliberately not unit-tested.
 
-Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp` and the non-test branch of `RuntimeEnvironment`) and
-`UI/` layout. Keep these files pure wiring: logic that needs a test moves into a testable type. Do not add
+Aim for ~100 % in the pure types: `Model/`, `Store/`, `Feeds/`, `Refresh/` (the scheduler with `ManualSleeper`),
+`KeyboardNavigation`, `RelativeTime`, `Preferences`, and `Reader` (tested with a real `AppModel` over a temporary
+store).
+
+Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp`, `AppDelegate`, `AppModel.start` and the non-test
+branch of `RuntimeEnvironment`) and `UI/` views. Keep these files pure wiring: logic that needs a test moves into a testable type. Do not add
 abstractions to production code just to cover lines.
 
 ## Logs
