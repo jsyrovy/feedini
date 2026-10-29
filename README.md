@@ -37,7 +37,7 @@ sandboxed apps.
 - [x] F1: a reader without AI – feeds, OPML, keyboard navigation, read state, source pages
 - [x] F2: AI grouping into stories and topics
 - [x] F3: summaries in your language
-- [ ] F4: running in the menu bar, background refresh
+- [x] F4: running in the menu bar, background refresh
 - [ ] F5: polish – performance with thousands of articles, AI statistics, screenshots
 
 ## License
