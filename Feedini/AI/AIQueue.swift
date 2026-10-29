@@ -131,6 +131,7 @@ final class AssignQueue {
                 var result = AssignValidation.Result()
                 host.update {
                     result = AssignValidation.apply(output, map: map, language: configuration.languageCode, to: &$0)
+                    $0.recordAICall(at: now(), stats: stats)
                 }
                 let metrics = result.metrics
                 Log.ai.info(
@@ -145,6 +146,9 @@ final class AssignQueue {
                 failures = 0
             } catch {
                 status.record(AIStatus.Call(date: now(), step: "Organize \(batch.count)", error: error.message))
+                if error != .notFound {
+                    host.update { $0.recordAICall(at: now(), stats: nil) }
+                }
                 Log.ai.error("Assign failed: \(error.message, privacy: .public)")
                 guard error.isTransient else {
                     status.set(.unavailable(error.message))
@@ -284,6 +288,7 @@ final class SummaryQueue {
             var written = Set<Story.ID>()
             host.update {
                 written = SummaryStep.apply(output, map: map, language: configuration.languageCode, to: &$0)
+                $0.recordAICall(at: .now, stats: stats)
             }
             for id in batch where !written.contains(id) {
                 failures[id, default: 0] += 1
@@ -291,6 +296,9 @@ final class SummaryQueue {
             Log.ai.info("Summarized \(written.count) of \(batch.count) stories in \(stats.durationMs) ms")
         } catch {
             status.record(AIStatus.Call(date: .now, step: "Summarize \(batch.count)", error: error.message))
+            if error != .notFound {
+                host.update { $0.recordAICall(at: .now, stats: nil) }
+            }
             Log.ai.error("Summary failed: \(error.message, privacy: .public)")
             guard error.isTransient else {
                 isBlocked = true
@@ -315,7 +323,10 @@ final class SummaryQueue {
         do {
             let (output, stats) = try await client(configuration).run(request, as: TopicTranslation.Payload.self)
             status.record(AIStatus.Call(date: .now, step: "Translate topics", stats: stats))
-            host.update { TopicTranslation.apply(output, map: map, language: configuration.languageCode, to: &$0) }
+            host.update {
+                TopicTranslation.apply(output, map: map, language: configuration.languageCode, to: &$0)
+                $0.recordAICall(at: .now, stats: stats)
+            }
         } catch {
             status.record(AIStatus.Call(date: .now, step: "Translate topics", error: error.message))
             if !error.isTransient {

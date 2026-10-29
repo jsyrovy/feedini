@@ -9,6 +9,8 @@ struct Library: Sendable, Equatable {
     var stories: [Story.ID: Story] = [:]
     var topics: [Topic.ID: Topic] = [:]
     var tombstones: [Tombstone.Key: Tombstone] = [:]
+    /// AI calls per day, oldest first (`recordAICall`).
+    var usage: [AIUsageDay] = []
 
     func feed(_ id: Feed.ID) -> Feed? {
         feeds.first { $0.id == id }
@@ -98,7 +100,7 @@ extension Article {
 // that unchanged data gives an unchanged file.
 extension Library: Codable {
     private enum CodingKeys: String, CodingKey {
-        case feeds, articles, stories, topics, tombstones
+        case feeds, articles, stories, topics, tombstones, usage
     }
 
     init(from decoder: any Decoder) throws {
@@ -108,6 +110,8 @@ extension Library: Codable {
         stories = Self.index(try container.decode([Story].self, forKey: .stories), by: \.id)
         topics = Self.index(try container.decode([Topic].self, forKey: .topics), by: \.id)
         tombstones = Self.index(try container.decode([Tombstone].self, forKey: .tombstones), by: \.id)
+        // Added after the first version; older files have none.
+        usage = try container.decodeIfPresent([AIUsageDay].self, forKey: .usage) ?? []
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -123,6 +127,7 @@ extension Library: Codable {
                 ($0.feedID.uuidString, $0.key) < ($1.feedID.uuidString, $1.key)
             },
             forKey: .tombstones)
+        try container.encode(usage, forKey: .usage)
     }
 
     /// Later duplicates win; there are none unless the file was edited by hand.

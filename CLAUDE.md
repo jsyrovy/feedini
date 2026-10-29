@@ -47,8 +47,8 @@ Feedini/
               TestHostApp under tests), AppDelegate (owns the model, saves at quit, Dock icon only with the window,
               refresh after wake), LoginItem (SMAppService), AppModel (library on the main
               actor, saving, refreshing), Preferences (UserDefaults), RuntimeEnvironment, Log (os.Logger categories)
-  Model/      Feed, Article, Story, Topic, Tombstone (Codable, Sendable), Library (all of them, read state, removing
-              feeds), StoryList (pure: entries, filtering by the sidebar selection, unread counts), ReadRules (pure:
+  Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
+              state, removing feeds), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar selection, unread counts), ReadRules (pure:
               what visiting a row and M do; ListRow)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
@@ -239,7 +239,9 @@ Implementation:
 - **AI** (`AISettings`): the summary language ("System (…)" first, then common languages by English name with
   their own name), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
-  with duration and cost or the error.
+  with duration and cost or the error, and the usage: calls, time and cost per day for the last 7 days and the
+  total of the kept 30 (`Library.usage`, `AIUsageDay`, recorded by the queues with every call; "claude not found"
+  isn't counted).
 
 ## Refresh
 
@@ -348,6 +350,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 
 ## Storage and retention
 
+- Fields added later are optional when decoding (`usage` via `decodeIfPresent`, `Story.summary`, `Topic.language`
+  as optionals), so older files load without a schema bump.
 - One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 1, "library": {…}}`, pretty-printed
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a

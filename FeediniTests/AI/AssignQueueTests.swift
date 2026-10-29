@@ -74,6 +74,7 @@ struct AssignQueueTests {
         #expect(status.state == .idle)
         #expect(status.calls.count == 3)
         #expect(status.calls.first?.stats?.costUSD == 0.001)
+        #expect(host.library.usage.map(\.calls) == [3])
         #expect(!queue.isRunning)
     }
 

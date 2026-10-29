@@ -51,6 +51,10 @@ struct AISettings: View {
                 }
             }
 
+            Section("Usage") {
+                UsageSummary(usage: model.library.usage)
+            }
+
             Section("Recent calls") {
                 if model.aiStatus.calls.isEmpty {
                     Text("None yet").foregroundStyle(.secondary)
@@ -138,5 +142,49 @@ private struct CallRow: View {
             }
         }
         .font(.callout)
+    }
+}
+
+/// AI time and cost per day (the last 7 days) and in total (30 days).
+private struct UsageSummary: View {
+    let usage: [AIUsageDay]
+
+    var body: some View {
+        if usage.isEmpty {
+            Text("No AI calls yet").foregroundStyle(.secondary)
+        } else {
+            ForEach(usage.suffix(7).reversed(), id: \.day) { day in
+                LabeledContent(day.day) {
+                    Text(Self.describe(day)).monospacedDigit()
+                }
+            }
+            LabeledContent("Last \(usage.count) days") {
+                Text(Self.describe(total)).monospacedDigit().fontWeight(.medium)
+            }
+        }
+    }
+
+    private var total: AIUsageDay {
+        usage.reduce(into: AIUsageDay(day: "")) { total, day in
+            total.calls += day.calls
+            total.failures += day.failures
+            total.durationMs += day.durationMs
+            total.costUSD += day.costUSD
+        }
+    }
+
+    private static func describe(_ day: AIUsageDay) -> String {
+        let minutes = Double(day.durationMs) / 60_000
+        var parts = [
+            day.calls == 1 ? "1 call" : "\(day.calls) calls",
+            minutes < 1
+                ? "\(Int((Double(day.durationMs) / 1000).rounded())) s"
+                : "\(minutes.formatted(.number.precision(.fractionLength(1)))) min",
+            day.costUSD.formatted(.currency(code: "USD").precision(.fractionLength(2...3))),
+        ]
+        if day.failures > 0 {
+            parts.append("\(day.failures) failed")
+        }
+        return parts.joined(separator: " · ")
     }
 }
