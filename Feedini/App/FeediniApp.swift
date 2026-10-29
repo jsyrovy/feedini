@@ -42,8 +42,7 @@ struct FeediniApp: App {
             MenuBarContent()
                 .environment(appDelegate.model)
         } label: {
-            Text(verbatim: "🎩")
-                .accessibilityLabel("Feedini")
+            MenuBarLabel(model: appDelegate.model)
         }
     }
 }

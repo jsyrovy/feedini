@@ -17,6 +17,12 @@ struct PreferencesTests {
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.refreshMinutes == 15)
         #expect(preferences.pageOpening == .window)
+        #expect(preferences.showsUnreadCount)
+    }
+
+    @Test func savesWhetherTheMenuBarShowsTheCount() {
+        Preferences(defaults: defaults).showsUnreadCount = false
+        #expect(!Preferences(defaults: defaults).showsUnreadCount)
     }
 
     @Test func savesChangesAndReportsThem() {

@@ -44,7 +44,8 @@ Xcode 26).
 ```
 Feedini/
   App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
-              TestHostApp under tests), AppDelegate (owns the model, saves at quit), AppModel (library on the main
+              TestHostApp under tests), AppDelegate (owns the model, saves at quit, Dock icon only with the window,
+              refresh after wake), LoginItem (SMAppService), AppModel (library on the main
               actor, saving, refreshing), Preferences (UserDefaults), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story, Topic, Tombstone (Codable, Sendable), Library (all of them, read state, removing
               feeds), StoryList (pure: entries, filtering by the sidebar selection, unread counts), ReadRules (pure:
@@ -205,6 +206,19 @@ Implementation:
 - `FeedLanguage`: the feed's `<language>` / `dc:language` / Atom `xml:lang` reduced to the primary code (`cs-CZ` →
   `cs`); without one, `NLLanguageRecognizer` on the title and the start of the text (at least 50 % sure).
 
+## Running in the background
+
+- Closing the main window doesn't quit (`applicationShouldTerminateAfterLastWindowClosed` is false): the model
+  lives in `AppDelegate`, so refreshing, organizing and summarizing go on. With the window open Feedini is a
+  regular app (Dock icon, menus); when it closes it switches to `.accessory` and only the menu bar item stays
+  (`AppDelegate.mainWindowIsOpen`, called from `MainWindow` appearing and disappearing).
+- Menu bar item (`MenuBarExtra`, menu style): 🎩 with the number of unread stories (optional), and a menu with the
+  count, "Open Feedini" (⌘O), "Refresh Now" (⌘R), the time of the last refresh, the AI status, Settings and Quit.
+- After the Mac wakes from sleep (`NSWorkspace.didWakeNotification`) the feeds are refreshed right away.
+- Quitting waits for pending changes to be saved (`applicationShouldTerminate` → `AppModel.flush`). `pkill` (as in
+  `make run`) skips that; quit with ⌘Q or `osascript -e 'tell application id "cz.jsyrovy.feedini" to quit'` when
+  the last seconds of reading matter.
+
 ## Settings
 
 - **Feeds** (`FeedsSettings`): the feeds with the state of their last download (`lastChecked` or `lastError`), an
@@ -214,9 +228,10 @@ Implementation:
   not be subscribed yet (`isSame` ignores the case of scheme and host and a trailing slash). The first download is
   merged right away (`AppModel.subscribe`), so the articles appear without another download. OPML import checks the
   entries 6 at a time, adds the good ones in file order and lists the others with the reason.
-- **General** (`GeneralSettings`, `Preferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15)
-  and where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`). Keys `refreshMinutes`,
-  `pageOpening`; values that aren't offered fall back to the default.
+- **General** (`GeneralSettings`, `Preferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15),
+  where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), open at login (`LoginItem`, the
+  system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
+  count in the menu bar (`showsUnreadCount`, on by default). Values that aren't offered fall back to the default.
 
 - **AI** (`AISettings`): the summary language ("System (…)" first, then common languages by English name with
   their own name), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =

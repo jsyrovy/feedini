@@ -7,6 +7,7 @@ import Observation
 final class Preferences {
     private static let refreshMinutesKey = "refreshMinutes"
     private static let pageOpeningKey = "pageOpening"
+    private static let showsUnreadCountKey = "showsUnreadCount"
     private static let aiEnabledKey = "aiEnabled"
     private static let claudePathKey = "claudePath"
     private static let assignModelKey = "assignModel"
@@ -36,6 +37,13 @@ final class Preferences {
         didSet {
             defaults.set(pageOpening.rawValue, forKey: Self.pageOpeningKey)
             onChange?()
+        }
+    }
+
+    /// Whether the menu bar item shows the number of unread stories. On by default.
+    var showsUnreadCount: Bool {
+        didSet {
+            defaults.set(showsUnreadCount, forKey: Self.showsUnreadCountKey)
         }
     }
 
@@ -116,6 +124,7 @@ final class Preferences {
         let minutes = defaults.integer(forKey: Self.refreshMinutesKey)
         refreshMinutes = Self.refreshMinutesChoices.contains(minutes) ? minutes : Self.defaultRefreshMinutes
         pageOpening = defaults.string(forKey: Self.pageOpeningKey).flatMap(PageOpening.init(rawValue:)) ?? .window
+        showsUnreadCount = defaults.object(forKey: Self.showsUnreadCountKey) as? Bool ?? true
         aiEnabled = defaults.object(forKey: Self.aiEnabledKey) as? Bool ?? true
         claudePath = defaults.string(forKey: Self.claudePathKey) ?? ""
         // Model names are free text (new models appear), only empty ones fall back.

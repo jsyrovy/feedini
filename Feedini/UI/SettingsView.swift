@@ -37,7 +37,31 @@ struct GeneralSettings: View {
             Text("V or Enter opens an article's page this way, Shift+V or Shift+Enter the other way.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Section {
+                Toggle("Open at login", isOn: launchAtLogin)
+                if let loginError {
+                    Text(loginError).font(.caption).foregroundStyle(.orange)
+                }
+                Toggle("Show the number of unread stories in the menu bar", isOn: $preferences.showsUnreadCount)
+            } footer: {
+                Text("Closing the window keeps Feedini in the menu bar; it keeps refreshing and organizing there.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+        .onAppear { isLoginItem = LoginItem.isEnabled }
+    }
+
+    @State private var isLoginItem = false
+    @State private var loginError: String?
+
+    private var launchAtLogin: Binding<Bool> {
+        Binding(
+            get: { isLoginItem },
+            set: { enabled in
+                loginError = LoginItem.setEnabled(enabled)
+                isLoginItem = LoginItem.isEnabled
+            })
     }
 }

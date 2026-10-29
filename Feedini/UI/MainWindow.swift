@@ -15,6 +15,8 @@ struct MainWindow: View {
             DetailView()
         }
         .frame(minWidth: 900, minHeight: 500)
+        .onAppear { AppDelegate.mainWindowIsOpen(true) }
+        .onDisappear { AppDelegate.mainWindowIsOpen(false) }
         .toolbar {
             ToolbarItem {
                 Button("Refresh", systemImage: "arrow.clockwise") { model.refreshNow() }
