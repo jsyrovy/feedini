@@ -114,4 +114,37 @@ struct StoryListTests {
         let counts = StoryList.unreadCounts(StoryList.allEntries(in: library))
         #expect(StoryList.topics(in: library, counts: counts).map(\.name) == ["A", "b"])
     }
+
+    @Test func storiesThatNeedASummaryTakeTheTitleFromIt() {
+        var czech = Article.stub("Czech", feed: tech.id, hours: -1)
+        czech.language = "cs"
+        var english = Article.stub("English", feed: news.id, hours: -2)
+        english.language = "en"
+        let summary = Summary(title: "Shrnutý titulek", text: "Text.", language: "cs", articleIDs: [english.id])
+        let foreign = Story(title: "Foreign", articleIDs: [english.id], summary: summary)
+        let own = Story(
+            title: "Own", articleIDs: [czech.id],
+            summary: Summary(title: "Old", text: "Old.", language: "en", articleIDs: [czech.id]))
+        let library = Library(feeds: [tech, news], articles: [czech, english], stories: [foreign, own])
+
+        let czechEntries = StoryList.allEntries(in: library, summaryLanguage: "cs")
+        let foreignEntry = czechEntries.first { $0.id == .story(foreign.id) }
+        #expect(foreignEntry?.title == "Shrnutý titulek")
+        #expect(foreignEntry?.needsSummary == true)
+        #expect(foreignEntry?.isSummaryCurrent == true)
+        // A Czech article in Czech needs no summary; an old one isn't shown.
+        let ownEntry = czechEntries.first { $0.id == .story(own.id) }
+        #expect(ownEntry?.title == "Czech")
+        #expect(ownEntry?.summary == nil)
+        #expect(ownEntry?.needsSummary == false)
+
+        // In English the Czech story needs one, and the old English summary is out of date there.
+        let englishEntries = StoryList.allEntries(in: library, summaryLanguage: "en")
+        let ownInEnglish = englishEntries.first { $0.id == .story(own.id) }
+        #expect(ownInEnglish?.title == "Old")
+        #expect(ownInEnglish?.isSummaryCurrent == true)
+        let foreignInEnglish = englishEntries.first { $0.id == .story(foreign.id) }
+        #expect(foreignInEnglish?.title == "English")
+        #expect(foreignInEnglish?.summary == nil)
+    }
 }

@@ -22,6 +22,12 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
     var articles: [Article]
     /// Articles that joined after the story had been read ("+1 new").
     var newArticleIDs: Set<Article.ID>
+    /// Whether the story gets an AI summary in the summary language (several articles, or another language).
+    var needsSummary = false
+    /// The summary to show (`nil` when there is none or the story doesn't need one); it may be out of date.
+    var summary: Summary?
+    /// The summary covers exactly these articles in the summary language.
+    var isSummaryCurrent = false
 
     /// The date of the newest article.
     var date: Date { articles.first?.date ?? .distantPast }
@@ -43,19 +49,24 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
 
 /// Builds the story list and the sidebar counts from the library (pure).
 enum StoryList {
-    /// Every story and loose article, newest first (ties: by title).
-    static func allEntries(in library: Library) -> [StoryEntry] {
+    /// Every story and loose article, newest first (ties: by title). With a summary language, a story that needs
+    /// a summary takes its title from it.
+    static func allEntries(in library: Library, summaryLanguage: String? = nil) -> [StoryEntry] {
         var entries: [StoryEntry] = []
         var inStories = Set<Article.ID>()
         for story in library.stories.values {
             let articles = story.articleIDs.compactMap { library.articles[$0] }
             guard !articles.isEmpty else { continue }
             inStories.formUnion(story.articleIDs)
+            let needsSummary = summaryLanguage.map { SummaryStep.needsSummary(articles, language: $0) } ?? false
+            let summary = needsSummary ? story.summary : nil
+            let title = summary?.title ?? (articles.count == 1 ? articles[0].title : story.title)
             entries.append(
                 StoryEntry(
-                    id: .story(story.id), title: articles.count == 1 ? articles[0].title : story.title,
-                    topicID: story.topicID, articles: newestFirst(articles),
-                    newArticleIDs: story.newArticleIDs))
+                    id: .story(story.id), title: title, topicID: story.topicID, articles: newestFirst(articles),
+                    newArticleIDs: story.newArticleIDs, needsSummary: needsSummary, summary: summary,
+                    isSummaryCurrent: summaryLanguage.map { SummaryStep.isCurrent(summary, of: story, language: $0) }
+                        ?? false))
         }
         for article in library.articles.values where !inStories.contains(article.id) {
             entries.append(

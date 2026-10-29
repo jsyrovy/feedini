@@ -58,9 +58,10 @@ Feedini/
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
               ClaudeClient (CLI arguments, envelope, errors), Prompts (system prompts + JSON schemas), AssignStep
-              (payload with short IDs), Validation (pure: applying an assign answer), AIQueue (AssignQueue: serial
-              batches, backoff; LibraryHost, AIConfiguration), AIStatus (@Observable state and recent calls),
-              OutputLanguage
+              (payload with short IDs), Validation (pure: applying an assign answer), SummaryStep (pure: which
+              stories, priority, payload, applying) + TopicTranslation, AIQueue (AssignQueue: serial batches,
+              backoff; SummaryQueue: parallel batches, priority; LibraryHost, AIConfiguration), AIStatus
+              (@Observable state, stories being summarized, recent calls), OutputLanguage (names, choices)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
@@ -280,6 +281,23 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   story unread again. It returns metrics (logged) and the stories whose articles changed (for summaries).
 - An article is "processed" once it belongs to a story; articles without one are shown on their own (`.loose`).
 
+### Summary step
+
+- A story needs a summary when it has several articles, or an article whose language isn't the summary language
+  (then the summary is a translated gist); a single article in the summary language shows its own text
+  (`SummaryStep.needsSummary`; unknown article language counts as the same).
+- `Story.summary` (`Summary`: title, text, language, the article IDs it covered) is current when it is in the
+  summary language and covers exactly the story's articles (`isCurrent`). A new article in the story or a change of
+  the summary language makes it out of date; it stays shown until the new one arrives. Stories that need a summary
+  take their list title from it (`StoryList.allEntries(in:summaryLanguage:)`).
+- Payload: `output_language`, `stories` (short id, articles oldest first: source, title, 1000-character excerpt);
+  answer: `summaries` (story id, title, summary). 1–3 sentences, or 3–5 lines starting with "- " for stories with
+  more than three articles. `SummaryStep.apply` stores answers for stories that still exist, ignores unknown IDs and
+  empty answers.
+- Topic translation (`TopicTranslation`): every `Topic` records its language; topics in another language (or none)
+  are translated in one call (`assignModel`) – names and descriptions – and count as translated afterwards even if
+  the answer left one out.
+
 ### Queues
 
 - `AssignQueue` (main actor) derives its work from the library: pending articles are those without a story, unread
@@ -290,11 +308,19 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   picks up new articles by itself. A failing call is retried after 10 s and 60 s; after 3 attempts its articles are
   deferred until the next refresh (`trigger(retryingFailed: true)`). A setup error (`ClaudeError.isTransient ==
   false`, e.g. no claude) stops the run and shows "AI unavailable: …"; the next trigger looks for claude again.
-- `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)` for the status line, and the last 20 calls
-  (time, cost or error) for Settings → AI.
+- `SummaryQueue` (main actor) also derives its work from the library: unread stories needing a summary that isn't
+  current (`SummaryStep.pending`: stories from several feeds first, then newer first). Up to 3 calls run at once,
+  10 stories each, plus one topic translation when needed. Read stories wait until they are unread again ("+1
+  new"). Triggered with the assign queue and after every assign batch. A failing batch is retried after 30 s; a
+  story whose summary failed 3 times (or was left out of 3 answers) waits for the next refresh and shows the error.
+- `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
+  errors, for the status line ("Organizing 12 new articles…", "Summarizing 5 stories…", "AI unavailable: …"), and
+  the last 20 calls (time, cost or error) for Settings → AI.
 - AI settings (`Preferences`): `aiEnabled` (on by default), `claudePath` (empty = look it up), `assignModel` and
   `summaryModel` (free text, default `claude-haiku-5-5`), `aiEffort` (`low` / `medium` / `high`, default `low`); a
-  change calls `onAIChange`, which triggers the queue. Haiku was as accurate as Sonnet for assigning and 1.1–3×
+  change calls `onAIChange`, which triggers the queues. `summaryLanguage` (a language code, empty = the system
+  language from `Locale.current`) is the language of story titles, topics and summaries; the prompt gets its English
+  name (`OutputLanguage`). Haiku was as accurate as Sonnet for assigning and 1.1–3×
   faster; for summaries it invented fewer facts than Sonnet in the lab.
 
 ## Storage and retention

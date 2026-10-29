@@ -49,7 +49,7 @@ struct AssignQueueTests {
         let articles = articles(35)
         let host = TestLibraryHost(Library(feeds: [feed], articles: articles))
         let runner = FakeCommandRunner(handler: Self.ownStories)
-        let queue = queue(host, runner: runner, configuration: AIConfiguration(language: "Czech"))
+        let queue = queue(host, runner: runner, configuration: AIConfiguration(languageCode: "cs"))
         var changed: [Story.ID] = []
         queue.onStoriesChanged = { changed += $0 }
 

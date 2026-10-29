@@ -12,6 +12,7 @@ final class Preferences {
     private static let assignModelKey = "assignModel"
     private static let summaryModelKey = "summaryModel"
     private static let aiEffortKey = "aiEffort"
+    private static let summaryLanguageKey = "summaryLanguage"
 
     /// The choices for `refreshMinutes`.
     static let refreshMinutesChoices = [5, 15, 30, 60]
@@ -81,11 +82,24 @@ final class Preferences {
         }
     }
 
+    /// The language code of AI titles, topics and summaries; empty for the system language.
+    var summaryLanguage: String {
+        didSet {
+            defaults.set(summaryLanguage, forKey: Self.summaryLanguageKey)
+            onAIChange?()
+        }
+    }
+
+    /// The language code in effect.
+    var summaryLanguageCode: String {
+        summaryLanguage.isEmpty ? OutputLanguage.systemCode : summaryLanguage
+    }
+
     /// The AI settings as the queues use them.
     var aiConfiguration: AIConfiguration {
         AIConfiguration(
             isEnabled: aiEnabled, assignModel: assignModel, summaryModel: summaryModel, effort: aiEffort,
-            language: OutputLanguage.name(of: OutputLanguage.systemCode), claudePath: claudePath)
+            languageCode: summaryLanguageCode, claudePath: claudePath)
     }
 
     /// Called after an AI preference changed.
@@ -111,5 +125,6 @@ final class Preferences {
             defaults.string(forKey: Self.summaryModelKey).flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultModel
         let effort = defaults.string(forKey: Self.aiEffortKey) ?? ""
         aiEffort = Self.effortChoices.contains(effort) ? effort : Self.defaultEffort
+        summaryLanguage = FeedLanguage.code(defaults.string(forKey: Self.summaryLanguageKey)) ?? ""
     }
 }

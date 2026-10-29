@@ -49,7 +49,25 @@ struct PreferencesTests {
         #expect(configuration.summaryModel == "claude-haiku-5-5")
         #expect(configuration.effort == "low")
         #expect(configuration.claudePath == "")
+        #expect(configuration.languageCode == OutputLanguage.systemCode)
         #expect(configuration.language == OutputLanguage.name(of: OutputLanguage.systemCode))
+    }
+
+    @Test func theSummaryLanguageDefaultsToTheSystem() {
+        let preferences = Preferences(defaults: defaults)
+        var aiChanges = 0
+        preferences.onAIChange = { aiChanges += 1 }
+        #expect(preferences.summaryLanguage == "")
+        #expect(preferences.summaryLanguageCode == OutputLanguage.systemCode)
+
+        preferences.summaryLanguage = "cs"
+
+        #expect(aiChanges == 1)
+        #expect(preferences.aiConfiguration.languageCode == "cs")
+        #expect(preferences.aiConfiguration.language == "Czech")
+        #expect(Preferences(defaults: defaults).summaryLanguage == "cs")
+        defaults.set("not a language", forKey: "summaryLanguage")
+        #expect(Preferences(defaults: defaults).summaryLanguage == "")
     }
 
     @Test func savesAIChangesAndReportsThemSeparately() {
@@ -72,7 +90,7 @@ struct PreferencesTests {
             reloaded
                 == AIConfiguration(
                     isEnabled: false, assignModel: "claude-sonnet-5-5", summaryModel: "claude-opus-5-5",
-                    effort: "medium", language: reloaded.language, claudePath: "/tools/claude"))
+                    effort: "medium", languageCode: reloaded.languageCode, claudePath: "/tools/claude"))
     }
 
     @Test func ignoresEmptyModelsAndUnknownEfforts() {
@@ -86,6 +104,8 @@ struct PreferencesTests {
     @Test func namesLanguagesInEnglish() {
         #expect(OutputLanguage.name(of: "cs") == "Czech")
         #expect(OutputLanguage.name(of: "de") == "German")
+        #expect(OutputLanguage.nativeName(of: "cs") == "čeština")
+        #expect(OutputLanguage.choices.contains("cs"))
         #expect(!OutputLanguage.systemCode.isEmpty)
     }
 }

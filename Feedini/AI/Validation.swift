@@ -26,8 +26,9 @@ enum AssignValidation {
         var changedStories: [Story.ID] = []
     }
 
+    /// `language` is the code new topics are written in.
     static func apply(
-        _ output: AssignStep.Output, map: AssignStep.IDMap, to library: inout Library
+        _ output: AssignStep.Output, map: AssignStep.IDMap, language: String? = nil, to library: inout Library
     ) -> Result {
         var result = Result()
         var used = Set<Article.ID>()
@@ -69,7 +70,7 @@ enum AssignValidation {
                 topicsByKey[newTopic.key] = existing
                 continue
             }
-            let topic = Topic(name: name, description: newTopic.description)
+            let topic = Topic(name: name, description: newTopic.description, language: language)
             library.topics[topic.id] = topic
             topicsByKey[newTopic.key] = topic.id
             result.metrics.newTopics += 1
@@ -78,7 +79,8 @@ enum AssignValidation {
         for newStory in output.newStories {
             let ids = take(newStory.articleIDs)
             guard !ids.isEmpty else { continue }
-            let topicID = resolveTopic(newStory.topic, map: map, keys: topicsByKey, library: &library, result: &result)
+            let topicID = resolveTopic(
+                newStory.topic, map: map, keys: topicsByKey, language: language, library: &library, result: &result)
             let title = newStory.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let story = Story(
                 title: title.isEmpty ? library.articles[ids[0]]?.title ?? "" : title, topicID: topicID,
@@ -101,8 +103,8 @@ enum AssignValidation {
     }
 
     private static func resolveTopic(
-        _ reference: String, map: AssignStep.IDMap, keys: [String: Topic.ID], library: inout Library,
-        result: inout Result
+        _ reference: String, map: AssignStep.IDMap, keys: [String: Topic.ID], language: String?,
+        library: inout Library, result: inout Result
     ) -> Topic.ID? {
         let reference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         if let id = map.topics[reference] ?? keys[reference] {
@@ -113,7 +115,7 @@ enum AssignValidation {
         if let id = topic(named: reference, in: library) {
             return id
         }
-        let topic = Topic(name: reference, description: "")
+        let topic = Topic(name: reference, description: "", language: language)
         library.topics[topic.id] = topic
         result.metrics.newTopics += 1
         return topic.id

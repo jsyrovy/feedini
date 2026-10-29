@@ -171,4 +171,18 @@ struct ValidationTests {
         #expect(result.metrics.unknownIDs == 1)
         #expect(result.metrics.missing == 2)
     }
+
+    @Test func newTopicsGetTheOutputLanguage() throws {
+        var library = library
+        _ = AssignValidation.apply(
+            output(
+                topics: [.init(key: "n1", name: "Hry", description: "")],
+                stories: [
+                    .init(title: "S", topic: "n1", articleIDs: ["a1"]),
+                    .init(title: "T", topic: "Věda", articleIDs: ["a2"]),
+                ]), map: map, language: "cs", to: &library)
+
+        #expect(library.topics.values.filter { $0.id != apple.id }.allSatisfy { $0.language == "cs" })
+        #expect(library.topics.count == 3)
+    }
 }

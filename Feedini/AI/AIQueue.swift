@@ -13,8 +13,10 @@ struct AIConfiguration: Sendable, Equatable {
     var assignModel = "claude-haiku-5-5"
     var summaryModel = "claude-haiku-5-5"
     var effort = "low"
+    /// The code of the output language (`cs`).
+    var languageCode = "en"
     /// The English name of the output language ("Czech").
-    var language = "English"
+    var language: String { OutputLanguage.name(of: languageCode) }
     /// A path to `claude` set in Settings; empty to look it up.
     var claudePath = ""
 }
@@ -125,7 +127,9 @@ final class AssignQueue {
                 let (output, stats) = try await client.run(request, as: AssignStep.Output.self)
                 status.record(AIStatus.Call(date: now(), step: "Organize \(batch.count)", stats: stats))
                 var result = AssignValidation.Result()
-                host.update { result = AssignValidation.apply(output, map: map, to: &$0) }
+                host.update {
+                    result = AssignValidation.apply(output, map: map, language: configuration.languageCode, to: &$0)
+                }
                 let metrics = result.metrics
                 Log.ai.info(
                     """
@@ -156,6 +160,167 @@ final class AssignQueue {
                 } catch {
                     return
                 }
+            }
+        }
+    }
+}
+
+/// Writes summaries of unread stories that need one, up to `maxParallel` calls at a time, in the order of
+/// `SummaryStep.pending` (stories from several feeds first, newer first). Like the assign queue it derives the work
+/// from the library, so a story that gets a new article, or a change of the summary language, simply makes stories
+/// pending again. Topics in another language are translated alongside, in one call.
+///
+/// A failing batch is retried after a delay; a story that failed `maxAttempts` times waits for the next refresh.
+@MainActor
+final class SummaryQueue {
+    static let maxParallel = 3
+    static let maxAttempts = 3
+    static let retryDelay: Duration = .seconds(30)
+
+    private unowned let host: any LibraryHost
+    private let runner: any CommandRunning
+    private let locator: ClaudeLocator
+    private let status: AIStatus
+    private let configuration: @MainActor () -> AIConfiguration
+    private let sleep: @Sendable (Duration) async throws -> Void
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var inFlight = Set<Story.ID>()
+    private var failures: [Story.ID: Int] = [:]
+    private var isTranslating = false
+    /// Set by a setup error (no claude); cleared by the next trigger.
+    private var isBlocked = false
+
+    init(
+        host: any LibraryHost, runner: any CommandRunning = ProcessRunner(), locator: ClaudeLocator = ClaudeLocator(),
+        status: AIStatus, configuration: @escaping @MainActor () -> AIConfiguration,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        self.host = host
+        self.runner = runner
+        self.locator = locator
+        self.status = status
+        self.configuration = configuration
+        self.sleep = sleep
+    }
+
+    var isRunning: Bool { !tasks.isEmpty }
+
+    func trigger(retryingFailed: Bool = false) {
+        if retryingFailed {
+            failures = [:]
+            status.clearSummaryErrors()
+        }
+        isBlocked = false
+        fill()
+    }
+
+    /// Waits until no call runs (tests).
+    func waitUntilIdle() async {
+        while let task = tasks.values.first {
+            await task.value
+        }
+    }
+
+    func cancel() {
+        for task in tasks.values {
+            task.cancel()
+        }
+    }
+
+    private var deferred: Set<Story.ID> {
+        Set(failures.filter { $0.value >= Self.maxAttempts }.keys)
+    }
+
+    private func client(_ configuration: AIConfiguration) -> ClaudeClient {
+        ClaudeClient(runner: runner) { [locator, path = configuration.claudePath] in
+            locator.locate(customPath: path)
+        }
+    }
+
+    private func fill() {
+        let configuration = configuration()
+        guard configuration.isEnabled, !isBlocked else {
+            status.setSummarizing(inFlight)
+            return
+        }
+        if !isTranslating {
+            let topics = TopicTranslation.pending(in: host.library, language: configuration.languageCode)
+            if !topics.isEmpty {
+                isTranslating = true
+                launch { await self.translate(topics, configuration) }
+            }
+        }
+        while tasks.count < Self.maxParallel {
+            let pending = SummaryStep.pending(
+                in: host.library, language: configuration.languageCode, excluding: inFlight.union(deferred))
+            guard !pending.isEmpty else { break }
+            let batch = Array(pending.prefix(SummaryStep.batchSize))
+            inFlight.formUnion(batch)
+            launch { await self.summarize(batch, configuration) }
+        }
+        status.setSummarizing(inFlight)
+    }
+
+    private func launch(_ work: @escaping @MainActor () async -> Void) {
+        let id = UUID()
+        tasks[id] = Task {
+            await work()
+            self.tasks[id] = nil
+            if !Task.isCancelled {
+                self.fill()
+            }
+        }
+    }
+
+    private func summarize(_ batch: [Story.ID], _ configuration: AIConfiguration) async {
+        defer { inFlight.subtract(batch) }
+        let (input, map) = SummaryStep.payload(for: batch, in: host.library, languageName: configuration.language)
+        let request = SummaryStep.request(input, model: configuration.summaryModel, effort: configuration.effort)
+        do {
+            let (output, stats) = try await client(configuration).run(request, as: SummaryStep.Output.self)
+            status.record(AIStatus.Call(date: .now, step: "Summarize \(batch.count)", stats: stats))
+            var written = Set<Story.ID>()
+            host.update {
+                written = SummaryStep.apply(output, map: map, language: configuration.languageCode, to: &$0)
+            }
+            for id in batch where !written.contains(id) {
+                failures[id, default: 0] += 1
+            }
+            Log.ai.info("Summarized \(written.count) of \(batch.count) stories in \(stats.durationMs) ms")
+        } catch {
+            status.record(AIStatus.Call(date: .now, step: "Summarize \(batch.count)", error: error.message))
+            Log.ai.error("Summary failed: \(error.message, privacy: .public)")
+            guard error.isTransient else {
+                isBlocked = true
+                status.set(.unavailable(error.message))
+                return
+            }
+            for id in batch {
+                failures[id, default: 0] += 1
+                if failures[id, default: 0] >= Self.maxAttempts {
+                    status.setSummaryError(error.message, for: id)
+                }
+            }
+            try? await sleep(Self.retryDelay)
+        }
+    }
+
+    private func translate(_ topics: [Topic.ID], _ configuration: AIConfiguration) async {
+        defer { isTranslating = false }
+        let (payload, map) = TopicTranslation.payload(
+            for: topics, in: host.library, languageName: configuration.language)
+        let request = TopicTranslation.request(payload, model: configuration.assignModel, effort: configuration.effort)
+        do {
+            let (output, stats) = try await client(configuration).run(request, as: TopicTranslation.Payload.self)
+            status.record(AIStatus.Call(date: .now, step: "Translate topics", stats: stats))
+            host.update { TopicTranslation.apply(output, map: map, language: configuration.languageCode, to: &$0) }
+        } catch {
+            status.record(AIStatus.Call(date: .now, step: "Translate topics", error: error.message))
+            if !error.isTransient {
+                isBlocked = true
+                status.set(.unavailable(error.message))
+            } else {
+                try? await sleep(Self.retryDelay)
             }
         }
     }

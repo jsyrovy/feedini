@@ -25,6 +25,7 @@ final class AppModel: LibraryHost {
     @ObservationIgnored private let coordinator: RefreshCoordinator
     @ObservationIgnored private let subscriber: FeedSubscriber
     @ObservationIgnored private(set) var assignQueue: AssignQueue?
+    @ObservationIgnored private(set) var summaryQueue: SummaryQueue?
     @ObservationIgnored private var scheduler: RefreshScheduler?
     @ObservationIgnored private var cachedEntries: [StoryEntry]?
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
@@ -39,9 +40,14 @@ final class AppModel: LibraryHost {
         self.store = store
         self.coordinator = coordinator
         self.subscriber = subscriber
-        assignQueue = AssignQueue(
-            host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus,
-            configuration: { [preferences] in preferences.aiConfiguration })
+        let configuration: @MainActor () -> AIConfiguration = { [preferences] in preferences.aiConfiguration }
+        let assignQueue = AssignQueue(
+            host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
+        let summaryQueue = SummaryQueue(
+            host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
+        assignQueue.onStoriesChanged = { [weak summaryQueue] _ in summaryQueue?.trigger() }
+        self.assignQueue = assignQueue
+        self.summaryQueue = summaryQueue
         if !preferences.aiEnabled {
             aiStatus.set(.off)
         }
@@ -53,7 +59,7 @@ final class AppModel: LibraryHost {
         if let cachedEntries {
             return cachedEntries
         }
-        let entries = StoryList.allEntries(in: library)
+        let entries = StoryList.allEntries(in: library, summaryLanguage: preferences.summaryLanguageCode)
         cachedEntries = entries
         return entries
     }
@@ -73,6 +79,8 @@ final class AppModel: LibraryHost {
             scheduler?.setInterval(.seconds(self.preferences.refreshMinutes * 60))
         }
         preferences.onAIChange = { [weak self] in
+            // The language decides which summaries are shown.
+            self?.cachedEntries = nil
             self?.organize(retryingFailed: true)
         }
         scheduler.start()
@@ -84,6 +92,7 @@ final class AppModel: LibraryHost {
     func organize(retryingFailed: Bool = false) {
         guard isLoaded else { return }
         assignQueue?.trigger(retryingFailed: retryingFailed)
+        summaryQueue?.trigger(retryingFailed: retryingFailed)
     }
 
     func refreshNow() {
