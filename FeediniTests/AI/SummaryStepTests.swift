@@ -12,9 +12,7 @@ struct SummaryStepTests {
     )
         -> Article
     {
-        var article = Article.stub(title, feed: feed.id, hours: hours, read: read)
-        article.language = language
-        return article
+        Article.stub(title, feed: feed.id, hours: hours, read: read, language: language)
     }
 
     @Test func theSchemasAreValidJSON() throws {
@@ -24,15 +22,27 @@ struct SummaryStepTests {
         #expect(Prompts.summary.contains("starting with \"- \""))
     }
 
-    @Test func storiesNeedASummaryWithSeveralArticlesOrAnotherLanguage() {
+    @Test(arguments: SingleArticleSummaries.allCases)
+    func storiesWithSeveralArticlesAlwaysNeedASummary(singleArticles: SingleArticleSummaries) {
+        let czech = article("A", feed: tech)
+        let unknown = article("B", feed: tech, language: nil)
+        #expect(SummaryStep.needsSummary([czech, unknown], language: "cs", singleArticles: singleArticles))
+        #expect(!SummaryStep.needsSummary([], language: "cs", singleArticles: singleArticles))
+    }
+
+    @Test func singleArticlesNeedASummaryAsChosen() {
         let czech = article("A", feed: tech)
         let english = article("B", feed: tech, language: "en")
         let unknown = article("C", feed: tech, language: nil)
-        #expect(!SummaryStep.needsSummary([czech], language: "cs"))
-        #expect(!SummaryStep.needsSummary([unknown], language: "cs"))
-        #expect(SummaryStep.needsSummary([english], language: "cs"))
-        #expect(SummaryStep.needsSummary([czech, unknown], language: "cs"))
-        #expect(!SummaryStep.needsSummary([english], language: "en"))
+        func needs(_ article: Article, _ singleArticles: SingleArticleSummaries) -> Bool {
+            SummaryStep.needsSummary([article], language: "cs", singleArticles: singleArticles)
+        }
+
+        #expect([czech, english, unknown].map { needs($0, .never) } == [false, false, false])
+        // An unknown language counts as the summary language.
+        #expect([czech, english, unknown].map { needs($0, .otherLanguages) } == [false, true, false])
+        #expect([czech, english, unknown].map { needs($0, .always) } == [true, true, true])
+        #expect(!SummaryStep.needsSummary([english], language: "en", singleArticles: .otherLanguages))
     }
 
     @Test func aSummaryIsCurrentForTheSameArticlesAndLanguage() {
@@ -72,9 +82,13 @@ struct SummaryStepTests {
             feeds: [tech, news], articles: [s1a, s1b, s2a, s2b, s3, s4, r1, r2, c1, c2],
             stories: [sameFeed, twoFeeds, foreign, single, read, current, excluded])
 
-        let pending = SummaryStep.pending(in: library, language: "cs", excluding: [excluded.id])
+        func pending(_ singleArticles: SingleArticleSummaries) -> [Story.ID] {
+            SummaryStep.pending(in: library, language: "cs", singleArticles: singleArticles, excluding: [excluded.id])
+        }
 
-        #expect(pending == [twoFeeds.id, sameFeed.id, foreign.id])
+        #expect(pending(.never) == [twoFeeds.id, sameFeed.id])
+        #expect(pending(.otherLanguages) == [twoFeeds.id, sameFeed.id, foreign.id])
+        #expect(pending(.always) == [twoFeeds.id, single.id, sameFeed.id, foreign.id])
     }
 
     @Test func buildsThePayloadOldestArticleFirst() throws {

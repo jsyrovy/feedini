@@ -147,7 +147,9 @@ struct ValidationTests {
 
         #expect(library.stories[story.id]?.newArticleIDs == [new[0].id, new[1].id])
         // The story is unread again.
-        let entry = StoryList.allEntries(in: library, summaryLanguage: "en").first { $0.id == .story(story.id) }
+        let entry = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never).first {
+            $0.id == .story(story.id)
+        }
         #expect(entry?.isRead == false)
     }
 

@@ -14,6 +14,7 @@ final class Preferences {
     private static let summaryModelKey = "summaryModel"
     private static let aiEffortKey = "aiEffort"
     private static let summaryLanguageKey = "summaryLanguage"
+    private static let singleArticleSummariesKey = "singleArticleSummaries"
 
     /// The choices for `refreshMinutes`.
     static let refreshMinutesChoices = [5, 15, 30, 60]
@@ -98,6 +99,14 @@ final class Preferences {
         }
     }
 
+    /// Which single articles get an AI title and summary. None by default.
+    var singleArticleSummaries: SingleArticleSummaries {
+        didSet {
+            defaults.set(singleArticleSummaries.rawValue, forKey: Self.singleArticleSummariesKey)
+            onAIChange?()
+        }
+    }
+
     /// The language code in effect.
     var summaryLanguageCode: String {
         summaryLanguage.isEmpty ? OutputLanguage.systemCode : summaryLanguage
@@ -107,7 +116,7 @@ final class Preferences {
     var aiConfiguration: AIConfiguration {
         AIConfiguration(
             isEnabled: aiEnabled, assignModel: assignModel, summaryModel: summaryModel, effort: aiEffort,
-            languageCode: summaryLanguageCode, claudePath: claudePath)
+            languageCode: summaryLanguageCode, claudePath: claudePath, singleArticleSummaries: singleArticleSummaries)
     }
 
     /// Called after an AI preference changed.
@@ -135,5 +144,8 @@ final class Preferences {
         let effort = defaults.string(forKey: Self.aiEffortKey) ?? ""
         aiEffort = Self.effortChoices.contains(effort) ? effort : Self.defaultEffort
         summaryLanguage = FeedLanguage.code(defaults.string(forKey: Self.summaryLanguageKey)) ?? ""
+        singleArticleSummaries =
+            defaults.string(forKey: Self.singleArticleSummariesKey).flatMap(SingleArticleSummaries.init(rawValue:))
+            ?? AIConfiguration.defaultSingleArticleSummaries
     }
 }

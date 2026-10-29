@@ -1,15 +1,34 @@
 import Foundation
 
+/// Which stories with a single article get an AI title and summary (Settings → AI).
+enum SingleArticleSummaries: String, CaseIterable, Sendable {
+    /// None: a single article shows its own title and text.
+    case never
+    /// Articles in another language than the summary language (the summary is a translated gist).
+    case otherLanguages
+    /// Every article.
+    case always
+}
+
 /// The summary step: a title and a summary for stories where they add something (pure parts).
 ///
-/// A story needs a summary when it has several articles, or an article in another language than the summary
-/// language (then the summary is a translated gist). A single article in the summary language shows its own text.
+/// A story needs a summary when it has several articles; a story with a single article only as `singleArticles`
+/// says. Without one, a single article shows its own text.
 enum SummaryStep {
     static let batchSize = 10
     static let excerptLength = 1000
 
-    static func needsSummary(_ articles: [Article], language: String) -> Bool {
-        articles.count > 1 || articles.contains { $0.language != nil && $0.language != language }
+    /// An unknown article language counts as the summary language.
+    static func needsSummary(
+        _ articles: [Article], language: String, singleArticles: SingleArticleSummaries
+    ) -> Bool {
+        guard let article = articles.first else { return false }
+        if articles.count > 1 { return true }
+        switch singleArticles {
+        case .never: return false
+        case .otherLanguages: return article.language != nil && article.language != language
+        case .always: return true
+        }
     }
 
     /// Written in the language and for exactly the story's articles.
@@ -22,11 +41,15 @@ enum SummaryStep {
 
     /// Unread stories whose summary is missing or out of date, in the order they should be written: stories from
     /// several feeds first, then the others, newer before older. Read stories wait until they are unread again.
-    static func pending(in library: Library, language: String, excluding: Set<Story.ID> = []) -> [Story.ID] {
+    static func pending(
+        in library: Library, language: String, singleArticles: SingleArticleSummaries,
+        excluding: Set<Story.ID> = []
+    ) -> [Story.ID] {
         library.stories.values.compactMap { story -> (Story.ID, Bool, Date)? in
             guard !excluding.contains(story.id) else { return nil }
             let articles = library.articles(of: story)
-            guard articles.contains(where: { !$0.isRead }), needsSummary(articles, language: language),
+            guard articles.contains(where: { !$0.isRead }),
+                needsSummary(articles, language: language, singleArticles: singleArticles),
                 !isCurrent(story.summary, of: story, language: language)
             else { return nil }
             let feeds = Set(articles.map(\.feedID))

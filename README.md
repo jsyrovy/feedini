@@ -14,8 +14,8 @@ New articles show up right away; grouping and summaries arrive in the background
 - **Stories, not duplicates.** Ten articles about one product launch from three sites are one story with one
   summary; expand it to read the articles one by one.
 - **Topics** that the AI keeps stable as new articles arrive, next to your feeds in the sidebar.
-- **Summaries in your language**, also for articles written in other languages. Single articles in your language
-  keep their own text.
+- **Summaries in your language** for stories with several articles. Single articles keep their own text, unless you
+  choose to summarize those in other languages (a translated gist) or all of them.
 - **Keyboard first**: J / K to move, L / H to expand and collapse, V / Enter to open the source page (in the window
   or the browser), M to toggle read, R to refresh, Shift+A to mark everything read.
 - **Read means read**: moving onto an item marks it read; read items leave the list when you switch views or

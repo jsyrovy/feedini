@@ -76,6 +76,22 @@ struct PreferencesTests {
         #expect(Preferences(defaults: defaults).summaryLanguage == "")
     }
 
+    @Test func singleArticlesAreNotSummarizedByDefault() {
+        let preferences = Preferences(defaults: defaults)
+        var aiChanges = 0
+        preferences.onAIChange = { aiChanges += 1 }
+        #expect(preferences.singleArticleSummaries == .never)
+        #expect(preferences.aiConfiguration.singleArticleSummaries == .never)
+
+        preferences.singleArticleSummaries = .otherLanguages
+
+        #expect(aiChanges == 1)
+        #expect(preferences.aiConfiguration.singleArticleSummaries == .otherLanguages)
+        #expect(Preferences(defaults: defaults).singleArticleSummaries == .otherLanguages)
+        defaults.set("sometimes", forKey: "singleArticleSummaries")
+        #expect(Preferences(defaults: defaults).singleArticleSummaries == .never)
+    }
+
     @Test func savesAIChangesAndReportsThemSeparately() {
         let preferences = Preferences(defaults: defaults)
         var changes = 0

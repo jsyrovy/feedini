@@ -18,7 +18,7 @@ struct StoryListTests {
         let library = Library(
             feeds: [tech, news], articles: [older, inStory1, inStory2, tieA, tieB], stories: [story], topics: [topic])
 
-        let entries = StoryList.allEntries(in: library, summaryLanguage: "en")
+        let entries = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
 
         #expect(
             entries.map(\.id) == [.story(story.id), .loose(tieA.id), .loose(tieB.id), .loose(older.id)])
@@ -41,7 +41,7 @@ struct StoryListTests {
         let empty = Story(title: "Empty", articleIDs: [UUID()])
         let library = Library(feeds: [tech], articles: [article], stories: [single, empty])
 
-        let entries = StoryList.allEntries(in: library, summaryLanguage: "en")
+        let entries = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
 
         #expect(entries.map(\.id) == [.story(single.id)])
         #expect(entries[0].title == "Article title")
@@ -58,7 +58,7 @@ struct StoryListTests {
         let library = Library(
             feeds: [tech, news], articles: [unread, read, keptRead, mixedTech, mixedNews], stories: [mixed],
             topics: [topic])
-        let all = StoryList.allEntries(in: library, summaryLanguage: "en")
+        let all = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
         let keeping: Set<StoryEntry.ID> = [.loose(keptRead.id)]
 
         #expect(StoryList.entries(all, matching: .all).map(\.title) == ["Unread", "Mixed"])
@@ -88,7 +88,8 @@ struct StoryListTests {
             feeds: [tech, news], articles: [a1, a2, a3, a4, readOnly, loose],
             stories: [both, gamesStory1, gamesStory2, readStory], topics: [apple, games, empty])
 
-        let counts = StoryList.unreadCounts(StoryList.allEntries(in: library, summaryLanguage: "en"))
+        let counts = StoryList.unreadCounts(
+            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never))
 
         #expect(counts.all == 4)
         #expect(counts.count(for: .all) == 4)
@@ -111,23 +112,25 @@ struct StoryListTests {
                 Story(title: "1", topicID: b.id, articleIDs: [first.id]),
                 Story(title: "2", topicID: a.id, articleIDs: [second.id]),
             ], topics: [b, a])
-        let counts = StoryList.unreadCounts(StoryList.allEntries(in: library, summaryLanguage: "en"))
+        let counts = StoryList.unreadCounts(
+            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never))
         #expect(StoryList.topics(in: library, counts: counts).map(\.name) == ["A", "b"])
     }
 
     @Test func storiesThatNeedASummaryTakeTheTitleFromIt() {
-        var czech = Article.stub("Czech", feed: tech.id, hours: -1)
-        czech.language = "cs"
-        var english = Article.stub("English", feed: news.id, hours: -2)
-        english.language = "en"
+        let czech = Article.stub("Czech", feed: tech.id, hours: -1, language: "cs")
+        let english = Article.stub("English", feed: news.id, hours: -2, language: "en")
         let summary = Summary(title: "Shrnutý titulek", text: "Text.", language: "cs", articleIDs: [english.id])
         let foreign = Story(title: "Foreign", articleIDs: [english.id], summary: summary)
         let own = Story(
             title: "Own", articleIDs: [czech.id],
             summary: Summary(title: "Old", text: "Old.", language: "en", articleIDs: [czech.id]))
         let library = Library(feeds: [tech, news], articles: [czech, english], stories: [foreign, own])
+        func entries(_ language: String, _ singleArticles: SingleArticleSummaries) -> [StoryEntry] {
+            StoryList.allEntries(in: library, summaryLanguage: language, singleArticles: singleArticles)
+        }
 
-        let czechEntries = StoryList.allEntries(in: library, summaryLanguage: "cs")
+        let czechEntries = entries("cs", .otherLanguages)
         let foreignEntry = czechEntries.first { $0.id == .story(foreign.id) }
         #expect(foreignEntry?.title == "Shrnutý titulek")
         #expect(foreignEntry?.needsSummary == true)
@@ -139,13 +142,24 @@ struct StoryListTests {
         #expect(ownEntry?.needsSummary == false)
 
         // In English the Czech story needs one, and the old English summary is out of date there.
-        let englishEntries = StoryList.allEntries(in: library, summaryLanguage: "en")
+        let englishEntries = entries("en", .otherLanguages)
         let ownInEnglish = englishEntries.first { $0.id == .story(own.id) }
         #expect(ownInEnglish?.title == "Old")
         #expect(ownInEnglish?.isSummaryCurrent == true)
         let foreignInEnglish = englishEntries.first { $0.id == .story(foreign.id) }
         #expect(foreignInEnglish?.title == "English")
         #expect(foreignInEnglish?.summary == nil)
+
+        // Never: the summaries stay in the library, but single articles show their own titles.
+        let never = entries("cs", .never)
+        #expect(never.map(\.title) == ["Czech", "English"])
+        #expect(never.allSatisfy { $0.summary == nil && !$0.needsSummary })
+
+        // Always: the Czech article needs one too; the English summary shows until a Czech one replaces it.
+        let always = entries("cs", .always)
+        #expect(always.map(\.title) == ["Old", "Shrnutý titulek"])
+        #expect(always.map(\.isSummaryCurrent) == [false, true])
+        #expect(always.allSatisfy { $0.needsSummary })
     }
 
     @Test func updatingTheReadStateMatchesRebuilding() {
@@ -154,14 +168,14 @@ struct StoryListTests {
         let loose = Article.stub("Loose", feed: tech.id, hours: -3)
         let story = Story(title: "S", articleIDs: [a.id, b.id], newArticleIDs: [a.id])
         var library = Library(feeds: [tech, news], articles: [a, b, loose], stories: [story])
-        var entries = StoryList.allEntries(in: library, summaryLanguage: "cs")
+        var entries = StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never)
 
         library.markRead([a.id, loose.id], at: .hours(0))
         StoryList.updateReadState(of: [a.id, loose.id], in: &entries, library: library)
-        #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs"))
+        #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never))
 
         library.markUnread([b.id])
         StoryList.updateReadState(of: [b.id], in: &entries, library: library)
-        #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs"))
+        #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never))
     }
 }

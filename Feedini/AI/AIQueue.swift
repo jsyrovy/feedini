@@ -11,6 +11,7 @@ protocol LibraryHost: AnyObject {
 struct AIConfiguration: Sendable, Equatable {
     static let defaultModel = "claude-haiku-5-5"
     static let defaultEffort = "low"
+    static let defaultSingleArticleSummaries = SingleArticleSummaries.never
 
     var isEnabled = true
     var assignModel = defaultModel
@@ -22,6 +23,7 @@ struct AIConfiguration: Sendable, Equatable {
     var language: String { OutputLanguage.name(of: languageCode) }
     /// A path to `claude` set in Settings; empty to look it up.
     var claudePath = ""
+    var singleArticleSummaries = defaultSingleArticleSummaries
 }
 
 /// Makes the AI calls of both queues: finds claude, runs the call, applies the answer to the library, and records
@@ -284,7 +286,8 @@ final class SummaryQueue {
             }
         }
         var pending = SummaryStep.pending(
-            in: host.library, language: configuration.languageCode, excluding: inFlight.union(deferred)
+            in: host.library, language: configuration.languageCode,
+            singleArticles: configuration.singleArticleSummaries, excluding: inFlight.union(deferred)
         )[...]
         while tasks.count < Self.maxParallel, !pending.isEmpty {
             let batch = Array(pending.prefix(SummaryStep.batchSize))

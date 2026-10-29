@@ -69,15 +69,17 @@ final class AppModel: LibraryHost {
         return cache.index[id].map { cache.entries[$0] }
     }
 
-    /// Built when first needed after the articles, the stories or the summary language changed.
+    /// Built when first needed after the articles, the stories or the summary settings changed.
     private var cache: EntriesCache {
         let library = library
         let language = preferences.summaryLanguageCode
-        if let entriesCache, entriesCache.language == language {
+        let singleArticles = preferences.singleArticleSummaries
+        if let entriesCache, entriesCache.language == language, entriesCache.singleArticles == singleArticles {
             return entriesCache
         }
         let cache = EntriesCache(
-            entries: StoryList.allEntries(in: library, summaryLanguage: language), language: language)
+            entries: StoryList.allEntries(in: library, summaryLanguage: language, singleArticles: singleArticles),
+            language: language, singleArticles: singleArticles)
         entriesCache = cache
         return cache
     }
@@ -235,16 +237,19 @@ final class AppModel: LibraryHost {
     }
 }
 
-/// The list entries for one summary language, with what is derived from them.
+/// The list entries for one summary language and choice of single-article summaries, with what is derived from
+/// them.
 private struct EntriesCache {
     let language: String
+    let singleArticles: SingleArticleSummaries
     private(set) var entries: [StoryEntry]
     /// Positions in `entries`; reading doesn't change the order.
     let index: [StoryEntry.ID: Int]
     private(set) var counts: StoryList.Counts
 
-    init(entries: [StoryEntry], language: String) {
+    init(entries: [StoryEntry], language: String, singleArticles: SingleArticleSummaries) {
         self.language = language
+        self.singleArticles = singleArticles
         self.entries = entries
         index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
         counts = StoryList.unreadCounts(entries)

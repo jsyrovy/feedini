@@ -28,9 +28,14 @@ struct AISettings: View {
                         Text("\(OutputLanguage.name(of: code)) (\(OutputLanguage.nativeName(of: code)))").tag(code)
                     }
                 }
+                Picker("Summarize single articles", selection: $preferences.singleArticleSummaries) {
+                    Text("Never").tag(SingleArticleSummaries.never)
+                    Text("In other languages").tag(SingleArticleSummaries.otherLanguages)
+                    Text("Always").tag(SingleArticleSummaries.always)
+                }
             } footer: {
                 Text(
-                    "Story titles, topics and summaries are written in this language. Articles in other languages get a translated summary. After a change, summaries are rewritten gradually, unread stories first."
+                    "Story titles, topics and summaries are written in this language. Stories with several articles always get a summary; a single article gets one only as chosen above (in other languages it is a translation), otherwise it shows its own title and text. After a change, summaries are rewritten gradually, unread stories first."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

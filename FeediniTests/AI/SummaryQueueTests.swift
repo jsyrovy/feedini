@@ -37,12 +37,15 @@ struct SummaryQueueTests {
     }
 
     private func queue(
-        _ host: TestLibraryHost, runner: FakeCommandRunner, found: Bool = true, enabled: Bool = true
+        _ host: TestLibraryHost, runner: FakeCommandRunner, found: Bool = true, enabled: Bool = true,
+        singleArticles: SingleArticleSummaries = .never
     ) -> SummaryQueue {
         let locator = ClaudeLocator.stub(found: found)
         return SummaryQueue(
             host: host, runner: runner, locator: locator, status: status,
-            configuration: { AIConfiguration(isEnabled: enabled, languageCode: "cs") }, sleep: sleeper.sleep(for:))
+            configuration: {
+                AIConfiguration(isEnabled: enabled, languageCode: "cs", singleArticleSummaries: singleArticles)
+            }, sleep: sleeper.sleep(for:))
     }
 
     @Test func summarizesInParallelBatches() async {
@@ -61,9 +64,27 @@ struct SummaryQueueTests {
         #expect(runner.calls.allSatisfy { $0.value(of: "--model") == "claude-haiku-5-5" })
         #expect(runner.calls.first?.payload["output_language"] as? String == "Czech")
         #expect(host.library.stories.values.allSatisfy { $0.summary?.language == "cs" })
-        #expect(SummaryStep.pending(in: host.library, language: "cs").isEmpty)
+        #expect(SummaryStep.pending(in: host.library, language: "cs", singleArticles: .never).isEmpty)
         #expect(status.summarizing.isEmpty)
         #expect(status.calls.count == 3)
+    }
+
+    @Test func summarizesSingleArticlesOnlyAsConfigured() async {
+        let article = Article.stub("Single", feed: tech.id, language: "en")
+        let story = Story(title: "Single", articleIDs: [article.id])
+        let host = TestLibraryHost(Library(feeds: [tech], articles: [article], stories: [story]))
+        let runner = FakeCommandRunner(handler: Self.answer)
+
+        let never = queue(host, runner: runner, singleArticles: .never)
+        never.trigger()
+        await never.waitUntilIdle()
+        #expect(runner.calls.isEmpty)
+
+        let otherLanguages = queue(host, runner: runner, singleArticles: .otherLanguages)
+        otherLanguages.trigger()
+        await otherLanguages.waitUntilIdle()
+        #expect(runner.calls.count == 1)
+        #expect(host.library.stories[story.id]?.summary?.title == "Titulek s1")
     }
 
     @Test func translatesTopicsInOneCall() async throws {

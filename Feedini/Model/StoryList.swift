@@ -22,7 +22,7 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
     var articles: [Article]
     /// Articles that joined after the story had been read ("+1 new").
     var newArticleIDs: Set<Article.ID>
-    /// Whether the story gets an AI summary in the summary language (several articles, or another language).
+    /// Whether the story gets an AI summary in the summary language (`SummaryStep.needsSummary`).
     var needsSummary = false
     /// The summary to show (`nil` when there is none or the story doesn't need one); it may be out of date.
     var summary: Summary?
@@ -57,13 +57,18 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
 
 /// Builds the story list and the sidebar counts from the library (pure).
 enum StoryList {
-    /// Every story and loose article, newest first (ties: by title). With a summary language, a story that needs
-    /// a summary takes its title from it.
-    static func allEntries(in library: Library, summaryLanguage: String) -> [StoryEntry] {
+    /// Every story and loose article, newest first (ties: by title). A story that needs a summary takes its title
+    /// from it.
+    static func allEntries(
+        in library: Library, summaryLanguage: String, singleArticles: SingleArticleSummaries
+    ) -> [StoryEntry] {
         var entries: [StoryEntry] = []
         var inStories = Set<Article.ID>()
         for story in library.stories.values {
-            guard let entry = entry(for: story, in: library, summaryLanguage: summaryLanguage) else { continue }
+            guard
+                let entry = entry(
+                    for: story, in: library, summaryLanguage: summaryLanguage, singleArticles: singleArticles)
+            else { continue }
             inStories.formUnion(story.articleIDs)
             entries.append(entry)
         }
@@ -77,10 +82,13 @@ enum StoryList {
     }
 
     /// The entry of a story; `nil` when none of its articles exists.
-    static func entry(for story: Story, in library: Library, summaryLanguage: String) -> StoryEntry? {
+    static func entry(
+        for story: Story, in library: Library, summaryLanguage: String, singleArticles: SingleArticleSummaries
+    ) -> StoryEntry? {
         let articles = library.articles(of: story)
         guard !articles.isEmpty else { return nil }
-        let needsSummary = SummaryStep.needsSummary(articles, language: summaryLanguage)
+        let needsSummary = SummaryStep.needsSummary(
+            articles, language: summaryLanguage, singleArticles: singleArticles)
         let summary = needsSummary ? story.summary : nil
         let title = summary?.title ?? (articles.count == 1 ? articles[0].title : story.title)
         return StoryEntry(

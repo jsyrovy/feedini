@@ -119,8 +119,9 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
   cross-feed grouping that is the point of the AI.
 - One event = one story card, including follow-up articles about its details (e.g. a whole product launch). Topics
   are kept stable by passing the existing ones (of unread stories) to the AI, which reuses them or creates new ones.
-- Summaries only where they add something: stories with several articles, or articles in another language than the
-  summary language (then it is a translation). A single article in the summary language shows its own excerpt.
+- Summaries only where they add something: stories with several articles always; a single article only as chosen in
+  Settings → AI ("Summarize single articles": never (default), in other languages than the summary language (then it
+  is a translation), always). Otherwise a single article shows its own title and excerpt.
 - After closing the window the app keeps running in the menu bar (`.accessory`) and keeps refreshing, so opening it
   shows everything processed. With the window open it is a regular app with a Dock icon.
 
@@ -176,7 +177,7 @@ Implementation:
   on every library change (`AppModel.onLibraryChange`): the cursor moves to the article inside the (expanded) story,
   or to its one-article story, and kept entries stay kept – nothing is marked read by that.
 - Summaries in the detail (`SummaryView`): a story with several articles shows its summary between the title and
-  the articles; a one-article story in another language shows it above the feed text. Lines starting with "- "
+  the articles; a one-article story that needs one shows it above the feed text. Lines starting with "- "
   become bullet points. Without a summary yet: "Summarizing…" (or the error after repeated failures); an out-of-date
   one stays with "Updating summary…" while the AI works.
 - AI in the list: a loose article shows ✨ while the AI organizes (`AIStatus.organizing`); the status bar shows
@@ -184,8 +185,8 @@ Implementation:
   from several feeds have an accent bar and source labels; "+N new" marks articles that joined a read story.
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
   in order. The entries are cached with an index by ID (`AppModel.entry(_:)`) and the unread counts
-  (`unreadCounts`, used by the sidebar and the menu bar) for one summary language; the cache is rebuilt only when
-  the articles or stories change or the language does. Read-state changes patch it and don't notify the reader
+  (`unreadCounts`, used by the sidebar and the menu bar) for one summary language and choice of single-article
+  summaries; the cache is rebuilt only when the articles or stories change or one of those does. Read-state changes patch it and don't notify the reader
   (they never move articles into stories).
 
 ## Feeds
@@ -242,7 +243,7 @@ Implementation:
   system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
   count in the menu bar (`showsUnreadCount`, on by default). Values that aren't offered fall back to the default.
 - **AI** (`AISettings`): the summary language ("System (…)" first, then common languages by English name with
-  their own name), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
+  their own name), which single articles are summarized (Never / In other languages / Always), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
   with duration and cost or the error, and the usage: calls, time and cost per day for the last 7 days and the
   total of the kept 30 (`Library.usage`, `AIUsageDay`, recorded with every call claude actually ran). A typed path
@@ -313,13 +314,15 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 
 ### Summary step
 
-- A story needs a summary when it has several articles, or an article whose language isn't the summary language
-  (then the summary is a translated gist); a single article in the summary language shows its own text
-  (`SummaryStep.needsSummary`; unknown article language counts as the same).
+- A story needs a summary when it has several articles. A story with a single article needs one as
+  `SingleArticleSummaries` says (`SummaryStep.needsSummary`): `never`, `otherLanguages` (the article's language
+  isn't the summary language; the summary is a translated gist; an unknown language counts as the same) or
+  `always`. Otherwise it shows its own title and text. Summaries that aren't needed stay in the library, just not
+  shown, so switching back shows them again.
 - `Story.summary` (`Summary`: title, text, language, the article IDs it covered) is current when it is in the
   summary language and covers exactly the story's articles (`isCurrent`). A new article in the story or a change of
   the summary language makes it out of date; it stays shown until the new one arrives. Stories that need a summary
-  take their list title from it (`StoryList.allEntries(in:summaryLanguage:)`).
+  take their list title from it (`StoryList.allEntries(in:summaryLanguage:singleArticles:)`).
 - Payload: `output_language`, `stories` (short id, articles oldest first: source, title, 1000-character excerpt);
   answer: `summaries` (story id, title, summary). 1–3 sentences, or 3–5 lines starting with "- " for stories with
   more than three articles. `SummaryStep.apply` stores answers for stories that still exist, ignores unknown IDs and
@@ -354,7 +357,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   `summaryModel` (free text, default `claude-haiku-5-5`), `aiEffort` (`low` / `medium` / `high`, default `low`); a
   change calls `onAIChange`, which triggers the queues. `summaryLanguage` (a language code, empty = the system
   language from `Locale.current`) is the language of story titles, topics and summaries; the prompt gets its English
-  name (`OutputLanguage`). Haiku was as accurate as Sonnet for assigning and 1.1–3× faster; for summaries it
+  name (`OutputLanguage`). `singleArticleSummaries` (`never` / `otherLanguages` / `always`, default `never`) decides
+  which single articles get a summary. Haiku was as accurate as Sonnet for assigning and 1.1–3× faster; for summaries it
   invented fewer facts than Sonnet in the lab.
 
 ## Storage and retention
