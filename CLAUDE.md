@@ -50,12 +50,12 @@ Feedini/
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
-              NLLanguageRecognizer)
+              NLLanguageRecognizer), OPML (import / export)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), SettingsView, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
-              content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page
+              content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML file
   Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), model stubs (`referenceDate`, `Article.stub`, …)
 ```
 
@@ -154,6 +154,8 @@ Keys work in the list. While the web page has focus, only Esc works (it returns 
 - Text: `content:encoded` / Atom `content` when present, else `description` / `summary`, converted by
   `HTMLText.plainText` (paragraphs as blank lines, `<br><br>` too, list items with "• ", scripts, styles and
   comments dropped, entities decoded) and cut to `FeedParser.maxTextLength` (10 000 characters, ending in "…").
+- `OPML.parse` returns every outline with an `xmlUrl` (any case), nested ones (categories) included, without
+  duplicates, URLs as written – checking them is the importer's job. `OPML.export` writes OPML 2.0.
 - `FeedLanguage`: the feed's `<language>` / `dc:language` / Atom `xml:lang` reduced to the primary code (`cs-CZ` →
   `cs`); without one, `NLLanguageRecognizer` on the title and the start of the text (at least 50 % sure).
 

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="1.0">
+  <head><title>Example subscriptions</title></head>
+  <body>
+    <outline text="Tech" title="Tech">
+      <outline text="Example Tech Daily" type="rss" xmlUrl="https://tech.example.com/rss/" htmlUrl="https://tech.example.com/"/>
+      <outline text="Example Mac News" title="Mac News" type="rss" xmlURL="http://macnews.example.com/feed"/>
+    </outline>
+    <outline type="rss" xmlUrl="  https://blog.example.org/feed.atom "/>
+    <outline text="Duplicate" type="rss" xmlUrl="https://tech.example.com/rss/"/>
+    <outline text="No URL"/>
+  </body>
+</opml>
