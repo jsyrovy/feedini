@@ -23,9 +23,10 @@ enum Prompts {
 
         Topics:
         - Every new story gets a topic. Prefer existing topics.
-        - Create a new topic only when no existing topic fits. Never create a topic that is a narrower, broader or \
-        renamed version of an existing one. When there are no existing topics, create 4–8 topics that fit the \
-        articles.
+        - Create a new topic only when no existing topic fits and the new one is a kind of news that is likely to \
+        come back; put a single unusual article into the closest existing topic instead. Never create a topic that \
+        is a narrower, broader or renamed version of an existing one. When there are no existing topics, create 4–8 \
+        broad topics that fit the articles. Keep the total number of topics at 10 or fewer.
         - A new topic has a key (n1, n2, …), a short name (1–4 words) and a one-sentence description of what belongs \
         in it.
         - The topic of a new story is the id of an existing topic (such as t3) or the key of a new topic (such as \
