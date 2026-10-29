@@ -64,7 +64,7 @@ Feedini/
               (@Observable state, stories being summarized, recent calls), OutputLanguage (names, choices)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
-              DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
+              DetailView (StoryDetail, ArticleDetail, SourcePage), SummaryView, WebPageView (WKWebView), Reader (window state:
               selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation (pure: what a
               key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings + AISettings,
               MenuBarContent
@@ -169,6 +169,10 @@ Implementation:
 - When the AI puts a loose article into a story, the entry's ID changes (`.loose` → `.story`). `Reader` follows it
   on every library change (`AppModel.onLibraryChange`): the cursor moves to the article inside the (expanded) story,
   or to its one-article story, and kept entries stay kept – nothing is marked read by that.
+- Summaries in the detail (`SummaryView`): a story with several articles shows its summary between the title and
+  the articles; a one-article story in another language shows it above the feed text. Lines starting with "- "
+  become bullet points. Without a summary yet: "Summarizing…" (or the error after repeated failures); an out-of-date
+  one stays with "Updating summary…" while the AI works.
 - AI in the list: a loose article shows ✨ while the AI organizes (`AIStatus.organizing`); the status bar shows
   "Organizing N new articles…" or "AI unavailable: …" next to the refresh state. Stories from several feeds have an
   accent bar and source labels; "+N new" marks articles that joined a read story.
@@ -214,7 +218,8 @@ Implementation:
   and where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`). Keys `refreshMinutes`,
   `pageOpening`; values that aren't offered fall back to the default.
 
-- **AI** (`AISettings`): on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
+- **AI** (`AISettings`): the summary language ("System (…)" first, then common languages by English name with
+  their own name), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
   with duration and cost or the error.
 

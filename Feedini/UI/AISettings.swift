@@ -20,6 +20,22 @@ struct AISettings: View {
                 .foregroundStyle(.secondary)
             }
 
+            Section {
+                Picker("Language", selection: $preferences.summaryLanguage) {
+                    Text("System (\(OutputLanguage.nativeName(of: OutputLanguage.systemCode)))").tag("")
+                    Divider()
+                    ForEach(languages, id: \.self) { code in
+                        Text("\(OutputLanguage.name(of: code)) (\(OutputLanguage.nativeName(of: code)))").tag(code)
+                    }
+                }
+            } footer: {
+                Text(
+                    "Story titles, topics and summaries are written in this language. Articles in other languages get a translated summary. After a change, summaries are rewritten gradually, unread stories first."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
             Section("claude") {
                 TextField("Path", text: $preferences.claudePath, prompt: Text(detectedPath ?? "Not found"))
                 Text(pathHint)
@@ -46,6 +62,14 @@ struct AISettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var languages: [String] {
+        let choices = OutputLanguage.choices.sorted {
+            OutputLanguage.name(of: $0).localizedStandardCompare(OutputLanguage.name(of: $1)) == .orderedAscending
+        }
+        let saved = model.preferences.summaryLanguage
+        return saved.isEmpty || choices.contains(saved) ? choices : choices + [saved]
     }
 
     private var detectedPath: String? {

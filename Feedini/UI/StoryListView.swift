@@ -120,7 +120,7 @@ private struct StatusBar: View {
             }
             Spacer()
             if let message = model.aiStatus.message {
-                if case .organizing = model.aiStatus.state {
+                if model.aiStatus.isWorking {
                     Image(systemName: "sparkles")
                 } else {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)

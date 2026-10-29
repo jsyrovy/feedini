@@ -10,7 +10,8 @@ struct DetailView: View {
                 if reader.pageArticle == article.id, let link = article.link {
                     SourcePage(article: article, url: link)
                 } else {
-                    ArticleDetail(article: article)
+                    // A story of one article in another language shows the AI's translated gist above its text.
+                    ArticleDetail(article: article, story: entry.isMultiArticle ? nil : entry)
                 }
             } else {
                 StoryDetail(entry: entry)
@@ -35,6 +36,7 @@ struct StoryDetail: View {
                     .textSelection(.enabled)
                 Text("\(entry.feedIDs.count) sources · \(entry.articles.count) articles")
                     .foregroundStyle(.secondary)
+                SummaryView(entry: entry)
                 Divider()
                 Text("Articles").font(.headline)
                 ForEach(entry.articles) { article in
@@ -68,6 +70,8 @@ struct ArticleDetail: View {
     @Environment(AppModel.self) private var model
     @Environment(Reader.self) private var reader
     let article: Article
+    /// The one-article story the article is shown for, if any (for its summary).
+    var story: StoryEntry?
 
     var body: some View {
         ScrollView {
@@ -79,6 +83,9 @@ struct ArticleDetail: View {
                     .foregroundStyle(.secondary)
                 if let link = article.link {
                     OpenButtons(url: link)
+                }
+                if let story, story.needsSummary {
+                    SummaryView(entry: story)
                 }
                 Divider()
                 ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
