@@ -31,6 +31,9 @@ struct FeediniApp: App {
                 Button("Refresh Now") { appDelegate.model.refreshNow() }
                     .keyboardShortcut("r")
             }
+            #if DEBUG
+                DebugCommands(model: appDelegate.model)
+            #endif
         }
 
         Settings {

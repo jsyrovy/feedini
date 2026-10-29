@@ -64,6 +64,8 @@ Feedini/
               backoff; SummaryQueue: parallel batches, priority; LibraryHost, AIConfiguration), AIStatus
               (@Observable state, stories being summarized, recent calls), OutputLanguage (names, choices)
   Support/    OneShotSignal (an awaitable one-time event)
+  Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
+              rewrite summaries, add made-up articles to a "Debug" feed)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail, SourcePage), SummaryView, WebPageView (WKWebView), Reader (window state:
               selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation (pure: what a
