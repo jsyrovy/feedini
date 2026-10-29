@@ -48,14 +48,15 @@ Feedini/
   Model/      Feed, Article, Story, Topic, Tombstone (Codable, Sendable), Library (all of them, read state, removing
               feeds)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
-  Feeds/      FeedParser (XMLParser: RSS 0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts),
-              FeedLanguage (<language> or NLLanguageRecognizer)
+  Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
+              0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
+              NLLanguageRecognizer)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), SettingsView, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page
-  Support/    Fixture loader, ManualSleeper, model stubs (`referenceDate`, `Article.stub`, …)
+  Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), model stubs (`referenceDate`, `Article.stub`, …)
 ```
 
 ## Conventions
@@ -134,6 +135,12 @@ Keys work in the list. While the web page has focus, only Esc works (it returns 
 
 ## Feeds
 
+- `FeedFetcher` downloads with an ephemeral `URLSession` without a cache (20 s per request, 60 s per resource,
+  `User-Agent: Feedini/…`), sends `If-None-Match` / `If-Modified-Since` from the previous download (304 →
+  `notModified`) and ignores the `Content-Type` (some feeds are served as `text/html`). `fetchAll` runs 6 downloads
+  at a time; every feed gets its own outcome, so one failing feed never affects the others. Failures are
+  `FetchError`s with a message for the user – an ATS block (a redirect from HTTPS to HTTP) says so instead of a
+  generic network error.
 - `FeedParser` reads RSS 0.9x / 2.0 (no namespace), RSS 1.0 (RDF) and Atom with `XMLParser` and namespace
   processing; the root element decides the format, anything else (a web page) is `FeedParserError.notAFeed`. The
   encoding comes from the XML declaration (libxml2), never from the HTTP header.
@@ -173,6 +180,8 @@ Keys work in the list. While the web page has focus, only Esc works (it returns 
   `@testable import Feedini` works. Under tests the `@main` entry point (`FeediniMain`) runs an empty `TestHostApp`
   instead of `FeediniApp` (`RuntimeEnvironment.isRunningTests`), so no window, refresh or menu bar item starts and
   the real app code needs no test guards.
+- Network code is tested through `StubURLProtocol` (`StubURLProtocol.session()`), never the real network. Every test
+  uses unique hosts (`uniqueURL()`), so tests can run in parallel.
 - Checking the running app: `screencapture` needs the Screen Recording permission (without it: "could not create
   image from display"). Without it, inspect windows with `CGWindowListCopyWindowInfo` (owner `Feedini`).
 
