@@ -46,13 +46,12 @@ actor LibraryStore {
             return moveAside(because: "The library couldn't be read: \(error.localizedDescription)")
         }
         do {
-            let version = try JSONDecoder().decode(VersionProbe.self, from: data).version
-            guard version <= Self.schemaVersion else {
-                return moveAside(because: "The library was saved by a newer version of Feedini (schema \(version)).")
-            }
             let file = try Self.decoder.decode(File.self, from: data)
             Log.store.info("Loaded \(file.library.articles.count) articles of \(file.library.feeds.count) feeds")
             return LoadResult(library: file.library)
+        } catch let newer as File.NewerVersion {
+            return moveAside(
+                because: "The library was saved by a newer version of Feedini (schema \(newer.version)).")
         } catch {
             return moveAside(because: "The library file is damaged: \(error.localizedDescription)")
         }
@@ -101,22 +100,36 @@ actor LibraryStore {
     }
 
     private struct File: Codable {
+        struct NewerVersion: Error {
+            var version: Int
+        }
+
         var version: Int
         var library: Library
+
+        init(version: Int, library: Library) {
+            self.version = version
+            self.library = library
+        }
+
+        /// The version is checked before the library is decoded, so a newer file isn't decoded for nothing.
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            version = try container.decode(Int.self, forKey: .version)
+            guard version <= LibraryStore.schemaVersion else { throw NewerVersion(version: version) }
+            library = try container.decode(Library.self, forKey: .library)
+        }
     }
 
-    private struct VersionProbe: Decodable {
-        var version: Int
-    }
-
-    private static var encoder: JSONEncoder {
+    /// How the library file is written and read (also used by tests).
+    static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
         return encoder
     }
 
-    private static var decoder: JSONDecoder {
+    static var decoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder

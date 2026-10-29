@@ -95,11 +95,7 @@ struct LibraryTests {
         let tombstone = Tombstone(feedID: feed.id, key: "gone", lastSeen: referenceDate)
         library.tombstones[tombstone.id] = tombstone
 
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode(Library.self, from: encoder.encode(library))
+        let decoded = try LibraryStore.decoder.decode(Library.self, from: LibraryStore.encoder.encode(library))
 
         #expect(decoded == library)
     }

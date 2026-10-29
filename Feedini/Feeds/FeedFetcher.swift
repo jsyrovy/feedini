@@ -126,20 +126,7 @@ struct FeedFetcher: Sendable {
 
     /// Downloads all feeds, `maxConcurrentDownloads` at a time; a failing feed never affects the others.
     func fetchAll(_ requests: [FetchRequest]) async -> [Feed.ID: FetchOutcome] {
-        await withTaskGroup(of: (Feed.ID, FetchOutcome).self) { group in
-            var pending = requests[...]
-            var outcomes: [Feed.ID: FetchOutcome] = [:]
-            for _ in 0..<Self.maxConcurrentDownloads {
-                guard let request = pending.popFirst() else { break }
-                group.addTask { (request.feedID, await fetch(request)) }
-            }
-            while let (id, outcome) = await group.next() {
-                outcomes[id] = outcome
-                if let request = pending.popFirst() {
-                    group.addTask { (request.feedID, await fetch(request)) }
-                }
-            }
-            return outcomes
-        }
+        let outcomes = await requests.concurrentMap(limit: Self.maxConcurrentDownloads) { await fetch($0) }
+        return Dictionary(zip(requests.map(\.feedID), outcomes), uniquingKeysWith: { _, last in last })
     }
 }

@@ -18,7 +18,7 @@ enum Retention {
         var removed = Set<Article.ID>()
 
         for story in library.stories.values {
-            let articles = story.articleIDs.compactMap { library.articles[$0] }
+            let articles = library.articles(of: story)
             let isStale = articles.allSatisfy(\.isRead) && articles.allSatisfy { $0.date < cutoff }
             if isStale {
                 removed.formUnion(articles.map(\.id))
@@ -38,19 +38,28 @@ enum Retention {
         }
         library.removeFromStories(removed)
         // Stories whose articles are all gone (none of them can be loaded) are removed too.
-        library.stories = library.stories.filter { _, story in
-            story.articleIDs.contains { library.articles[$0] != nil }
-        }
+        let articles = library.articles
+        remove(from: &library.stories) { _, story in !story.articleIDs.contains { articles[$0] != nil } }
 
         let lastSuccess = Dictionary(
             library.feeds.compactMap { feed in feed.lastSuccess.map { (feed.id, $0) } },
             uniquingKeysWith: { first, _ in first })
-        library.tombstones = library.tombstones.filter { _, tombstone in
-            guard let success = lastSuccess[tombstone.feedID] else { return true }
-            return tombstone.lastSeen >= success.addingTimeInterval(-tombstoneMargin)
+        remove(from: &library.tombstones) { _, tombstone in
+            guard let success = lastSuccess[tombstone.feedID] else { return false }
+            return tombstone.lastSeen < success.addingTimeInterval(-tombstoneMargin)
         }
 
         let usedTopics = Set(library.stories.values.compactMap(\.topicID))
-        library.topics = library.topics.filter { usedTopics.contains($0.key) }
+        remove(from: &library.topics) { id, _ in !usedTopics.contains(id) }
+    }
+
+    /// Removes the matching entries in place: a dictionary with nothing to remove keeps its storage, so comparing
+    /// the library before and after stays cheap.
+    private static func remove<Key, Value>(
+        from dictionary: inout [Key: Value], where shouldRemove: (Key, Value) -> Bool
+    ) {
+        for (key, value) in dictionary where shouldRemove(key, value) {
+            dictionary[key] = nil
+        }
     }
 }

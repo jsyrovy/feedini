@@ -105,24 +105,12 @@ struct FeedSubscriber: Sendable {
 
     /// Checks OPML entries `FeedFetcher.maxConcurrentDownloads` at a time; the result keeps the OPML order.
     func subscribe(_ entries: [OPML.Entry], existing: [URL]) async -> ImportResult {
-        let results = await withTaskGroup(of: (Int, Result<Subscription, Failure>).self) { group in
-            var pending = Array(entries.enumerated())[...]
-            var results: [Int: Result<Subscription, Failure>] = [:]
-            for _ in 0..<FeedFetcher.maxConcurrentDownloads {
-                guard let (index, entry) = pending.popFirst() else { break }
-                group.addTask { (index, await subscribe(entry.feedURL, existing: existing)) }
-            }
-            while let (index, result) = await group.next() {
-                results[index] = result
-                if let (index, entry) = pending.popFirst() {
-                    group.addTask { (index, await subscribe(entry.feedURL, existing: existing)) }
-                }
-            }
-            return results
+        let results = await entries.concurrentMap(limit: FeedFetcher.maxConcurrentDownloads) {
+            await subscribe($0.feedURL, existing: existing)
         }
         var result = ImportResult()
-        for (index, entry) in entries.enumerated() {
-            switch results[index] {
+        for (entry, outcome) in zip(entries, results) {
+            switch outcome {
             case .success(let subscription):
                 // The same feed under two addresses (http and https) is added once.
                 if result.added.contains(where: { Self.isSame($0.url, subscription.url) }) {
@@ -132,8 +120,6 @@ struct FeedSubscriber: Sendable {
                 }
             case .failure(let failure):
                 result.skipped.append((entry, failure.message))
-            case nil:
-                break
             }
         }
         return result

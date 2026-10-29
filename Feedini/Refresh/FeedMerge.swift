@@ -21,6 +21,11 @@ enum FeedMerge {
     @discardableResult
     static func merge(_ refreshes: [Feed.ID: FeedRefresh], into library: inout Library, now: Date) -> [Article.ID] {
         var newArticles: [Article.ID] = []
+        // The keys of every feed's articles, in one pass over the library.
+        var known: [Feed.ID: Set<String>] = [:]
+        for article in library.articles.values {
+            known[article.feedID, default: []].insert(article.key)
+        }
         for index in library.feeds.indices {
             let feedID = library.feeds[index].id
             switch refreshes[feedID] {
@@ -42,16 +47,18 @@ enum FeedMerge {
                 feed.language = FeedLanguage.code(parsed.language)
                 feed.siteURL = feed.siteURL ?? parsed.siteURL
                 library.feeds[index] = feed
-                newArticles += add(parsed.items, of: feedID, to: &library, now: now, isFirstDownload: isFirstDownload)
+                newArticles += add(
+                    parsed.items, of: feedID, known: known[feedID] ?? [], to: &library, now: now,
+                    isFirstDownload: isFirstDownload)
             }
         }
         return newArticles
     }
 
     private static func add(
-        _ items: [ParsedItem], of feedID: Feed.ID, to library: inout Library, now: Date, isFirstDownload: Bool
+        _ items: [ParsedItem], of feedID: Feed.ID, known: Set<String>, to library: inout Library, now: Date,
+        isFirstDownload: Bool
     ) -> [Article.ID] {
-        let known = Set(library.articles.values.lazy.filter { $0.feedID == feedID }.map(\.key))
         let oldest = now.addingTimeInterval(-firstDownloadMaxAge)
         var added: [Article.ID] = []
         for item in items where !known.contains(item.key) {

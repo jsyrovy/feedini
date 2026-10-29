@@ -63,7 +63,7 @@ Feedini/
               stories, priority, payload, applying) + TopicTranslation, AIQueue (AssignQueue: serial batches,
               backoff; SummaryQueue: parallel batches, priority; LibraryHost, AIConfiguration), AIStatus
               (@Observable state, stories being summarized, recent calls), OutputLanguage (names, choices)
-  Support/    OneShotSignal (an awaitable one-time event)
+  Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
@@ -354,7 +354,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
   migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage` via
-  `decodeIfPresent`, `Story.summary`, `Topic.language` as optionals), so older files load without a bump.
+  `decodeIfPresent`, `Story.summary`, `Topic.language` as optionals), so older files load without a bump. The
+  version is read before the library, so a file from a newer Feedini isn't decoded for nothing.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
   newer Feedini – is moved aside as `library.unreadable-<unix time>.json`, never overwritten, and Feedini starts

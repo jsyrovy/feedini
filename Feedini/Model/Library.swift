@@ -16,6 +16,11 @@ struct Library: Sendable, Equatable {
         feeds.first { $0.id == id }
     }
 
+    /// The articles of a story that exist, in the story's order.
+    func articles(of story: Story) -> [Article] {
+        story.articleIDs.compactMap { articles[$0] }
+    }
+
     /// The story of every article that belongs to one.
     func storyIDsByArticle() -> [Article.ID: Story.ID] {
         var index: [Article.ID: Story.ID] = [:]
@@ -118,16 +123,20 @@ extension Library: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(feeds, forKey: .feeds)
         try container.encode(
-            articles.values.sorted { ($0.firstSeen, $0.id.uuidString) < ($1.firstSeen, $1.id.uuidString) },
+            articles.values.map { (date: $0.firstSeen, id: $0.id.uuidString, article: $0) }
+                .sorted { ($0.date, $0.id) < ($1.date, $1.id) }.map(\.article),
             forKey: .articles)
-        try container.encode(stories.values.sorted { $0.id.uuidString < $1.id.uuidString }, forKey: .stories)
-        try container.encode(topics.values.sorted { $0.id.uuidString < $1.id.uuidString }, forKey: .topics)
+        try container.encode(Self.sorted(stories.values) { $0.id.uuidString }, forKey: .stories)
+        try container.encode(Self.sorted(topics.values) { $0.id.uuidString }, forKey: .topics)
+        // Feed IDs have a fixed length, so "feed key" sorts like (feed, key).
         try container.encode(
-            tombstones.values.sorted {
-                ($0.feedID.uuidString, $0.key) < ($1.feedID.uuidString, $1.key)
-            },
-            forKey: .tombstones)
+            Self.sorted(tombstones.values) { "\($0.feedID.uuidString) \($0.key)" }, forKey: .tombstones)
         try container.encode(usage, forKey: .usage)
+    }
+
+    /// Sorted by a key computed once per value (not twice per comparison).
+    private static func sorted<Value>(_ values: some Collection<Value>, by key: (Value) -> String) -> [Value] {
+        values.map { (key: key($0), value: $0) }.sorted { $0.key < $1.key }.map(\.value)
     }
 
     /// Later duplicates win; there are none unless the file was edited by hand.
