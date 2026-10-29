@@ -40,4 +40,52 @@ struct PreferencesTests {
         #expect(preferences.refreshMinutes == 15)
         #expect(preferences.pageOpening == .window)
     }
+
+    @Test func aiDefaultsToHaikuWithLowEffort() {
+        let preferences = Preferences(defaults: defaults)
+        let configuration = preferences.aiConfiguration
+        #expect(configuration.isEnabled)
+        #expect(configuration.assignModel == "claude-haiku-5-5")
+        #expect(configuration.summaryModel == "claude-haiku-5-5")
+        #expect(configuration.effort == "low")
+        #expect(configuration.claudePath == "")
+        #expect(configuration.language == OutputLanguage.name(of: OutputLanguage.systemCode))
+    }
+
+    @Test func savesAIChangesAndReportsThemSeparately() {
+        let preferences = Preferences(defaults: defaults)
+        var changes = 0
+        var aiChanges = 0
+        preferences.onChange = { changes += 1 }
+        preferences.onAIChange = { aiChanges += 1 }
+
+        preferences.aiEnabled = false
+        preferences.claudePath = "/tools/claude"
+        preferences.assignModel = "claude-sonnet-5-5"
+        preferences.summaryModel = "claude-opus-5-5"
+        preferences.aiEffort = "medium"
+
+        #expect(aiChanges == 5)
+        #expect(changes == 0)
+        let reloaded = Preferences(defaults: defaults).aiConfiguration
+        #expect(
+            reloaded
+                == AIConfiguration(
+                    isEnabled: false, assignModel: "claude-sonnet-5-5", summaryModel: "claude-opus-5-5",
+                    effort: "medium", language: reloaded.language, claudePath: "/tools/claude"))
+    }
+
+    @Test func ignoresEmptyModelsAndUnknownEfforts() {
+        defaults.set("", forKey: "assignModel")
+        defaults.set("extreme", forKey: "aiEffort")
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.assignModel == "claude-haiku-5-5")
+        #expect(preferences.aiEffort == "low")
+    }
+
+    @Test func namesLanguagesInEnglish() {
+        #expect(OutputLanguage.name(of: "cs") == "Czech")
+        #expect(OutputLanguage.name(of: "de") == "German")
+        #expect(!OutputLanguage.systemCode.isEmpty)
+    }
 }

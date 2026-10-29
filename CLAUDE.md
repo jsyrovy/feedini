@@ -58,7 +58,9 @@ Feedini/
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
               ClaudeClient (CLI arguments, envelope, errors), Prompts (system prompts + JSON schemas), AssignStep
-              (payload with short IDs), Validation (pure: applying an assign answer)
+              (payload with short IDs), Validation (pure: applying an assign answer), AIQueue (AssignQueue: serial
+              batches, backoff; LibraryHost, AIConfiguration), AIStatus (@Observable state and recent calls),
+              OutputLanguage
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
@@ -266,6 +268,23 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   topic with that name. An article joining a read story is put into its `newArticleIDs` ("+1 new"), which makes the
   story unread again. It returns metrics (logged) and the stories whose articles changed (for summaries).
 - An article is "processed" once it belongs to a story; articles without one are shown on their own (`.loose`).
+
+### Queues
+
+- `AssignQueue` (main actor) derives its work from the library: pending articles are those without a story, unread
+  or still in the attach window (`AssignQueue.pending`), so nothing is lost across restarts or crashes. It runs one
+  batch at a time, newest first – the first batch of a run has 10 articles (first stories after ~10 s on a cold
+  start, measured), later ones 20 – and each batch sees the stories of the previous one.
+- Triggered after loading, after every refresh, after adding feeds and after AI settings change; a running queue
+  picks up new articles by itself. A failing call is retried after 10 s and 60 s; after 3 attempts its articles are
+  deferred until the next refresh (`trigger(retryingFailed: true)`). A setup error (`ClaudeError.isTransient ==
+  false`, e.g. no claude) stops the run and shows "AI unavailable: …"; the next trigger looks for claude again.
+- `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)` for the status line, and the last 20 calls
+  (time, cost or error) for Settings → AI.
+- AI settings (`Preferences`): `aiEnabled` (on by default), `claudePath` (empty = look it up), `assignModel` and
+  `summaryModel` (free text, default `claude-haiku-5-5`), `aiEffort` (`low` / `medium` / `high`, default `low`); a
+  change calls `onAIChange`, which triggers the queue. Haiku was as accurate as Sonnet for assigning and 1.1–3×
+  faster; for summaries it invented fewer facts than Sonnet in the lab.
 
 ## Storage and retention
 

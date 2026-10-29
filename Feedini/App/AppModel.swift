@@ -4,8 +4,9 @@ import Observation
 /// Connects the layers: holds the library on the main actor, saves its changes, runs the refreshes.
 @MainActor
 @Observable
-final class AppModel {
+final class AppModel: LibraryHost {
     let preferences: Preferences
+    let aiStatus = AIStatus()
     private(set) var library = Library() {
         didSet { cachedEntries = nil }
     }
@@ -21,6 +22,7 @@ final class AppModel {
     @ObservationIgnored private let store: LibraryStore
     @ObservationIgnored private let coordinator: RefreshCoordinator
     @ObservationIgnored private let subscriber: FeedSubscriber
+    @ObservationIgnored private(set) var assignQueue: AssignQueue?
     @ObservationIgnored private var scheduler: RefreshScheduler?
     @ObservationIgnored private var cachedEntries: [StoryEntry]?
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
@@ -28,12 +30,19 @@ final class AppModel {
 
     init(
         preferences: Preferences = Preferences(), store: LibraryStore = LibraryStore(),
-        coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber()
+        coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
+        claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator()
     ) {
         self.preferences = preferences
         self.store = store
         self.coordinator = coordinator
         self.subscriber = subscriber
+        assignQueue = AssignQueue(
+            host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus,
+            configuration: { [preferences] in preferences.aiConfiguration })
+        if !preferences.aiEnabled {
+            aiStatus.set(.off)
+        }
     }
 
     /// All stories and loose articles, newest first.
@@ -61,8 +70,18 @@ final class AppModel {
             guard let self else { return }
             scheduler?.setInterval(.seconds(self.preferences.refreshMinutes * 60))
         }
+        preferences.onAIChange = { [weak self] in
+            self?.organize(retryingFailed: true)
+        }
         scheduler.start()
         self.scheduler = scheduler
+        organize()
+    }
+
+    /// Lets the AI organize articles without a story (after a refresh, new feeds, settings changes).
+    func organize(retryingFailed: Bool = false) {
+        guard isLoaded else { return }
+        assignQueue?.trigger(retryingFailed: retryingFailed)
     }
 
     func refreshNow() {
@@ -82,6 +101,7 @@ final class AppModel {
         isRefreshing = false
         lastRefresh = .now
         onRefresh?()
+        organize(retryingFailed: true)
     }
 
     /// Downloads the feeds and merges them into the library as it is by then.
@@ -101,6 +121,7 @@ final class AppModel {
         switch await subscriber.subscribe(address, existing: library.feeds.map(\.url)) {
         case .success(let subscription):
             add([subscription])
+            organize()
             return nil
         case .failure(let failure):
             return failure
@@ -112,6 +133,7 @@ final class AppModel {
         let entries = try OPML.parse(data)
         let result = await subscriber.subscribe(entries, existing: library.feeds.map(\.url))
         add(result.added)
+        organize()
         Log.feeds.info("OPML import: \(result.added.count) added, \(result.skipped.count) skipped")
         return result
     }
