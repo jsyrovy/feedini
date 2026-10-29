@@ -35,8 +35,8 @@ sandboxed apps.
 
 - [x] F0: project setup, an empty app
 - [x] F1: a reader without AI – feeds, OPML, keyboard navigation, read state, source pages
-- [ ] F2: AI grouping into stories and topics
-- [ ] F3: summaries in your language
+- [x] F2: AI grouping into stories and topics
+- [x] F3: summaries in your language
 - [ ] F4: running in the menu bar, background refresh
 - [ ] F5: polish – performance with thousands of articles, AI statistics, screenshots
 
