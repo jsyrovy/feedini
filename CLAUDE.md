@@ -213,7 +213,8 @@ Implementation:
   regular app (Dock icon, menus); when it closes it switches to `.accessory` and only the menu bar item stays
   (`AppDelegate.mainWindowIsOpen`, called from `MainWindow` appearing and disappearing).
 - Menu bar item (`MenuBarExtra`, menu style): 🎩 with the number of unread stories (optional), and a menu with the
-  count, "Open Feedini" (⌘O), "Refresh Now" (⌘R), the time of the last refresh, the AI status, Settings and Quit.
+  count, "Open Feedini" (⌘O), "Refresh Now" (⌘R), the time of the last refresh, the AI status (always shown:
+  "AI: ready", "AI: off", or what it is doing / why it can't run), Settings and Quit.
 - After the Mac wakes from sleep (`NSWorkspace.didWakeNotification`) the feeds are refreshed right away.
 - Quitting waits for pending changes to be saved (`applicationShouldTerminate` → `AppModel.flush`). `pkill` (as in
   `make run`) skips that; quit with ⌘Q or `osascript -e 'tell application id "cz.jsyrovy.feedini" to quit'` when

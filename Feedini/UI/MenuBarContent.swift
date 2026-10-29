@@ -29,9 +29,7 @@ struct MenuBarContent: View {
             .keyboardShortcut("r")
             .disabled(model.library.feeds.isEmpty || model.isRefreshing)
         Text(refreshState)
-        if let message = model.aiStatus.message {
-            Text(message)
-        }
+        Text(aiState)
         Divider()
         SettingsLink { Text("Settings…") }
             .keyboardShortcut(",")
@@ -39,6 +37,14 @@ struct MenuBarContent: View {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+
+    /// Always shown, so the menu tells what the AI is doing even when it is idle.
+    private var aiState: String {
+        if let message = model.aiStatus.message {
+            return message
+        }
+        return model.aiStatus.state == .off ? "AI: off" : "AI: ready"
     }
 
     private var refreshState: String {
