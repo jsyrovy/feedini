@@ -52,14 +52,15 @@ Feedini/
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
-              NLLanguageRecognizer), OPML (import / export)
+              NLLanguageRecognizer), OPML (import / export), FeedSubscriber (checks an address or OPML entries before
+              adding: HTTPS only, a real feed, not subscribed yet)
   Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
               selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation (pure: what a
-              key does), RelativeTime, SettingsView, MenuBarContent
+              key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML file
@@ -184,6 +185,19 @@ Implementation:
   duplicates, URLs as written – checking them is the importer's job. `OPML.export` writes OPML 2.0.
 - `FeedLanguage`: the feed's `<language>` / `dc:language` / Atom `xml:lang` reduced to the primary code (`cs-CZ` →
   `cs`); without one, `NLLanguageRecognizer` on the title and the start of the text (at least 50 % sure).
+
+## Settings
+
+- **Feeds** (`FeedsSettings`): the feeds with the state of their last download (`lastChecked` or `lastError`), an
+  address field, removal (with confirmation; articles go too), OPML import and export. Adding goes through
+  `FeedSubscriber`: a missing scheme and `http://` / `feed://` become `https://`; an `http://` address whose HTTPS
+  variant fails is rejected with "Only HTTPS feeds are supported, …"; the address must give an RSS / Atom feed and
+  not be subscribed yet (`isSame` ignores the case of scheme and host and a trailing slash). The first download is
+  merged right away (`AppModel.subscribe`), so the articles appear without another download. OPML import checks the
+  entries 6 at a time, adds the good ones in file order and lists the others with the reason.
+- **General** (`GeneralSettings`, `Preferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15)
+  and where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`). Keys `refreshMinutes`,
+  `pageOpening`; values that aren't offered fall back to the default.
 
 ## Refresh
 

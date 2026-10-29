@@ -93,11 +93,12 @@ struct FeedFetcherTests {
 
     @Test func fetchesManyFeedsConcurrentlyAndIsolatesFailures() async throws {
         let body = try Fixture.data("rss2.xml")
+        let group = UUID().uuidString
         let requests = (0..<10).map { index in
             let url = StubURLProtocol.uniqueURL()
             StubURLProtocol.stub(
                 url, index == 3 ? .response(status: 500) : .response(status: 200, body: body),
-                delay: .milliseconds(100))
+                delay: .milliseconds(100), group: group)
             return request(url)
         }
 
@@ -109,7 +110,7 @@ struct FeedFetcherTests {
                 outcomes[request.feedID]
                     == (index == 3 ? .failed(.http(status: 500)) : .fetched(FetchedFeed(data: body))))
         }
-        #expect(StubURLProtocol.maxInFlight > 1)
-        #expect(StubURLProtocol.maxInFlight <= FeedFetcher.maxConcurrentDownloads)
+        #expect(StubURLProtocol.maxInFlight(group) > 1)
+        #expect(StubURLProtocol.maxInFlight(group) <= FeedFetcher.maxConcurrentDownloads)
     }
 }

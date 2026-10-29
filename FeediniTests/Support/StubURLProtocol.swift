@@ -19,11 +19,12 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     private struct Route {
         var reply: Reply
         var delay: Duration
+        var group: String?
     }
 
     private static let routes = Mutex<[URL: Route]>([:])
     private static let recorded = Mutex<[URLRequest]>([])
-    private static let inFlight = Mutex<(now: Int, max: Int)>((0, 0))
+    private static let inFlight = Mutex<[String: (now: Int, max: Int)]>([:])
 
     static func session() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
@@ -31,8 +32,9 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         return FeedFetcher.makeSession(configuration)
     }
 
-    static func stub(_ url: URL, _ reply: Reply, delay: Duration = .zero) {
-        routes.withLock { $0[url] = Route(reply: reply, delay: delay) }
+    /// `group` names delayed requests whose concurrency `maxInFlight(_:)` reports.
+    static func stub(_ url: URL, _ reply: Reply, delay: Duration = .zero, group: String? = nil) {
+        routes.withLock { $0[url] = Route(reply: reply, delay: delay, group: group) }
     }
 
     /// Requests made to the host, in order.
@@ -40,9 +42,9 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         recorded.withLock { $0.filter { $0.url?.host() == host } }
     }
 
-    /// The most requests that were ever loading at the same time (across all tests using delays).
-    static var maxInFlight: Int {
-        inFlight.withLock { $0.max }
+    /// The most requests of the group that were ever loading at the same time.
+    static func maxInFlight(_ group: String) -> Int {
+        inFlight.withLock { $0[group]?.max ?? 0 }
     }
 
     /// A unique `https://<uuid>.test/<path>` URL.
@@ -65,13 +67,16 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
             reply(route.reply, to: request)
             return
         }
-        Self.inFlight.withLock { state in
+        let group = route.group ?? ""
+        Self.inFlight.withLock { groups in
+            var state = groups[group] ?? (0, 0)
             state.now += 1
             state.max = max(state.max, state.now)
+            groups[group] = state
         }
         let seconds = Double(route.delay.components.attoseconds) / 1e18 + Double(route.delay.components.seconds)
         DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
-            Self.inFlight.withLock { $0.now -= 1 }
+            Self.inFlight.withLock { $0[group]?.now -= 1 }
             reply(route.reply, to: request)
         }
     }

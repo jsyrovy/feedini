@@ -20,6 +20,7 @@ final class AppModel {
 
     @ObservationIgnored private let store: LibraryStore
     @ObservationIgnored private let coordinator: RefreshCoordinator
+    @ObservationIgnored private let subscriber: FeedSubscriber
     @ObservationIgnored private var scheduler: RefreshScheduler?
     @ObservationIgnored private var cachedEntries: [StoryEntry]?
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
@@ -27,11 +28,12 @@ final class AppModel {
 
     init(
         preferences: Preferences = Preferences(), store: LibraryStore = LibraryStore(),
-        coordinator: RefreshCoordinator = RefreshCoordinator()
+        coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber()
     ) {
         self.preferences = preferences
         self.store = store
         self.coordinator = coordinator
+        self.subscriber = subscriber
     }
 
     /// All stories and loose articles, newest first.
@@ -89,6 +91,56 @@ final class AppModel {
             let added = FeedMerge.merge(refreshes, into: &library, now: .now)
             Retention.prune(&library, now: .now)
             Log.refresh.info("\(added.count) new articles")
+        }
+    }
+
+    // MARK: Feeds
+
+    /// Checks the address and adds the feed with its articles; returns why it wasn't added.
+    func subscribe(to address: String) async -> FeedSubscriber.Failure? {
+        switch await subscriber.subscribe(address, existing: library.feeds.map(\.url)) {
+        case .success(let subscription):
+            add([subscription])
+            return nil
+        case .failure(let failure):
+            return failure
+        }
+    }
+
+    /// Adds the feeds of an OPML file that pass the check.
+    func importOPML(_ data: Data) async throws(OPML.ParseError) -> FeedSubscriber.ImportResult {
+        let entries = try OPML.parse(data)
+        let result = await subscriber.subscribe(entries, existing: library.feeds.map(\.url))
+        add(result.added)
+        Log.feeds.info("OPML import: \(result.added.count) added, \(result.skipped.count) skipped")
+        return result
+    }
+
+    func exportOPML() -> Data {
+        OPML.export(library.feeds)
+    }
+
+    func removeFeeds(_ ids: Set<Feed.ID>) {
+        update { library in
+            for id in ids {
+                library.removeFeed(id)
+            }
+        }
+    }
+
+    private func add(_ subscriptions: [FeedSubscriber.Subscription]) {
+        guard !subscriptions.isEmpty else { return }
+        update { library in
+            for subscription in subscriptions
+            where !library.feeds.contains(where: { FeedSubscriber.isSame($0.url, subscription.url) }) {
+                let feed = Feed(title: subscription.title, url: subscription.url, siteURL: subscription.parsed.siteURL)
+                library.feeds.append(feed)
+                FeedMerge.merge(
+                    [
+                        feed.id: .updated(
+                            subscription.parsed, etag: subscription.etag, lastModified: subscription.lastModified)
+                    ], into: &library, now: .now)
+            }
         }
     }
 
