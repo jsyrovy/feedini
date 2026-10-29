@@ -122,4 +122,17 @@ struct FeedSubscriberTests {
                 "You already follow this feed.",
             ])
     }
+
+    @Test func checksMoreEntriesThanRunAtOnceAndKeepsTheirOrder() async throws {
+        let entries = (0..<(FeedFetcher.maxConcurrentDownloads + 3)).map { index in
+            let url = StubURLProtocol.uniqueURL()
+            StubURLProtocol.stub(url, .response(status: 404), delay: .milliseconds(20))
+            return OPML.Entry(title: "Feed \(index)", feedURL: url.absoluteString)
+        }
+
+        let result = await subscriber.subscribe(entries, existing: [])
+
+        #expect(result.added.isEmpty)
+        #expect(result.skipped.map(\.entry) == entries)
+    }
 }

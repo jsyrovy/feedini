@@ -97,15 +97,10 @@ struct FeedSubscriber: Sendable {
         }
     }
 
-    struct ImportResult: Sendable, Equatable {
+    struct ImportResult: Sendable {
         var added: [Subscription] = []
         /// Entries not added, with the reason.
         var skipped: [(entry: OPML.Entry, reason: String)] = []
-
-        static func == (lhs: ImportResult, rhs: ImportResult) -> Bool {
-            lhs.added == rhs.added && lhs.skipped.map(\.entry) == rhs.skipped.map(\.entry)
-                && lhs.skipped.map(\.reason) == rhs.skipped.map(\.reason)
-        }
     }
 
     /// Checks OPML entries `FeedFetcher.maxConcurrentDownloads` at a time; the result keeps the OPML order.
