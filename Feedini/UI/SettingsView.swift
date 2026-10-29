@@ -10,8 +10,11 @@ struct SettingsView: View {
             Tab("General", systemImage: "gearshape") {
                 GeneralSettings()
             }
+            Tab("AI", systemImage: "sparkles") {
+                AISettings()
+            }
         }
-        .frame(width: 640, height: 460)
+        .frame(width: 640, height: 520)
     }
 }
 

@@ -65,7 +65,8 @@ Feedini/
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
               selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation (pure: what a
-              key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings, MenuBarContent
+              key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings + AISettings,
+              MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs),
               feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
@@ -211,6 +212,10 @@ Implementation:
 - **General** (`GeneralSettings`, `Preferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15)
   and where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`). Keys `refreshMinutes`,
   `pageOpening`; values that aren't offered fall back to the default.
+
+- **AI** (`AISettings`): on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
+  found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
+  with duration and cost or the error.
 
 ## Refresh
 
