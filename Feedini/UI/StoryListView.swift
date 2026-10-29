@@ -119,6 +119,14 @@ private struct StatusBar: View {
                 Text(problem).lineLimit(1).help(problem)
             }
             Spacer()
+            if let message = model.aiStatus.message {
+                if case .organizing = model.aiStatus.state {
+                    Image(systemName: "sparkles")
+                } else {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+                Text(message).lineLimit(1).truncationMode(.tail).help(message)
+            }
         }
         .font(.caption)
         .foregroundStyle(.secondary)

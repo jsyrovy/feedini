@@ -43,6 +43,11 @@ struct StoryRow: View {
                             .foregroundStyle(Color.accentColor)
                             .fontWeight(.semibold)
                     }
+                    if isWaitingForAI {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.tertiary)
+                            .help("Not organized yet")
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -60,6 +65,13 @@ struct StoryRow: View {
                     .offset(x: -6)
             }
         }
+    }
+
+    /// A loose article the AI is about to organize.
+    private var isWaitingForAI: Bool {
+        guard case .loose = entry.id else { return false }
+        if case .organizing = model.aiStatus.state { return true }
+        return false
     }
 
     private func meta(feeds: [Feed]) -> String {

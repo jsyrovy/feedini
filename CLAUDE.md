@@ -164,6 +164,12 @@ Implementation:
 - The source page (`WebPageView`): a `WKWebView` with the default persistent website data store (logins and cookies
   work), JavaScript on, no script message handlers. Link clicks and new windows open in the default browser. Esc in
   the page (`EscapableWebView`) returns to the feed text and focuses the list (`Reader.listFocusRequests`).
+- When the AI puts a loose article into a story, the entry's ID changes (`.loose` → `.story`). `Reader` follows it
+  on every library change (`AppModel.onLibraryChange`): the cursor moves to the article inside the (expanded) story,
+  or to its one-article story, and kept entries stay kept – nothing is marked read by that.
+- AI in the list: a loose article shows ✨ while the AI organizes (`AIStatus.organizing`); the status bar shows
+  "Organizing N new articles…" or "AI unavailable: …" next to the refresh state. Stories from several feeds have an
+  accent bar and source labels; "+N new" marks articles that joined a read story.
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
   in order. `entries` is cached until the library changes.
 

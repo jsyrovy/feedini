@@ -18,6 +18,8 @@ final class AppModel: LibraryHost {
 
     /// Called after every refresh (the reader drops read entries from the list then).
     @ObservationIgnored var onRefresh: (@MainActor () -> Void)?
+    /// Called after every change of the library (the reader follows articles into their new stories).
+    @ObservationIgnored var onLibraryChange: (@MainActor () -> Void)?
 
     @ObservationIgnored private let store: LibraryStore
     @ObservationIgnored private let coordinator: RefreshCoordinator
@@ -184,6 +186,7 @@ final class AppModel: LibraryHost {
         change(&library)
         guard library != self.library else { return }
         self.library = library
+        onLibraryChange?()
         saving = Task { [store, previous = saving] in
             await previous?.value
             await store.save(library)

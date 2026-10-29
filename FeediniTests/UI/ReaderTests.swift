@@ -127,3 +127,48 @@ struct ReaderTests {
         #expect(!reader.handle(.collapse))
     }
 }
+
+@MainActor
+struct ReaderFollowsArticlesTests {
+    private let feed = Feed.stub("Tech")
+    private let model: AppModel
+    private let reader: Reader
+    private let first: Article
+    private let second: Article
+
+    init() {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-reader-\(UUID().uuidString)")
+        model = AppModel(
+            preferences: Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!),
+            store: LibraryStore(fileURL: directory.appending(path: "library.json")))
+        reader = Reader(model: model)
+        first = Article.stub("First", feed: feed.id, hours: -1)
+        second = Article.stub("Second", feed: feed.id, hours: -2)
+        let library = Library(feeds: [feed], articles: [first, second])
+        model.update { $0 = library }
+    }
+
+    @Test func theCursorFollowsAnArticleIntoAMultiArticleStory() {
+        reader.visit(.story(.loose(first.id)))
+        let story = Story(title: "Story", articleIDs: [first.id, second.id])
+
+        model.update { $0.stories[story.id] = story }
+
+        #expect(reader.cursor == .article(.story(story.id), first.id))
+        #expect(reader.expanded.contains(.story(story.id)))
+        // The other article wasn't read by following.
+        #expect(model.library.articles[second.id]?.isRead == false)
+        #expect(reader.entries.map(\.id) == [.story(story.id)])
+    }
+
+    @Test func theCursorFollowsAnArticleIntoAStoryOfItsOwnAndStaysKept() {
+        reader.visit(.story(.loose(first.id)))
+        let story = Story(title: "First", articleIDs: [first.id])
+
+        model.update { $0.stories[story.id] = story }
+
+        #expect(reader.cursor == .story(.story(story.id)))
+        #expect(reader.kept.contains(.story(story.id)))
+        #expect(reader.entries.contains { $0.id == .story(story.id) })
+    }
+}

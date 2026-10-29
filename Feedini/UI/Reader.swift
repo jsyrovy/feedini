@@ -29,6 +29,7 @@ final class Reader {
     init(model: AppModel) {
         self.model = model
         model.onRefresh = { [weak self] in self?.dropReadEntries() }
+        model.onLibraryChange = { [weak self] in self?.followArticlesIntoStories() }
     }
 
     /// The entries of the list for the current selection.
@@ -156,5 +157,24 @@ final class Reader {
 
     private func dropReadEntries() {
         kept = cursor.map { [$0.entryID] } ?? []
+    }
+
+    /// When the AI puts a loose article into a story, the list entry changes its ID. The cursor follows the article
+    /// (into the expanded story if it has several articles), and kept entries stay kept, without reading anything.
+    private func followArticlesIntoStories() {
+        let index = model.library.storyIDsByArticle()
+        kept = Set(
+            kept.map { id in
+                if case .loose(let article) = id, let story = index[article] { .story(story) } else { id }
+            })
+        guard let cursor, case .loose(let article) = cursor.entryID, let storyID = index[article],
+            let story = model.library.stories[storyID]
+        else { return }
+        if story.articleIDs.count > 1 {
+            expanded.insert(.story(storyID))
+            self.cursor = .article(.story(storyID), article)
+        } else {
+            self.cursor = .story(.story(storyID))
+        }
     }
 }
