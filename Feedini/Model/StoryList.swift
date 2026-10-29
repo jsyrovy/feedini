@@ -55,27 +55,52 @@ enum StoryList {
         var entries: [StoryEntry] = []
         var inStories = Set<Article.ID>()
         for story in library.stories.values {
-            let articles = story.articleIDs.compactMap { library.articles[$0] }
-            guard !articles.isEmpty else { continue }
+            guard let entry = entry(for: story, in: library, summaryLanguage: summaryLanguage) else { continue }
             inStories.formUnion(story.articleIDs)
-            let needsSummary = summaryLanguage.map { SummaryStep.needsSummary(articles, language: $0) } ?? false
-            let summary = needsSummary ? story.summary : nil
-            let title = summary?.title ?? (articles.count == 1 ? articles[0].title : story.title)
-            entries.append(
-                StoryEntry(
-                    id: .story(story.id), title: title, topicID: story.topicID, articles: newestFirst(articles),
-                    newArticleIDs: story.newArticleIDs, needsSummary: needsSummary, summary: summary,
-                    isSummaryCurrent: summaryLanguage.map { SummaryStep.isCurrent(summary, of: story, language: $0) }
-                        ?? false))
+            entries.append(entry)
         }
         for article in library.articles.values where !inStories.contains(article.id) {
-            entries.append(
-                StoryEntry(
-                    id: .loose(article.id), title: article.title, topicID: nil, articles: [article], newArticleIDs: []))
+            entries.append(entry(for: article))
         }
         return entries.sorted { lhs, rhs in
             lhs.date != rhs.date
                 ? lhs.date > rhs.date : lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    /// The entry of a story; `nil` when none of its articles exists.
+    static func entry(for story: Story, in library: Library, summaryLanguage: String?) -> StoryEntry? {
+        let articles = story.articleIDs.compactMap { library.articles[$0] }
+        guard !articles.isEmpty else { return nil }
+        let needsSummary = summaryLanguage.map { SummaryStep.needsSummary(articles, language: $0) } ?? false
+        let summary = needsSummary ? story.summary : nil
+        let title = summary?.title ?? (articles.count == 1 ? articles[0].title : story.title)
+        return StoryEntry(
+            id: .story(story.id), title: title, topicID: story.topicID, articles: newestFirst(articles),
+            newArticleIDs: story.newArticleIDs, needsSummary: needsSummary, summary: summary,
+            isSummaryCurrent: summaryLanguage.map { SummaryStep.isCurrent(summary, of: story, language: $0) } ?? false)
+    }
+
+    /// The entry of an article no story holds.
+    static func entry(for article: Article) -> StoryEntry {
+        StoryEntry(id: .loose(article.id), title: article.title, topicID: nil, articles: [article], newArticleIDs: [])
+    }
+
+    /// Updates the entries holding the articles after their read state changed – which changes neither the order
+    /// nor the grouping – instead of building all entries again (reading with J/K changes it on every key).
+    static func updateReadState(
+        of articleIDs: some Sequence<Article.ID>, in entries: inout [StoryEntry], library: Library
+    ) {
+        let wanted = Set(articleIDs)
+        for index in entries.indices where entries[index].articles.contains(where: { wanted.contains($0.id) }) {
+            for position in entries[index].articles.indices {
+                if let article = library.articles[entries[index].articles[position].id] {
+                    entries[index].articles[position].readAt = article.readAt
+                }
+            }
+            if case .story(let id) = entries[index].id, let story = library.stories[id] {
+                entries[index].newArticleIDs = story.newArticleIDs
+            }
         }
     }
 

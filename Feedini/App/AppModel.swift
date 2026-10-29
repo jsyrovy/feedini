@@ -8,7 +8,11 @@ final class AppModel: LibraryHost {
     let preferences: Preferences
     let aiStatus = AIStatus()
     private(set) var library = Library() {
-        didSet { cachedEntries = nil }
+        didSet {
+            if !isChangingReadState {
+                cachedEntries = nil
+            }
+        }
     }
     private(set) var isLoaded = false
     private(set) var isRefreshing = false
@@ -28,6 +32,8 @@ final class AppModel: LibraryHost {
     @ObservationIgnored private(set) var summaryQueue: SummaryQueue?
     @ObservationIgnored private var scheduler: RefreshScheduler?
     @ObservationIgnored private var cachedEntries: [StoryEntry]?
+    /// Set while only read state changes, so the cached entries are updated instead of rebuilt.
+    @ObservationIgnored private var isChangingReadState = false
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
     @ObservationIgnored private var saving: Task<Void, Never>?
 
@@ -180,13 +186,22 @@ final class AppModel: LibraryHost {
     // MARK: Changes
 
     func markRead(_ ids: [Article.ID]) {
-        guard !ids.isEmpty else { return }
-        update { $0.markRead(ids, at: .now) }
+        changeReadState(of: ids) { $0.markRead(ids, at: .now) }
     }
 
     func markUnread(_ ids: [Article.ID]) {
+        changeReadState(of: ids) { $0.markUnread(ids) }
+    }
+
+    private func changeReadState(of ids: [Article.ID], _ change: (inout Library) -> Void) {
         guard !ids.isEmpty else { return }
-        update { $0.markUnread(ids) }
+        isChangingReadState = true
+        defer { isChangingReadState = false }
+        update(change)
+        if var entries = cachedEntries {
+            StoryList.updateReadState(of: ids, in: &entries, library: library)
+            cachedEntries = entries
+        }
     }
 
     /// Changes the library and saves it.

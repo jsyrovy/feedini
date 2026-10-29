@@ -147,4 +147,21 @@ struct StoryListTests {
         #expect(foreignInEnglish?.title == "English")
         #expect(foreignInEnglish?.summary == nil)
     }
+
+    @Test func updatingTheReadStateMatchesRebuilding() {
+        let a = Article.stub("A", feed: tech.id, hours: -1)
+        let b = Article.stub("B", feed: news.id, hours: -2, read: true)
+        let loose = Article.stub("Loose", feed: tech.id, hours: -3)
+        let story = Story(title: "S", articleIDs: [a.id, b.id], newArticleIDs: [a.id])
+        var library = Library(feeds: [tech, news], articles: [a, b, loose], stories: [story])
+        var entries = StoryList.allEntries(in: library, summaryLanguage: "cs")
+
+        library.markRead([a.id, loose.id], at: .hours(0))
+        StoryList.updateReadState(of: [a.id, loose.id], in: &entries, library: library)
+        #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs"))
+
+        library.markUnread([b.id])
+        StoryList.updateReadState(of: [b.id], in: &entries, library: library)
+        #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs"))
+    }
 }

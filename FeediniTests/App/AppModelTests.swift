@@ -77,8 +77,11 @@ struct AppModelTests {
         let article = Article.stub(feed: feed.id)
         model.update { $0 = Library(feeds: [feed], articles: [article]) }
 
+        _ = model.entries
         model.markRead([article.id])
         #expect(model.library.articles[article.id]?.isRead == true)
+        // The cached entries follow the read state.
+        #expect(model.entries.first?.isRead == true)
         model.markUnread([article.id])
         model.markRead([])
         #expect(model.library.articles[article.id]?.isRead == false)

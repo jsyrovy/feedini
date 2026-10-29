@@ -356,6 +356,10 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   empty.
 - An article belongs to a feed and is identified within it by `key` (guid / Atom id, else the link). `Article.date`
   is the published date clamped to the first sighting (future dates), or the first sighting without one.
+- Measured with 5000 articles (a third read, 30 feeds, 2 KB of text each; `-O`): the file has 14 MB, encoding takes
+  0.13 s (in the store actor, off the main actor), decoding 0.06 s; building all list entries 49 ms, filtering
+  + rows + counts 2 ms, marking read + comparing the library 1 ms. Enough for "unread forever"; SQLite isn't needed.
+  Reading only patches the cached entries (`StoryList.updateReadState`), so J/K never rebuilds the list.
 - `Retention.prune` (pure): unread articles stay forever. Read articles go once their story (or the article alone,
   without a story) has no article younger than `attachWindow` (72 h); each leaves a `Tombstone` (feed + key). A
   tombstone goes once it hasn't been seen in its feed for `tombstoneMargin` (3 days) before the feed's last

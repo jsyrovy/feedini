@@ -66,7 +66,9 @@ final class AssignQueue {
     }
 
     /// Articles waiting for the assign step, newest first.
-    static func pending(in library: Library, excluding deferred: Set<Article.ID> = [], now: Date) -> [Article.ID] {
+    nonisolated static func pending(
+        in library: Library, excluding deferred: Set<Article.ID> = [], now: Date
+    ) -> [Article.ID] {
         let assigned = library.storyIDsByArticle()
         let cutoff = now.addingTimeInterval(-Retention.attachWindow)
         return library.articles.values
