@@ -1,0 +1,152 @@
+# Feedini
+
+Feedini is a native macOS RSS reader, driven by the keyboard, that groups articles from many feeds into stories and
+topics and summarizes them with AI (through the local `claude` CLI). Without AI it is a plain, fast feed reader.
+
+## Commands
+
+```bash
+make build    # xcodebuild Debug build into build/DerivedData
+make test     # Swift Testing unit tests (hosted by the app)
+make coverage # tests + line coverage report of the app target (result bundle build/Test.xcresult)
+make run      # build, kill a running instance, open the app
+make install  # Release build into ~/Applications (INSTALL_DIR=…), restart it; make uninstall removes it
+make format   # xcrun swift-format, in place
+make lint     # xcrun swift-format lint --strict
+make clean    # rm -rf build
+```
+
+Run `make lint test` after every change. `CONFIG=Release make build` builds Release.
+
+CI (`.github/workflows/ci.yml`, GitHub Actions on pushes to `main` and pull requests) runs `make lint`,
+`make coverage` and `CONFIG=Release make build` in one job; the steps run even after an earlier one fails, and the
+result bundle is uploaded when something fails. It uses the `xcode-27` runner image (a preview; `macos-26` only has
+Xcode 26).
+
+## Toolchain and project
+
+- Xcode 27 / Swift 6.4, deployment target macOS 15, Swift 6 language mode (complete strict concurrency).
+- `Feedini.xcodeproj` is hand-written (`objectVersion = 77`) with file-system synchronized root groups for `Feedini/`
+  and `FeediniTests/`: new files are picked up automatically, do not add file references to `project.pbxproj`. Edit
+  the pbxproj only for build settings / targets; keep object IDs in the `FEED…` scheme.
+- Shared scheme `Feedini` (`xcshareddata/xcschemes/Feedini.xcscheme`) so `xcodebuild -scheme Feedini` works; it
+  collects coverage for the app target only.
+- Bundle ID `cz.jsyrovy.feedini`, a regular app (`LSUIElement = NO`), generated Info.plist, App Sandbox off (the app
+  runs the `claude` CLI, which a sandboxed app can't), no hardened runtime yet, ad-hoc signing ("Sign to Run Locally",
+  no team). App Transport Security keeps its defaults (no exceptions): only HTTPS feeds work.
+- The app icon (`Feedini/AppIcon.icon`, Icon Composer format) is a placeholder: the 🎩 emoji on a purple gradient.
+  The menu bar item shows the same emoji.
+- Nothing may be installed on the dev machine (no XcodeGen, SwiftLint, xcbeautify, …). Formatting is `swift-format`
+  from the toolchain, configured in `.swift-format` (4 spaces, 120 columns).
+
+## Structure
+
+```
+Feedini/
+  App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
+              TestHostApp under tests), RuntimeEnvironment
+  UI/         MainWindow (NavigationSplitView), SettingsView, MenuBarContent
+FeediniTests/ Swift Testing tests, mirroring the app folders
+```
+
+## Conventions
+
+- Everything in the repo (code, comments, docs, commit messages, prompts, UI texts) is in English.
+- No third-party dependencies.
+- Swift 6 strict concurrency: UI types are `@MainActor`; data crossing actors is `Sendable`. Default actor isolation
+  is left at `nonisolated` (no `SWIFT_DEFAULT_ACTOR_ISOLATION`), and functions that must run off the main actor are
+  marked `@concurrent`. Locks: `Mutex` (Synchronization).
+- The UI never waits on the network or a subprocess.
+- Logic lives in pure types with ~100 % meaningful test coverage; `App/` and `UI/` are wiring and layout, checked by
+  running the app (see "Testing").
+- Data comes only from the feeds. Neither the app nor the AI downloads web pages, except the source page the user
+  explicitly opens (and that page never goes to the AI).
+- AI is always optional; an AI failure never blocks reading.
+- Nothing secret or personal in the repo: no API keys, personal paths or names, `claude` outputs with session IDs.
+- Feed fixtures have the structure of real feeds but made-up text (no copies of other people's articles).
+
+## Design decisions
+
+- Native macOS app in Swift, UI in English, styled after Feedly-like readers but driven by the keyboard (J/K).
+- Feeds: added and removed by URL in Settings, plus OPML import and export. The default feed list is empty.
+- HTTPS only. ATS keeps its defaults; an `http://` address is tried as `https://` and rejected if that fails ("Only
+  HTTPS feeds are supported"). A feed that redirects from HTTPS to HTTP is blocked by ATS; the error must say so.
+- Unread articles are kept forever; they only go away when read or marked as read.
+- Read articles are remembered as tombstones (feed + guid / link) while they are still in the feed plus a margin, so
+  a refresh doesn't bring them back. Read stories stay (hidden) for `attachWindow` (72 h) so that a new article
+  about the same event joins the known story, which comes back as unread with "+1 new".
+- Storage: one versioned JSON file in `~/Library/Application Support/Feedini/` (Codable, atomic writes, debounced
+  saving). No SwiftData (testability, migrations, friction with strict concurrency). If the data outgrows it, only
+  the store moves to SQLite (system C API).
+- AI runs only through the local `claude` CLI (`-p`, `--json-schema`, `structured_output`); there is no direct API in
+  v1. Hence no App Sandbox and no Mac App Store. Without the CLI Feedini is a plain reader and says why AI is off.
+- AI never blocks display: new articles show right away, grouping and summaries arrive later. The work is split by
+  task, not by data: an assign step (new articles → existing or new stories and topics, no summaries) and a summary
+  step (only where useful, in parallel, afterwards). Splitting by data (per feed, per time slice) would break the
+  cross-feed grouping that is the point of the AI.
+- One event = one story card, including follow-up articles about its details (e.g. a whole product launch). Topics
+  are kept stable by passing the existing ones (of unread stories) to the AI, which reuses them or creates new ones.
+- Summaries only where they add something: stories with several articles, or articles in another language than the
+  summary language (then it is a translation). A single article in the summary language shows its own excerpt.
+- After closing the window the app keeps running in the menu bar (`.accessory`) and keeps refreshing, so opening it
+  shows everything processed. With the window open it is a regular app with a Dock icon.
+
+## Reading model
+
+Three columns: sidebar (All, topics by unread count, feeds), story list (newest first), detail.
+
+- A story with one article behaves like an article. A story with several articles has an AI title, a summary and
+  source labels; its articles are collapsed in the list. An expanded story shows them indented below it, and J/K
+  walks through them.
+- Moving onto an item (click, arrows, J/K) marks it read. A collapsed story is marked read as a whole (the summary
+  covered all its articles); in an expanded story articles are marked one by one, and the story is read when all
+  its articles are. M toggles read / unread (on a collapsed story: all its articles).
+- A read item doesn't vanish from the current list (no jumping under the cursor); it goes away when the sidebar
+  selection changes or on refresh.
+- The detail shows the text from the feed. V / Enter opens the source page the default way, Shift+V / Shift+Enter
+  the other way (Settings → General: "Feedini window" (default) or "Default browser"). On a collapsed story with
+  several articles V / Enter expands it (there is no single source page) and Shift+V / Shift+Enter does nothing.
+- In the window the page replaces the feed text in the detail; V / Enter again or Esc returns to the feed text.
+
+| Key | Action |
+|---|---|
+| J / ↓ | next item (story; article inside an expanded story) |
+| K / ↑ | previous item |
+| L / → | expand the story |
+| H / ← / Esc | collapse the story (from an article: jump to its story) |
+| V / Enter | open the source page the default way |
+| Shift+V / Shift+Enter | open the source page the other way |
+| M | toggle read / unread |
+| R | refresh now |
+| Shift+A | mark everything in the current selection (All, topic, feed) as read |
+| ⌘, | settings |
+
+Keys work in the list. While the web page has focus, only Esc works (it returns focus to the list).
+
+## Testing
+
+- Swift Testing (`import Testing`, `@Test`, `#expect`). The test bundle is hosted by the app (`TEST_HOST`), so
+  `@testable import Feedini` works. Under tests the `@main` entry point (`FeediniMain`) runs an empty `TestHostApp`
+  instead of `FeediniApp` (`RuntimeEnvironment.isRunningTests`), so no window, refresh or menu bar item starts and
+  the real app code needs no test guards.
+- Checking the running app: `screencapture` needs the Screen Recording permission (without it: "could not create
+  image from display"). Without it, inspect windows with `CGWindowListCopyWindowInfo` (owner `Feedini`).
+
+### Test coverage
+
+`make coverage` runs the tests and prints line coverage of the app target. Line-level detail:
+`xcrun xccov view --archive --file <absolute path> build/Test.xcresult`.
+
+Coverage is a tool for finding untested behaviour, not a goal. A test must assert observable behaviour (results,
+state transitions, the commands that were run), not just execute lines. There is no global percentage target; the
+total is dominated by the UI layer, which is deliberately not unit-tested.
+
+Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp` and the non-test branch of `RuntimeEnvironment`) and
+`UI/` layout. Keep these files pure wiring: logic that needs a test moves into a testable type. Do not add
+abstractions to production code just to cover lines.
+
+## Logs
+
+`os.Logger` subsystem `cz.jsyrovy.feedini`. Watch with
+`/usr/bin/log stream --level info --predicate 'subsystem == "cz.jsyrovy.feedini"'` – in zsh, plain `log` is a shell
+builtin.
