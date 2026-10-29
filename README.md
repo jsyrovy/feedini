@@ -9,6 +9,29 @@ Claude Code CLI you already have; without it, Feedini is a plain, fast feed read
 
 New articles show up right away; grouping and summaries arrive in the background, so the AI never makes you wait.
 
+## Features
+
+- **Stories, not duplicates.** Ten articles about one product launch from three sites are one story with one
+  summary; expand it to read the articles one by one.
+- **Topics** that the AI keeps stable as new articles arrive, next to your feeds in the sidebar.
+- **Summaries in your language**, also for articles written in other languages. Single articles in your language
+  keep their own text.
+- **Keyboard first**: J / K to move, L / H to expand and collapse, V / Enter to open the source page (in the window
+  or the browser), M to toggle read, R to refresh, Shift+A to mark everything read.
+- **Read means read**: moving onto an item marks it read; read items leave the list when you switch views or
+  refresh, and a refresh never brings them back.
+- **Runs in the menu bar** after you close the window, refreshing and organizing in the background, with the unread
+  count next to the 🎩.
+- Feeds by address or OPML import / export; RSS 0.9x, 1.0, 2.0 and Atom.
+
+## Privacy and cost
+
+- Feedini only reads what the feeds contain. It never downloads web pages, except the page you open yourself, and
+  that page never goes to the AI.
+- The AI gets titles and the start of the feed texts through the `claude` CLI, with all of its tools turned off.
+- With the default model (Claude Haiku) organizing new articles costs about $0.002–0.005 per batch of 20 and a
+  summary of ten stories about $0.004; Settings → AI shows the calls, time and cost per day.
+
 ## Requirements
 
 - macOS 15 or later.
