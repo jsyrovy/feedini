@@ -40,34 +40,39 @@ enum FeedParser {
     /// `baseURL` (the feed URL) resolves relative links.
     static func parse(_ data: Data, baseURL: URL? = nil) throws(FeedParserError) -> ParsedFeed {
         let first = parseOnce(data, baseURL: baseURL)
-        if case .success(let feed) = first {
-            return feed
-        }
+        guard !first.isComplete else { return try first.result.get() }
+        // Broken somewhere: repaired, the feed may give more articles than up to the break.
         let repaired = repairXML(data)
-        if repaired != data, case .success(let feed) = parseOnce(repaired, baseURL: baseURL) {
-            return feed
+        guard repaired != data else { return try first.result.get() }
+        switch (first.result, parseOnce(repaired, baseURL: baseURL).result) {
+        case (.success(let partial), .success(let fixed)):
+            return fixed.items.count >= partial.items.count ? fixed : partial
+        case (.failure, .success(let fixed)):
+            return fixed
+        default:
+            return try first.result.get()
         }
-        return try first.get()
     }
 
-    private static func parseOnce(_ data: Data, baseURL: URL?) -> Result<ParsedFeed, FeedParserError> {
+    /// One parse; `isComplete` when the whole document was read.
+    private static func parseOnce(
+        _ data: Data, baseURL: URL?
+    ) -> (
+        result: Result<ParsedFeed, FeedParserError>, isComplete: Bool
+    ) {
         let delegate = Delegate(baseURL: baseURL)
         let parser = XMLParser(data: data)
         parser.shouldProcessNamespaces = true
         parser.shouldResolveExternalEntities = false
         parser.delegate = delegate
         let succeeded = parser.parse()
+        let invalid = FeedParserError.invalid(parser.parserError?.localizedDescription ?? "Unknown XML error")
         guard delegate.kind != nil else {
-            if delegate.sawRoot || succeeded {
-                return .failure(.notAFeed)
-            }
-            return .failure(.invalid(parser.parserError?.localizedDescription ?? "Unknown XML error"))
+            return (.failure(delegate.sawRoot || succeeded ? .notAFeed : invalid), succeeded)
         }
         // A feed broken in the middle still gives the articles read up to there.
-        guard succeeded || !delegate.items.isEmpty else {
-            return .failure(.invalid(parser.parserError?.localizedDescription ?? "Unknown XML error"))
-        }
-        return .success(delegate.feed)
+        guard succeeded || !delegate.items.isEmpty else { return (.failure(invalid), false) }
+        return (.success(delegate.feed), succeeded)
     }
 
     /// Makes common breakage well-formed: whitespace before the XML declaration, HTML named entities (replaced by

@@ -194,9 +194,9 @@ Implementation:
 - `FeedParser` reads RSS 0.9x / 2.0 (no namespace), RSS 1.0 (RDF) and Atom with `XMLParser` and namespace
   processing; the root element decides the format, anything else (a web page) is `FeedParserError.notAFeed`. The
   encoding comes from the XML declaration (libxml2), never from the HTTP header.
-- Feeds that aren't well-formed are repaired on the byte level and parsed again (`FeedParser.repairXML`): whitespace
-  before the declaration, HTML named entities (`&nbsp;` → `&#160;`) and bare `&`. A feed broken in the middle keeps
-  the items read up to there.
+- A feed that doesn't parse completely is repaired on the byte level and parsed again (`FeedParser.repairXML`):
+  whitespace before the declaration, HTML named entities (`&nbsp;` → `&#160;`) and bare `&`. The repaired parse
+  wins unless it gives fewer items; a feed that stays broken in the middle keeps the items read up to there.
 - An item's key is the guid / Atom id, else its link, else its title; items without any are dropped, duplicate keys
   keep the first. The title falls back to the start of the text. Dates: `pubDate` (RFC 822 variants), `dc:date`,
   Atom `published`, else `updated`. Author: `dc:creator`, the name in RSS `author` (`mail (Name)`), Atom

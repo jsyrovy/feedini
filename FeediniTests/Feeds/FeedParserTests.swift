@@ -202,4 +202,16 @@ struct FeedParserTests {
     @Test func repairLeavesWellFormedReferencesAlone() {
         #expect(FeedParser.repairXML(Data("&amp;&lt;&#38;".utf8)) == Data("&amp;&lt;&#38;".utf8))
     }
+
+    @Test func repairsAFeedBrokenAfterTheFirstItem() throws {
+        let xml = """
+            <rss version="2.0"><channel><title>T</title>
+            <item><title>One</title><guid>1</guid></item>
+            <item><title>Two&nbsp;and a half</title><guid>2</guid></item>
+            <item><title>Three</title><guid>3</guid></item>
+            </channel></rss>
+            """
+        let feed = try FeedParser.parse(Data(xml.utf8))
+        #expect(feed.items.map(\.title) == ["One", "Two and a half", "Three"])
+    }
 }
