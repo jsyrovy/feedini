@@ -9,8 +9,9 @@ final class AppModel: LibraryHost {
     let aiStatus = AIStatus()
     private(set) var library = Library() {
         didSet {
-            if !isChangingReadState {
-                cachedEntries = nil
+            // Comparing unchanged collections is cheap (they share their storage).
+            if library.articles != oldValue.articles || library.stories != oldValue.stories {
+                entriesCache = nil
             }
         }
     }
@@ -31,9 +32,7 @@ final class AppModel: LibraryHost {
     @ObservationIgnored private(set) var assignQueue: AssignQueue?
     @ObservationIgnored private(set) var summaryQueue: SummaryQueue?
     @ObservationIgnored private var scheduler: RefreshScheduler?
-    @ObservationIgnored private var cachedEntries: [StoryEntry]?
-    /// Set while only read state changes, so the cached entries are updated instead of rebuilt.
-    @ObservationIgnored private var isChangingReadState = false
+    @ObservationIgnored private var entriesCache: EntriesCache?
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
     @ObservationIgnored private var saving: Task<Void, Never>?
 
@@ -60,14 +59,27 @@ final class AppModel: LibraryHost {
     }
 
     /// All stories and loose articles, newest first.
-    var entries: [StoryEntry] {
+    var entries: [StoryEntry] { cache.entries }
+
+    /// Unread entries per sidebar item.
+    var unreadCounts: StoryList.Counts { cache.counts }
+
+    func entry(_ id: StoryEntry.ID) -> StoryEntry? {
+        let cache = cache
+        return cache.index[id].map { cache.entries[$0] }
+    }
+
+    /// Built when first needed after the articles, the stories or the summary language changed.
+    private var cache: EntriesCache {
         let library = library
-        if let cachedEntries {
-            return cachedEntries
+        let language = preferences.summaryLanguageCode
+        if let entriesCache, entriesCache.language == language {
+            return entriesCache
         }
-        let entries = StoryList.allEntries(in: library, summaryLanguage: preferences.summaryLanguageCode)
-        cachedEntries = entries
-        return entries
+        let cache = EntriesCache(
+            entries: StoryList.allEntries(in: library, summaryLanguage: language), language: language)
+        entriesCache = cache
+        return cache
     }
 
     /// Loads the library and starts refreshing.
@@ -85,8 +97,6 @@ final class AppModel: LibraryHost {
             scheduler?.setInterval(.seconds(self.preferences.refreshMinutes * 60))
         }
         preferences.onAIChange = { [weak self] in
-            // The language decides which summaries are shown.
-            self?.cachedEntries = nil
             self?.organize(retryingFailed: true)
         }
         scheduler.start()
@@ -193,27 +203,55 @@ final class AppModel: LibraryHost {
         changeReadState(of: ids) { $0.markUnread(ids) }
     }
 
+    /// Patches the cached entries instead of building them again (reading with J/K changes the read state on every
+    /// key). Read state never moves articles into stories, so the reader isn't told.
     private func changeReadState(of ids: [Article.ID], _ change: (inout Library) -> Void) {
         guard !ids.isEmpty else { return }
-        isChangingReadState = true
-        defer { isChangingReadState = false }
-        update(change)
-        if var entries = cachedEntries {
-            StoryList.updateReadState(of: ids, in: &entries, library: library)
-            cachedEntries = entries
+        let cache = entriesCache
+        apply(change, notifiesReader: false)
+        if var cache {
+            cache.updateReadState(of: ids, library: library)
+            entriesCache = cache
         }
     }
 
     /// Changes the library and saves it.
     func update(_ change: (inout Library) -> Void) {
+        apply(change, notifiesReader: true)
+    }
+
+    private func apply(_ change: (inout Library) -> Void, notifiesReader: Bool) {
         var library = library
         change(&library)
         guard library != self.library else { return }
         self.library = library
-        onLibraryChange?()
+        if notifiesReader {
+            onLibraryChange?()
+        }
         saving = Task { [store, previous = saving] in
             await previous?.value
             await store.save(library)
         }
+    }
+}
+
+/// The list entries for one summary language, with what is derived from them.
+private struct EntriesCache {
+    let language: String
+    private(set) var entries: [StoryEntry]
+    /// Positions in `entries`; reading doesn't change the order.
+    let index: [StoryEntry.ID: Int]
+    private(set) var counts: StoryList.Counts
+
+    init(entries: [StoryEntry], language: String) {
+        self.language = language
+        self.entries = entries
+        index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
+        counts = StoryList.unreadCounts(entries)
+    }
+
+    mutating func updateReadState(of ids: [Article.ID], library: Library) {
+        StoryList.updateReadState(of: ids, in: &entries, library: library)
+        counts = StoryList.unreadCounts(entries)
     }
 }

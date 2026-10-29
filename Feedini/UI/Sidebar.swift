@@ -6,7 +6,7 @@ struct Sidebar: View {
     @Environment(Reader.self) private var reader
 
     var body: some View {
-        let counts = StoryList.unreadCounts(model.entries)
+        let counts = model.unreadCounts
         let topics = StoryList.topics(in: model.library, counts: counts)
         let feeds = model.library.feeds.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         List(selection: selection) {

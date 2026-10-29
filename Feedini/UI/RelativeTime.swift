@@ -18,4 +18,10 @@ enum RelativeTime {
             return date.formatted(style)
         }
     }
+
+    /// "Updated just now", "Updated 5m ago".
+    static func updated(_ date: Date, now: Date) -> String {
+        let age = short(date, now: now)
+        return age == "now" ? "Updated just now" : "Updated \(age) ago"
+    }
 }

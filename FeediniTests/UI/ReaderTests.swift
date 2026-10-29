@@ -14,11 +14,7 @@ struct ReaderTests {
     private let story: Story
 
     init() {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-reader-\(UUID().uuidString)")
-        let suite = "feedini-tests-\(UUID().uuidString)"
-        model = AppModel(
-            preferences: Preferences(defaults: UserDefaults(suiteName: suite)!),
-            store: LibraryStore(fileURL: directory.appending(path: "library.json")))
+        model = AppModel.test()
         reader = Reader(model: model)
         lone = Article.stub("Lone", feed: feed.id, hours: -1)
         first = Article.stub("First", feed: feed.id, hours: -2)
@@ -137,10 +133,7 @@ struct ReaderFollowsArticlesTests {
     private let second: Article
 
     init() {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-reader-\(UUID().uuidString)")
-        model = AppModel(
-            preferences: Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!),
-            store: LibraryStore(fileURL: directory.appending(path: "library.json")))
+        model = AppModel.test()
         reader = Reader(model: model)
         first = Article.stub("First", feed: feed.id, hours: -1)
         second = Article.stub("Second", feed: feed.id, hours: -2)

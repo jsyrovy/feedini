@@ -5,10 +5,7 @@ import Testing
 
 @MainActor
 struct DebugCommandsTests {
-    private let model = AppModel(
-        preferences: Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!),
-        store: LibraryStore(
-            fileURL: FileManager.default.temporaryDirectory.appending(path: "feedini-debug-\(UUID().uuidString).json")))
+    private let model = AppModel.test()
 
     @Test func addsFakeArticlesToOneDebugFeed() {
         model.debugAddFakeArticles()

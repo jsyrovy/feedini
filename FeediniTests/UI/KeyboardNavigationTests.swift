@@ -29,7 +29,8 @@ struct KeyboardNavigationTests {
     ) -> KeyboardNavigation.Action {
         let rows = KeyboardNavigation.rows([single, multi], expanded: expanded)
         return KeyboardNavigation.action(
-            for: key, at: cursor, rows: rows, entries: entries, expanded: expanded, opensInWindow: opensInWindow,
+            for: key, at: cursor, entry: cursor.flatMap { entries[$0.entryID] }, rows: rows, expanded: expanded,
+            opensInWindow: opensInWindow,
             pageArticle: page)
     }
 
@@ -53,7 +54,7 @@ struct KeyboardNavigationTests {
         // A cursor that is no longer in the list starts again at the top.
         #expect(action(.next, at: .story(.loose(.init()))) == .select(.story(single.id)))
         let empty = KeyboardNavigation.action(
-            for: .next, at: nil, rows: [], entries: [:], expanded: [], opensInWindow: true, pageArticle: nil)
+            for: .next, at: nil, entry: nil, rows: [], expanded: [], opensInWindow: true, pageArticle: nil)
         #expect(empty == .none)
     }
 
@@ -109,7 +110,7 @@ struct KeyboardNavigationTests {
         article.link = nil
         let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article], newArticleIDs: [])
         let result = KeyboardNavigation.action(
-            for: .open, at: .story(entry.id), rows: [.story(entry.id)], entries: [entry.id: entry], expanded: [],
+            for: .open, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
             opensInWindow: true, pageArticle: nil)
         #expect(result == .none)
         #expect(action(.open, at: .article(multi.id, .init()), expanded: [multi.id]) == .none)

@@ -7,13 +7,11 @@ struct StoryListView: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        let entries = reader.entries
-        let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
-        let rows = KeyboardNavigation.rows(entries, expanded: reader.expanded)
+        let rows = reader.rows
         ScrollViewReader { proxy in
             List(selection: cursor) {
                 ForEach(rows, id: \.self) { row in
-                    if let entry = byID[row.entryID] {
+                    if let entry = reader.entry(row.entryID) {
                         rowView(row, entry: entry)
                             .tag(row)
                             .id(row)
@@ -111,8 +109,7 @@ private struct StatusBar: View {
                 Text("Refreshing…")
             } else if let lastRefresh = model.lastRefresh {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
-                    let age = RelativeTime.short(lastRefresh, now: context.date)
-                    Text(age == "now" ? "Updated just now" : "Updated \(age) ago")
+                    Text(RelativeTime.updated(lastRefresh, now: context.date))
                 }
             } else if let problem = model.loadProblem {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)

@@ -42,7 +42,7 @@ final class Reader {
     }
 
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
-        model.entries.first { $0.id == id }
+        model.entry(id)
     }
 
     var opensInWindow: Bool {
@@ -70,10 +70,8 @@ final class Reader {
     /// Handles a key of the story list; returns whether it did anything.
     @discardableResult
     func handle(_ key: ListKey) -> Bool {
-        let entries = entries
         let action = KeyboardNavigation.action(
-            for: key, at: cursor, rows: KeyboardNavigation.rows(entries, expanded: expanded),
-            entries: Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) }), expanded: expanded,
+            for: key, at: cursor, entry: cursor.flatMap { entry($0.entryID) }, rows: rows, expanded: expanded,
             opensInWindow: opensInWindow, pageArticle: pageArticle)
         switch action {
         case .none:
@@ -147,10 +145,10 @@ final class Reader {
     /// The article under the cursor: the article row, or the only article of a story.
     var cursorArticle: Article? {
         guard let cursor, let entry = entry(cursor.entryID) else { return nil }
-        switch cursor {
-        case .article(_, let id): return entry.article(id)
-        case .story: return entry.isMultiArticle ? nil : entry.articles.first
+        if case .story = cursor, entry.isMultiArticle {
+            return nil
         }
+        return entry.article(at: cursor)
     }
 
     // MARK: Refresh
@@ -162,6 +160,8 @@ final class Reader {
     /// When the AI puts a loose article into a story, the list entry changes its ID. The cursor follows the article
     /// (into the expanded story if it has several articles), and kept entries stay kept, without reading anything.
     private func followArticlesIntoStories() {
+        let isLoose: (StoryEntry.ID) -> Bool = { if case .loose = $0 { true } else { false } }
+        guard cursor.map({ isLoose($0.entryID) }) == true || kept.contains(where: isLoose) else { return }
         let index = model.library.storyIDsByArticle()
         kept = Set(
             kept.map { id in

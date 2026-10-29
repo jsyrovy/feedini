@@ -49,11 +49,12 @@ enum KeyboardNavigation {
     }
 
     /// - Parameters:
+    ///   - entry: the entry of the cursor's row.
     ///   - opensInWindow: the default way of opening source pages (Settings → General).
     ///   - pageArticle: the article whose source page the detail shows, if any.
     static func action(
-        for key: ListKey, at cursor: ListRow?, rows: [ListRow], entries: [StoryEntry.ID: StoryEntry],
-        expanded: Set<StoryEntry.ID>, opensInWindow: Bool, pageArticle: Article.ID?
+        for key: ListKey, at cursor: ListRow?, entry: StoryEntry?, rows: [ListRow], expanded: Set<StoryEntry.ID>,
+        opensInWindow: Bool, pageArticle: Article.ID?
     ) -> Action {
         switch key {
         case .refresh: return .refresh
@@ -61,7 +62,7 @@ enum KeyboardNavigation {
         case .next, .previous: return move(key == .next ? 1 : -1, from: cursor, in: rows)
         default: break
         }
-        guard let cursor, let entry = entries[cursor.entryID] else { return .none }
+        guard let cursor, let entry, entry.id == cursor.entryID else { return .none }
         let isExpanded = entry.isMultiArticle && expanded.contains(entry.id)
 
         switch (key, cursor) {
@@ -81,12 +82,7 @@ enum KeyboardNavigation {
         case (.openOther, .story) where entry.isMultiArticle:
             return .none
         case (.open, _), (.openOther, _):
-            let article: Article? =
-                switch cursor {
-                case .story: entry.articles.first
-                case .article(_, let id): entry.article(id)
-                }
-            guard let article else { return .none }
+            guard let article = entry.article(at: cursor) else { return .none }
             let inWindow = (key == .open) == opensInWindow
             if inWindow && pageArticle == article.id {
                 return .closePage

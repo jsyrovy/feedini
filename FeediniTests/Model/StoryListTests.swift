@@ -18,7 +18,7 @@ struct StoryListTests {
         let library = Library(
             feeds: [tech, news], articles: [older, inStory1, inStory2, tieA, tieB], stories: [story], topics: [topic])
 
-        let entries = StoryList.allEntries(in: library)
+        let entries = StoryList.allEntries(in: library, summaryLanguage: "en")
 
         #expect(
             entries.map(\.id) == [.story(story.id), .loose(tieA.id), .loose(tieB.id), .loose(older.id)])
@@ -41,7 +41,7 @@ struct StoryListTests {
         let empty = Story(title: "Empty", articleIDs: [UUID()])
         let library = Library(feeds: [tech], articles: [article], stories: [single, empty])
 
-        let entries = StoryList.allEntries(in: library)
+        let entries = StoryList.allEntries(in: library, summaryLanguage: "en")
 
         #expect(entries.map(\.id) == [.story(single.id)])
         #expect(entries[0].title == "Article title")
@@ -58,7 +58,7 @@ struct StoryListTests {
         let library = Library(
             feeds: [tech, news], articles: [unread, read, keptRead, mixedTech, mixedNews], stories: [mixed],
             topics: [topic])
-        let all = StoryList.allEntries(in: library)
+        let all = StoryList.allEntries(in: library, summaryLanguage: "en")
         let keeping: Set<StoryEntry.ID> = [.loose(keptRead.id)]
 
         #expect(StoryList.entries(all, matching: .all).map(\.title) == ["Unread", "Mixed"])
@@ -88,7 +88,7 @@ struct StoryListTests {
             feeds: [tech, news], articles: [a1, a2, a3, a4, readOnly, loose],
             stories: [both, gamesStory1, gamesStory2, readStory], topics: [apple, games, empty])
 
-        let counts = StoryList.unreadCounts(StoryList.allEntries(in: library))
+        let counts = StoryList.unreadCounts(StoryList.allEntries(in: library, summaryLanguage: "en"))
 
         #expect(counts.all == 4)
         #expect(counts.count(for: .all) == 4)
@@ -111,7 +111,7 @@ struct StoryListTests {
                 Story(title: "1", topicID: b.id, articleIDs: [first.id]),
                 Story(title: "2", topicID: a.id, articleIDs: [second.id]),
             ], topics: [b, a])
-        let counts = StoryList.unreadCounts(StoryList.allEntries(in: library))
+        let counts = StoryList.unreadCounts(StoryList.allEntries(in: library, summaryLanguage: "en"))
         #expect(StoryList.topics(in: library, counts: counts).map(\.name) == ["A", "b"])
     }
 

@@ -45,13 +45,21 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
     func article(_ id: Article.ID) -> Article? {
         articles.first { $0.id == id }
     }
+
+    /// The article a row stands for: the article of an article row, the newest one for the story row.
+    func article(at row: ListRow) -> Article? {
+        switch row {
+        case .story: articles.first
+        case .article(_, let id): article(id)
+        }
+    }
 }
 
 /// Builds the story list and the sidebar counts from the library (pure).
 enum StoryList {
     /// Every story and loose article, newest first (ties: by title). With a summary language, a story that needs
     /// a summary takes its title from it.
-    static func allEntries(in library: Library, summaryLanguage: String? = nil) -> [StoryEntry] {
+    static func allEntries(in library: Library, summaryLanguage: String) -> [StoryEntry] {
         var entries: [StoryEntry] = []
         var inStories = Set<Article.ID>()
         for story in library.stories.values {
@@ -69,16 +77,16 @@ enum StoryList {
     }
 
     /// The entry of a story; `nil` when none of its articles exists.
-    static func entry(for story: Story, in library: Library, summaryLanguage: String?) -> StoryEntry? {
-        let articles = story.articleIDs.compactMap { library.articles[$0] }
+    static func entry(for story: Story, in library: Library, summaryLanguage: String) -> StoryEntry? {
+        let articles = library.articles(of: story)
         guard !articles.isEmpty else { return nil }
-        let needsSummary = summaryLanguage.map { SummaryStep.needsSummary(articles, language: $0) } ?? false
+        let needsSummary = SummaryStep.needsSummary(articles, language: summaryLanguage)
         let summary = needsSummary ? story.summary : nil
         let title = summary?.title ?? (articles.count == 1 ? articles[0].title : story.title)
         return StoryEntry(
             id: .story(story.id), title: title, topicID: story.topicID, articles: newestFirst(articles),
             newArticleIDs: story.newArticleIDs, needsSummary: needsSummary, summary: summary,
-            isSummaryCurrent: summaryLanguage.map { SummaryStep.isCurrent(summary, of: story, language: $0) } ?? false)
+            isSummaryCurrent: SummaryStep.isCurrent(summary, of: story, language: summaryLanguage))
     }
 
     /// The entry of an article no story holds.

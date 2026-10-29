@@ -183,7 +183,10 @@ Implementation:
   "Organizing N new articles…", "Summarizing N stories…" or "AI unavailable: …" next to the refresh state. Stories
   from several feeds have an accent bar and source labels; "+N new" marks articles that joined a read story.
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
-  in order. `entries` is cached until the library changes.
+  in order. The entries are cached with an index by ID (`AppModel.entry(_:)`) and the unread counts
+  (`unreadCounts`, used by the sidebar and the menu bar) for one summary language; the cache is rebuilt only when
+  the articles or stories change or the language does. Read-state changes patch it and don't notify the reader
+  (they never move articles into stories).
 
 ## Feeds
 

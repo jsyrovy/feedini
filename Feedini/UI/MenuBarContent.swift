@@ -5,9 +5,9 @@ struct MenuBarLabel: View {
     let model: AppModel
 
     var body: some View {
-        let unread = StoryList.unreadCounts(model.entries).all
+        let unread = model.unreadCounts.all
         Text(verbatim: model.preferences.showsUnreadCount && unread > 0 ? "🎩 \(unread)" : "🎩")
-            .accessibilityLabel(unread == 1 ? "Feedini, 1 unread story" : "Feedini, \(unread) unread stories")
+            .accessibilityLabel("Feedini, \(unreadStories(unread))")
     }
 }
 
@@ -17,8 +17,7 @@ struct MenuBarContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let unread = StoryList.unreadCounts(model.entries).all
-        Text(unread == 1 ? "1 unread story" : "\(unread) unread stories")
+        Text(unreadStories(model.unreadCounts.all))
         Button("Open Feedini") {
             AppDelegate.mainWindowIsOpen(true)
             openWindow(id: FeediniApp.mainWindowID)
@@ -54,4 +53,9 @@ struct MenuBarContent: View {
         guard let lastRefresh = model.lastRefresh else { return "Not refreshed yet" }
         return "Updated at \(lastRefresh.formatted(date: .omitted, time: .shortened))"
     }
+}
+
+/// "1 unread story", "5 unread stories".
+private func unreadStories(_ count: Int) -> String {
+    count == 1 ? "1 unread story" : "\(count) unread stories"
 }
