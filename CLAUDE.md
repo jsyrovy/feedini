@@ -51,6 +51,8 @@ Feedini/
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
               NLLanguageRecognizer), OPML (import / export)
+  Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
+              known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), SettingsView, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
@@ -158,6 +160,22 @@ Keys work in the list. While the web page has focus, only Esc works (it returns 
   duplicates, URLs as written – checking them is the importer's job. `OPML.export` writes OPML 2.0.
 - `FeedLanguage`: the feed's `<language>` / `dc:language` / Atom `xml:lang` reduced to the primary code (`cs-CZ` →
   `cs`); without one, `NLLanguageRecognizer` on the title and the start of the text (at least 50 % sure).
+
+## Refresh
+
+- `RefreshScheduler` (main actor) refreshes at start and then `interval` after each refresh finished (Settings →
+  General: 5 / 15 / 30 / 60 min, default 15), so refreshes never overlap. `refreshNow()` cuts the wait short and is
+  ignored while a refresh runs; `setInterval(_:)` restarts the current wait with the new length. Tested with
+  `ManualSleeper`.
+- `RefreshCoordinator.refresh` (`@concurrent`) downloads all feeds (`FeedFetcher.fetchAll`) and parses them into
+  `FeedRefresh` values (`updated` / `notModified` / `failed(message)`); `FeedMerge.merge` (pure) applies them to the
+  library on the main actor and returns the new article IDs.
+- Merging: items with a known key are left alone (no edits after the fact); items with a tombstone only refresh its
+  `lastSeen`; the rest become unread articles with `firstSeen = now`. The first download of a feed (no
+  `lastSuccess` yet) turns items older than `FeedMerge.firstDownloadMaxAge` (7 days) into tombstones, so adding a
+  feed with its whole history doesn't flood the list. A failed feed only records `lastError`.
+- `Feed.lastSuccess` is the last full (200) download – tombstones are judged against it, so a feed answering "304
+  Not Modified" for days keeps them; `lastChecked` includes 304s (shown in Settings).
 
 ## Storage and retention
 

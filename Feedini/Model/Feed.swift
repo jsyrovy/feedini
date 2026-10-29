@@ -14,14 +14,17 @@ struct Feed: Codable, Sendable, Hashable, Identifiable {
     /// Validators of the last download, for conditional GET.
     var etag: String?
     var lastModified: String?
-    /// When the feed was last downloaded successfully (including "not modified").
+    /// When the feed was last downloaded in full (not "not modified"): tombstones are judged against it.
     var lastSuccess: Date?
+    /// When the feed was last checked successfully, including "not modified".
+    var lastChecked: Date?
     /// Why the last refresh failed; `nil` after a successful one.
     var lastError: String?
 
     init(
         id: UUID = UUID(), title: String, url: URL, siteURL: URL? = nil, language: String? = nil,
-        etag: String? = nil, lastModified: String? = nil, lastSuccess: Date? = nil, lastError: String? = nil
+        etag: String? = nil, lastModified: String? = nil, lastSuccess: Date? = nil, lastChecked: Date? = nil,
+        lastError: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -31,6 +34,7 @@ struct Feed: Codable, Sendable, Hashable, Identifiable {
         self.etag = etag
         self.lastModified = lastModified
         self.lastSuccess = lastSuccess
+        self.lastChecked = lastChecked
         self.lastError = lastError
     }
 }

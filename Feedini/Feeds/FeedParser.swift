@@ -19,6 +19,8 @@ struct ParsedItem: Sendable, Equatable {
     var author: String?
     /// Plain text: the full content when the feed has it, else the description / summary.
     var text: String
+    /// Primary language code: the feed's language, or detected from the title and text.
+    var language: String?
 }
 
 enum FeedParserError: Error, Equatable, Sendable {
@@ -212,7 +214,13 @@ private final class Delegate: NSObject, XMLParserDelegate {
     }
 
     var feed: ParsedFeed {
-        ParsedFeed(
+        let feedLanguage = FeedLanguage.code(language)
+        let items = items.map { item in
+            var item = item
+            item.language = FeedLanguage.language(feedLanguage: feedLanguage, title: item.title, text: item.text)
+            return item
+        }
+        return ParsedFeed(
             title: title.map(HTMLText.plainText).flatMap { $0.isEmpty ? nil : $0 },
             siteURL: siteLink.flatMap(resolve), language: language, items: items)
     }

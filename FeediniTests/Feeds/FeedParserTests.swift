@@ -30,6 +30,7 @@ struct FeedParserTests {
         #expect(first.published == date("2026-10-29T10:45:00Z"))
         #expect(first.author == "Jana Nováková")
         #expect(first.text == "Výrobce ukázal vysavač, který zvládne schodiště – zatím jen v laboratoři.")
+        #expect(feed.items.allSatisfy { $0.language == "cs" })
 
         let second = feed.items[1]
         #expect(second.title == "Banka spouští platby hodinkami")
@@ -72,6 +73,7 @@ struct FeedParserTests {
         #expect(first.published == date("2026-10-28T18:30:02Z"))
         #expect(first.author == "Alex Writer")
         #expect(first.text == "We moved the queue.\n\n• Faster\n• Cheaper")
+        #expect(first.language == "en")
 
         let second = feed.items[1]
         #expect(second.title == "Notes on 1 < 2")
@@ -121,6 +123,17 @@ struct FeedParserTests {
         #expect(feed.language == "de")
         #expect(feed.items.first?.key == "https://rdf.example.net/1")
         #expect(feed.items.first?.published == date("2026-10-29T06:15:00Z"))
+        #expect(feed.items.first?.language == "de")
+    }
+
+    @Test func detectsTheLanguageOfFeedsWithoutOne() throws {
+        let xml = """
+            <rss version="2.0"><channel>
+            <item><guid>1</guid><title>The government approved a new transport law</title>
+            <description>Members of parliament will discuss the proposal next week.</description></item>
+            </channel></rss>
+            """
+        #expect(try FeedParser.parse(Data(xml.utf8)).items.first?.language == "en")
     }
 
     @Test func rejectsAWebPage() {
