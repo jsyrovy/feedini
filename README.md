@@ -54,15 +54,6 @@ make test      # unit tests
 Feedini runs the `claude` command-line tool, which a sandboxed app can't do, and the Mac App Store only accepts
 sandboxed apps.
 
-## Roadmap
-
-- [x] F0: project setup, an empty app
-- [x] F1: a reader without AI – feeds, OPML, keyboard navigation, read state, source pages
-- [x] F2: AI grouping into stories and topics
-- [x] F3: summaries in your language
-- [x] F4: running in the menu bar, background refresh
-- [ ] F5: polish – performance with thousands of articles, AI statistics, screenshots
-
 ## License
 
 [MIT](LICENSE)
