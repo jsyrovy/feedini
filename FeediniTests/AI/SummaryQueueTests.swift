@@ -39,7 +39,7 @@ struct SummaryQueueTests {
     private func queue(
         _ host: TestLibraryHost, runner: FakeCommandRunner, found: Bool = true, enabled: Bool = true
     ) -> SummaryQueue {
-        let locator = ClaudeLocator(homeDirectory: "/Users/me", searchPath: nil) { _ in found }
+        let locator = ClaudeLocator.stub(found: found)
         return SummaryQueue(
             host: host, runner: runner, locator: locator, status: status,
             configuration: { AIConfiguration(isEnabled: enabled, languageCode: "cs") }, sleep: sleeper.sleep(for:))

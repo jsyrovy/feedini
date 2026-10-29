@@ -95,7 +95,8 @@ struct SummaryStepTests {
         #expect(map["s1"]?.story == story.id)
         #expect(map["s1"]?.articles == [first.id, second.id])
 
-        let request = SummaryStep.request(input, model: "m", effort: "low")
+        let request = ClaudeRequest(
+            model: "m", effort: "low", systemPrompt: Prompts.summary, schema: Prompts.summarySchema, payload: input)
         #expect(request.systemPrompt == Prompts.summary)
         let json = try #require(JSONSerialization.jsonObject(with: request.input) as? [String: Any])
         #expect(Set(json.keys) == ["output_language", "stories"])
@@ -147,8 +148,6 @@ struct SummaryStepTests {
         #expect(payload.outputLanguage == "Czech")
         #expect(payload.topics.count == 2)
         let gamesKey = try #require(map.first { $0.value == english.id }?.key)
-        let request = TopicTranslation.request(payload, model: "m", effort: "low")
-        #expect(request.systemPrompt == Prompts.translateTopics)
 
         TopicTranslation.apply(
             TopicTranslation.Payload(topics: [

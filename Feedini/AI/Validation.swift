@@ -20,25 +20,19 @@ enum AssignValidation {
         var unresolvedTopics = 0
     }
 
-    struct Result: Equatable, Sendable {
-        var metrics = Metrics()
-        /// Stories that got articles (new stories included): their summaries need (re)computing.
-        var changedStories: [Story.ID] = []
-    }
-
     /// `language` is the code new topics are written in.
+    @discardableResult
     static func apply(
-        _ output: AssignStep.Output, map: AssignStep.IDMap, language: String? = nil, to library: inout Library
-    ) -> Result {
-        var result = Result()
+        _ output: AssignStep.Output, map: AssignStep.IDMap, language: String, to library: inout Library
+    ) -> Metrics {
+        var metrics = Metrics()
         var used = Set<Article.ID>()
-        var changed: [Story.ID] = []
 
         func take(_ shortIDs: [String]) -> [Article.ID] {
             var ids: [Article.ID] = []
             for shortID in shortIDs {
                 guard let id = map.articles[shortID], library.articles[id] != nil, used.insert(id).inserted else {
-                    result.metrics.unknownIDs += 1
+                    metrics.unknownIDs += 1
                     continue
                 }
                 ids.append(id)
@@ -48,7 +42,7 @@ enum AssignValidation {
 
         for attachment in output.attach {
             guard let storyID = map.stories[attachment.storyID], let story = library.stories[storyID] else {
-                result.metrics.unknownIDs += attachment.articleIDs.count
+                metrics.unknownIDs += attachment.articleIDs.count
                 continue
             }
             let ids = take(attachment.articleIDs)
@@ -58,8 +52,7 @@ enum AssignValidation {
             if wasRead || !story.newArticleIDs.isEmpty {
                 library.stories[storyID]?.newArticleIDs.formUnion(ids)
             }
-            result.metrics.attached += ids.count
-            changed.append(storyID)
+            metrics.attached += ids.count
         }
 
         var topicsByKey: [String: Topic.ID] = [:]
@@ -73,51 +66,48 @@ enum AssignValidation {
             let topic = Topic(name: name, description: newTopic.description, language: language)
             library.topics[topic.id] = topic
             topicsByKey[newTopic.key] = topic.id
-            result.metrics.newTopics += 1
+            metrics.newTopics += 1
         }
 
         for newStory in output.newStories {
             let ids = take(newStory.articleIDs)
             guard !ids.isEmpty else { continue }
             let topicID = resolveTopic(
-                newStory.topic, map: map, keys: topicsByKey, language: language, library: &library, result: &result)
+                newStory.topic, map: map, keys: topicsByKey, language: language, library: &library, metrics: &metrics)
             let title = newStory.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let story = Story(
                 title: title.isEmpty ? library.articles[ids[0]]?.title ?? "" : title, topicID: topicID,
                 articleIDs: ids)
             library.stories[story.id] = story
-            result.metrics.newStories += 1
-            changed.append(story.id)
+            metrics.newStories += 1
         }
 
         for (_, id) in map.articles.sorted(by: { $0.key.localizedStandardCompare($1.key) == .orderedAscending })
         where !used.contains(id) && library.articles[id] != nil {
             let story = Story(title: library.articles[id]?.title ?? "", articleIDs: [id])
             library.stories[story.id] = story
-            result.metrics.missing += 1
+            metrics.missing += 1
         }
 
-        var seen = Set<Story.ID>()
-        result.changedStories = changed.filter { seen.insert($0).inserted }
-        return result
+        return metrics
     }
 
     private static func resolveTopic(
-        _ reference: String, map: AssignStep.IDMap, keys: [String: Topic.ID], language: String?,
-        library: inout Library, result: inout Result
+        _ reference: String, map: AssignStep.IDMap, keys: [String: Topic.ID], language: String,
+        library: inout Library, metrics: inout Metrics
     ) -> Topic.ID? {
         let reference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         if let id = map.topics[reference] ?? keys[reference] {
             return id
         }
         guard !reference.isEmpty else { return nil }
-        result.metrics.unresolvedTopics += 1
+        metrics.unresolvedTopics += 1
         if let id = topic(named: reference, in: library) {
             return id
         }
         let topic = Topic(name: reference, description: "", language: language)
         library.topics[topic.id] = topic
-        result.metrics.newTopics += 1
+        metrics.newTopics += 1
         return topic.id
     }
 

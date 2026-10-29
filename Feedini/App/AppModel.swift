@@ -51,7 +51,7 @@ final class AppModel: LibraryHost {
             host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
         let summaryQueue = SummaryQueue(
             host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
-        assignQueue.onStoriesChanged = { [weak summaryQueue] _ in summaryQueue?.trigger() }
+        assignQueue.onBatchApplied = { [weak summaryQueue] in summaryQueue?.trigger() }
         self.assignQueue = assignQueue
         self.summaryQueue = summaryQueue
         if !preferences.aiEnabled {

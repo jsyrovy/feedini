@@ -40,14 +40,14 @@ struct ValidationTests {
 
     @Test func attachesAndCreatesStoriesWithTopics() throws {
         var library = library
-        let result = AssignValidation.apply(
+        let metrics = AssignValidation.apply(
             output(
                 attach: [.init(storyID: "s1", articleIDs: ["a1"])],
                 topics: [.init(key: "n1", name: "Games", description: "Video games.")],
                 stories: [
                     .init(title: "Game launch", topic: "n1", articleIDs: ["a2", "a3"]),
                     .init(title: "iPad", topic: "t1", articleIDs: ["a4"]),
-                ]), map: map, to: &library)
+                ]), map: map, language: "en", to: &library)
 
         #expect(library.stories[story.id]?.articleIDs == [existing.id, new[0].id])
         #expect(library.stories[story.id]?.newArticleIDs == [])
@@ -59,15 +59,13 @@ struct ValidationTests {
         #expect(launch.topicID == games.id)
         #expect(storyOf(new[3], in: library)?.topicID == apple.id)
         #expect(
-            result.metrics
+            metrics
                 == .init(attached: 1, newStories: 2, newTopics: 1, missing: 0, unknownIDs: 0, unresolvedTopics: 0))
-        #expect(result.changedStories.first == story.id)
-        #expect(result.changedStories.count == 3)
     }
 
     @Test func dropsUnknownAndDuplicateIDs() {
         var library = library
-        let result = AssignValidation.apply(
+        let metrics = AssignValidation.apply(
             output(
                 attach: [
                     .init(storyID: "s1", articleIDs: ["a1", "a99", "a1"]),
@@ -76,37 +74,36 @@ struct ValidationTests {
                 stories: [
                     .init(title: "Dup", topic: "t1", articleIDs: ["a1", "a2"]),
                     .init(title: "Nothing valid", topic: "t1", articleIDs: ["x"]),
-                ]), map: map, to: &library)
+                ]), map: map, language: "en", to: &library)
 
         #expect(storyOf(new[0], in: library)?.id == story.id)
         #expect(storyOf(new[1], in: library)?.title == "Dup")
         #expect(storyOf(new[1], in: library)?.articleIDs == [new[1].id])
         #expect(!library.stories.values.contains { $0.title == "Nothing valid" })
         // a99, the second a1, a2 for s9, a1 in "Dup", x.
-        #expect(result.metrics.unknownIDs == 5)
+        #expect(metrics.unknownIDs == 5)
     }
 
     @Test func leftOutArticlesGetAStoryOfTheirOwn() {
         var library = library
-        let result = AssignValidation.apply(
-            output(stories: [.init(title: "One", topic: "t1", articleIDs: ["a2"])]), map: map, to: &library)
+        let metrics = AssignValidation.apply(
+            output(stories: [.init(title: "One", topic: "t1", articleIDs: ["a2"])]), map: map, language: "en",
+            to: &library)
 
-        #expect(result.metrics.missing == 3)
+        #expect(metrics.missing == 3)
         for article in [new[0], new[2], new[3]] {
             let own = storyOf(article, in: library)
             #expect(own?.articleIDs == [article.id])
             #expect(own?.title == article.title)
             #expect(own?.topicID == nil)
         }
-        // Their summaries aren't needed: one article each.
-        #expect(result.changedStories.count == 1)
         // Every new article belongs to a story now.
         #expect(Set(library.storyIDsByArticle().keys) == Set(library.articles.keys))
     }
 
     @Test func resolvesTopicsByNameWhenTheModelWritesNames() throws {
         var library = library
-        let result = AssignValidation.apply(
+        let metrics = AssignValidation.apply(
             output(
                 topics: [.init(key: "n1", name: "Games", description: "")],
                 stories: [
@@ -114,7 +111,7 @@ struct ValidationTests {
                     .init(title: "By new name", topic: "Games", articleIDs: ["a2"]),
                     .init(title: "Unknown", topic: "Science", articleIDs: ["a3"]),
                     .init(title: "Empty", topic: "", articleIDs: ["a4"]),
-                ]), map: map, to: &library)
+                ]), map: map, language: "en", to: &library)
 
         #expect(storyOf(new[0], in: library)?.topicID == apple.id)
         let games = try #require(library.topics.values.first { $0.name == "Games" })
@@ -122,20 +119,20 @@ struct ValidationTests {
         let science = try #require(library.topics.values.first { $0.name == "Science" })
         #expect(storyOf(new[2], in: library)?.topicID == science.id)
         #expect(storyOf(new[3], in: library)?.topicID == nil)
-        #expect(result.metrics.unresolvedTopics == 3)
-        #expect(result.metrics.newTopics == 2)
+        #expect(metrics.unresolvedTopics == 3)
+        #expect(metrics.newTopics == 2)
     }
 
     @Test func aNewTopicWithAnExistingNameReusesIt() {
         var library = library
-        _ = AssignValidation.apply(
+        AssignValidation.apply(
             output(
                 topics: [
                     .init(key: "n1", name: " APPLE ", description: "Dup"),
                     .init(key: "n1", name: "Other", description: ""),
                     .init(key: "n2", name: " ", description: ""),
                 ],
-                stories: [.init(title: "S", topic: "n1", articleIDs: ["a1"])]), map: map, to: &library)
+                stories: [.init(title: "S", topic: "n1", articleIDs: ["a1"])]), map: map, language: "en", to: &library)
 
         #expect(library.topics.count == 1)
         #expect(storyOf(new[0], in: library)?.topicID == apple.id)
@@ -145,36 +142,38 @@ struct ValidationTests {
         var library = library
         library.markRead([existing.id], at: .hours(0))
 
-        _ = AssignValidation.apply(
-            output(attach: [.init(storyID: "s1", articleIDs: ["a1", "a2"])]), map: map, to: &library)
+        AssignValidation.apply(
+            output(attach: [.init(storyID: "s1", articleIDs: ["a1", "a2"])]), map: map, language: "en", to: &library)
 
         #expect(library.stories[story.id]?.newArticleIDs == [new[0].id, new[1].id])
         // The story is unread again.
-        let entry = StoryList.allEntries(in: library).first { $0.id == .story(story.id) }
+        let entry = StoryList.allEntries(in: library, summaryLanguage: "en").first { $0.id == .story(story.id) }
         #expect(entry?.isRead == false)
     }
 
     @Test func anUntitledStoryUsesItsFirstArticle() {
         var library = library
-        _ = AssignValidation.apply(
-            output(stories: [.init(title: "  ", topic: "t1", articleIDs: ["a3", "a4"])]), map: map, to: &library)
+        AssignValidation.apply(
+            output(stories: [.init(title: "  ", topic: "t1", articleIDs: ["a3", "a4"])]), map: map, language: "en",
+            to: &library)
         #expect(storyOf(new[2], in: library)?.title == "New 3")
     }
 
     @Test func ignoresArticlesThatWereRemovedMeanwhile() {
         var library = library
         library.articles[new[0].id] = nil
-        let result = AssignValidation.apply(
-            output(stories: [.init(title: "S", topic: "t1", articleIDs: ["a1", "a2"])]), map: map, to: &library)
+        let metrics = AssignValidation.apply(
+            output(stories: [.init(title: "S", topic: "t1", articleIDs: ["a1", "a2"])]), map: map, language: "en",
+            to: &library)
 
         #expect(storyOf(new[1], in: library)?.articleIDs == [new[1].id])
-        #expect(result.metrics.unknownIDs == 1)
-        #expect(result.metrics.missing == 2)
+        #expect(metrics.unknownIDs == 1)
+        #expect(metrics.missing == 2)
     }
 
     @Test func newTopicsGetTheOutputLanguage() throws {
         var library = library
-        _ = AssignValidation.apply(
+        AssignValidation.apply(
             output(
                 topics: [.init(key: "n1", name: "Hry", description: "")],
                 stories: [

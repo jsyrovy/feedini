@@ -63,7 +63,9 @@ struct AssignStepTests {
         let (input, _) = AssignStep.payload(
             for: [article.id, UUID()], in: library, language: "English", now: referenceDate)
 
-        let request = AssignStep.request(input, model: "claude-haiku-5-5", effort: "low")
+        let request = ClaudeRequest(
+            model: "claude-haiku-5-5", effort: "low", systemPrompt: Prompts.assign, schema: Prompts.assignSchema,
+            payload: input)
 
         #expect(request.model == "claude-haiku-5-5")
         #expect(request.effort == "low")

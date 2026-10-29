@@ -12,13 +12,23 @@ struct ClaudeRequest: Sendable {
     var timeout: Duration = .seconds(120)
 }
 
+extension ClaudeRequest {
+    /// A request whose payload is encoded as JSON.
+    init(model: String, effort: String, systemPrompt: String, schema: String, payload: some Encodable) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        // Encoding plain strings, numbers and arrays can't fail.
+        self.init(
+            model: model, effort: effort, systemPrompt: systemPrompt, schema: schema,
+            input: (try? encoder.encode(payload)) ?? Data())
+    }
+}
+
 /// Time and cost of a call, as the CLI reports them.
-struct ClaudeCallStats: Sendable, Equatable, Codable {
+struct ClaudeCallStats: Sendable, Equatable {
     var model: String
     var durationMs: Int
-    var apiDurationMs: Int
     var costUSD: Double
-    var outputTokens: Int
 }
 
 enum ClaudeError: Error, Sendable, Equatable {
@@ -130,11 +140,9 @@ struct ClaudeClient: Sendable {
         } catch {
             throw .invalidOutput(String(describing: error))
         }
-        let usage = object["usage"] as? [String: Any]
         let stats = ClaudeCallStats(
             model: model, durationMs: object["duration_ms"] as? Int ?? 0,
-            apiDurationMs: object["duration_api_ms"] as? Int ?? 0,
-            costUSD: object["total_cost_usd"] as? Double ?? 0, outputTokens: usage?["output_tokens"] as? Int ?? 0)
+            costUSD: object["total_cost_usd"] as? Double ?? 0)
         return (decoded, stats)
     }
 

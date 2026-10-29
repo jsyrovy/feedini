@@ -60,9 +60,10 @@ Feedini/
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
               ClaudeClient (CLI arguments, envelope, errors), Prompts (system prompts + JSON schemas), AssignStep
               (payload with short IDs), Validation (pure: applying an assign answer), SummaryStep (pure: which
-              stories, priority, payload, applying) + TopicTranslation, AIQueue (AssignQueue: serial batches,
-              backoff; SummaryQueue: parallel batches, priority; LibraryHost, AIConfiguration), AIStatus
-              (@Observable state, stories being summarized, recent calls), OutputLanguage (names, choices)
+              stories, priority, payload, applying) + TopicTranslation, AIQueue (AICaller: one call with its
+              recording; AssignQueue: serial batches, backoff; SummaryQueue: parallel batches, priority;
+              LibraryHost, AIConfiguration), AIStatus (@Observable state, stories being summarized, recent calls),
+              OutputLanguage (names, choices)
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
@@ -77,7 +78,8 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML
               file
   Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), FakeCommandRunner
-              (canned CLI replies, recorded calls), TestLibraryHost, model stubs (`referenceDate`, `Article.stub`, …)
+              (canned CLI replies, recorded calls), TestLibraryHost + `ClaudeLocator.stub` + `AppModel.test()`, model
+              stubs (`referenceDate`, `Article.stub`, …)
 ```
 
 ## Conventions
@@ -240,8 +242,7 @@ Implementation:
   their own name), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
   with duration and cost or the error, and the usage: calls, time and cost per day for the last 7 days and the
-  total of the kept 30 (`Library.usage`, `AIUsageDay`, recorded by the queues with every call; "claude not found"
-  isn't counted).
+  total of the kept 30 (`Library.usage`, `AIUsageDay`, recorded with every call claude actually ran).
 
 ## Refresh
 
@@ -303,7 +304,7 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   where it was first; left-out articles get a story of their own (title of the article, no topic); a topic is
   resolved by id, then new key, then – models sometimes write names – by name ignoring case, else it becomes a new
   topic with that name. An article joining a read story is put into its `newArticleIDs` ("+1 new"), which makes the
-  story unread again. It returns metrics (logged) and the stories whose articles changed (for summaries).
+  story unread again. It returns metrics, which are logged.
 - An article is "processed" once it belongs to a story; articles without one are shown on their own (`.loose`).
 
 ### Summary step
@@ -338,6 +339,10 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   10 stories each, plus one topic translation when needed. Read stories wait until they are unread again ("+1
   new"). Triggered with the assign queue and after every assign batch. A failing batch is retried after 30 s; a
   story whose summary failed 3 times (or was left out of 3 answers) waits for the next refresh and shows the error.
+- `AICaller` makes every AI call of the queues: it finds claude (the path from the settings), runs the call, applies
+  the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude
+  actually ran (`ClaudeError.isTransient`), also when its answer was an error. The queues only add their retry
+  policy.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
   errors, for the status line ("Organizing 12 new articles…", "Summarizing 5 stories…", "AI unavailable: …"), and
   the last 20 calls (time, cost or error) for Settings → AI.

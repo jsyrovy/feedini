@@ -11,7 +11,7 @@ struct AIUsageTests {
     }
 
     private let stats = ClaudeCallStats(
-        model: "claude-haiku-5-5", durationMs: 1500, apiDurationMs: 1400, costUSD: 0.002, outputTokens: 100)
+        model: "claude-haiku-5-5", durationMs: 1500, costUSD: 0.002)
 
     @Test func addsCallsToTheirDay() {
         var library = Library()

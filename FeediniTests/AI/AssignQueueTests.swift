@@ -4,19 +4,6 @@ import Testing
 @testable import Feedini
 
 @MainActor
-final class TestLibraryHost: LibraryHost {
-    var library: Library
-
-    init(_ library: Library) {
-        self.library = library
-    }
-
-    func update(_ change: (inout Library) -> Void) {
-        change(&library)
-    }
-}
-
-@MainActor
 struct AssignQueueTests {
     private let feed = Feed.stub("Tech")
     private let sleeper = ManualSleeper()
@@ -39,7 +26,7 @@ struct AssignQueueTests {
         _ host: TestLibraryHost, runner: FakeCommandRunner, configuration: AIConfiguration = AIConfiguration(),
         found: Bool = true
     ) -> AssignQueue {
-        let locator = ClaudeLocator(homeDirectory: "/Users/me", searchPath: nil) { _ in found }
+        let locator = ClaudeLocator.stub(found: found)
         return AssignQueue(
             host: host, runner: runner, locator: locator, status: status, configuration: { configuration },
             sleep: sleeper.sleep(for:), now: { referenceDate })
@@ -50,8 +37,8 @@ struct AssignQueueTests {
         let host = TestLibraryHost(Library(feeds: [feed], articles: articles))
         let runner = FakeCommandRunner(handler: Self.ownStories)
         let queue = queue(host, runner: runner, configuration: AIConfiguration(languageCode: "cs"))
-        var changed: [Story.ID] = []
-        queue.onStoriesChanged = { changed += $0 }
+        var batchesApplied = 0
+        queue.onBatchApplied = { batchesApplied += 1 }
 
         queue.trigger()
         await queue.waitUntilIdle()
@@ -69,7 +56,7 @@ struct AssignQueueTests {
         #expect((runner.calls[1].payload["topics"] as? [Any])?.count == 1)
         #expect(host.library.stories.count == 35)
         #expect(host.library.topics.count == 1)
-        #expect(changed.count == 35)
+        #expect(batchesApplied == 3)
         #expect(AssignQueue.pending(in: host.library, now: referenceDate).isEmpty)
         #expect(status.state == .idle)
         #expect(status.calls.count == 3)

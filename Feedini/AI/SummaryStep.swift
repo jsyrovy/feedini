@@ -14,8 +14,10 @@ enum SummaryStep {
 
     /// Written in the language and for exactly the story's articles.
     static func isCurrent(_ summary: Summary?, of story: Story, language: String) -> Bool {
-        guard let summary else { return false }
-        return summary.language == language && Set(summary.articleIDs) == Set(story.articleIDs)
+        guard let summary, summary.language == language, summary.articleIDs.count == story.articleIDs.count else {
+            return false
+        }
+        return Set(summary.articleIDs) == Set(story.articleIDs)
     }
 
     /// Unread stories whose summary is missing or out of date, in the order they should be written: stories from
@@ -23,7 +25,7 @@ enum SummaryStep {
     static func pending(in library: Library, language: String, excluding: Set<Story.ID> = []) -> [Story.ID] {
         library.stories.values.compactMap { story -> (Story.ID, Bool, Date)? in
             guard !excluding.contains(story.id) else { return nil }
-            let articles = story.articleIDs.compactMap { library.articles[$0] }
+            let articles = library.articles(of: story)
             guard articles.contains(where: { !$0.isRead }), needsSummary(articles, language: language),
                 !isCurrent(story.summary, of: story, language: language)
             else { return nil }
@@ -80,7 +82,7 @@ enum SummaryStep {
         var map: IDMap = [:]
         var items: [Input.StoryItem] = []
         for story in storyIDs.compactMap({ library.stories[$0] }) {
-            let articles = story.articleIDs.compactMap { library.articles[$0] }.sorted { $0.date < $1.date }
+            let articles = library.articles(of: story).sorted { $0.date < $1.date }
             guard !articles.isEmpty else { continue }
             let id = "s\(items.count + 1)"
             map[id] = (story.id, articles.map(\.id))
@@ -94,14 +96,6 @@ enum SummaryStep {
                     }))
         }
         return (Input(outputLanguage: languageName, stories: items), map)
-    }
-
-    static func request(_ input: Input, model: String, effort: String) -> ClaudeRequest {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.withoutEscapingSlashes]
-        return ClaudeRequest(
-            model: model, effort: effort, systemPrompt: Prompts.summary, schema: Prompts.summarySchema,
-            input: (try? encoder.encode(input)) ?? Data())
     }
 
     /// Stores the summaries of stories that still exist; unknown IDs and empty answers are ignored. Returns the
@@ -159,12 +153,6 @@ enum TopicTranslation {
             items.append(Payload.Item(id: id, name: topic.name, description: topic.description))
         }
         return (Payload(outputLanguage: languageName, topics: items), map)
-    }
-
-    static func request(_ payload: Payload, model: String, effort: String) -> ClaudeRequest {
-        ClaudeRequest(
-            model: model, effort: effort, systemPrompt: Prompts.translateTopics, schema: Prompts.translateTopicsSchema,
-            input: (try? JSONEncoder().encode(payload)) ?? Data())
     }
 
     /// Renames the topics; every topic sent counts as translated afterwards (also one the answer left out, so a

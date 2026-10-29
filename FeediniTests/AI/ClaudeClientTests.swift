@@ -29,9 +29,7 @@ struct ClaudeClientTests {
         #expect(answer == Answer(result: 4))
         #expect(
             stats
-                == ClaudeCallStats(
-                    model: "claude-haiku-5-5", durationMs: 1547, apiDurationMs: 1519, costUSD: 0.0002433,
-                    outputTokens: 51))
+                == ClaudeCallStats(model: "claude-haiku-5-5", durationMs: 1547, costUSD: 0.0002433))
         let call = try #require(runner.calls.first)
         #expect(call.executable == claude)
         #expect(

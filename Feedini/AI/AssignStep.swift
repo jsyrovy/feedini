@@ -98,7 +98,7 @@ enum AssignStep {
         let sources = Dictionary(library.feeds.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
 
         let candidates = library.stories.values
-            .map { story in (story, story.articleIDs.compactMap { library.articles[$0] }) }
+            .map { story in (story, library.articles(of: story)) }
             .filter { _, articles in articles.contains { $0.date >= cutoff } }
             .sorted { lhs, rhs in newest(lhs.1) > newest(rhs.1) }
         let unreadTopics = Set(
@@ -148,14 +148,5 @@ enum AssignStep {
 
     private static func newest(_ articles: [Article]) -> Date {
         articles.map(\.date).max() ?? .distantPast
-    }
-
-    static func request(_ input: Input, model: String, effort: String) -> ClaudeRequest {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.withoutEscapingSlashes]
-        // Encoding plain strings and arrays can't fail.
-        let data = (try? encoder.encode(input)) ?? Data()
-        return ClaudeRequest(
-            model: model, effort: effort, systemPrompt: Prompts.assign, schema: Prompts.assignSchema, input: data)
     }
 }

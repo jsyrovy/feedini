@@ -49,9 +49,9 @@ final class Preferences {
 
     /// The models offered in Settings → AI.
     static let modelChoices = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
-    static let defaultModel = "claude-haiku-5-5"
+    static let defaultModel = AIConfiguration.defaultModel
     static let effortChoices = ["low", "medium", "high"]
-    static let defaultEffort = "low"
+    static let defaultEffort = AIConfiguration.defaultEffort
 
     /// Whether new articles are organized (and summarized) by AI. On by default; without claude it says why.
     var aiEnabled: Bool {

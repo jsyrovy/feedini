@@ -9,16 +9,56 @@ protocol LibraryHost: AnyObject {
 
 /// AI settings as the queues use them.
 struct AIConfiguration: Sendable, Equatable {
+    static let defaultModel = "claude-haiku-5-5"
+    static let defaultEffort = "low"
+
     var isEnabled = true
-    var assignModel = "claude-haiku-5-5"
-    var summaryModel = "claude-haiku-5-5"
-    var effort = "low"
+    var assignModel = defaultModel
+    var summaryModel = defaultModel
+    var effort = defaultEffort
     /// The code of the output language (`cs`).
     var languageCode = "en"
     /// The English name of the output language ("Czech").
     var language: String { OutputLanguage.name(of: languageCode) }
     /// A path to `claude` set in Settings; empty to look it up.
     var claudePath = ""
+}
+
+/// Makes the AI calls of both queues: finds claude, runs the call, applies the answer to the library, and records
+/// the call in the status, the usage statistics and the log. Usage is counted whenever claude actually ran (also
+/// when the answer was an error), not when it couldn't be found or started.
+@MainActor
+struct AICaller {
+    unowned let host: any LibraryHost
+    let runner: any CommandRunning
+    let locator: ClaudeLocator
+    let status: AIStatus
+    let now: @Sendable () -> Date
+
+    /// Returns the call's stats; throws (after recording) when the call failed.
+    @discardableResult
+    func call<Output: Decodable & Sendable>(
+        _ request: ClaudeRequest, as type: Output.Type, step: String, claudePath: String,
+        apply: (Output, inout Library) -> Void
+    ) async throws(ClaudeError) -> ClaudeCallStats {
+        let client = ClaudeClient(runner: runner) { [locator] in locator.locate(customPath: claudePath) }
+        do {
+            let (output, stats) = try await client.run(request, as: type)
+            status.record(AIStatus.Call(date: now(), step: step, stats: stats))
+            host.update { library in
+                apply(output, &library)
+                library.recordAICall(at: now(), stats: stats)
+            }
+            return stats
+        } catch {
+            status.record(AIStatus.Call(date: now(), step: step, error: error.message))
+            if error.isTransient {
+                host.update { $0.recordAICall(at: now(), stats: nil) }
+            }
+            Log.ai.error("\(step, privacy: .public) failed: \(error.message, privacy: .public)")
+            throw error
+        }
+    }
 }
 
 /// Organizes new articles into stories, one batch at a time.
@@ -36,8 +76,7 @@ final class AssignQueue {
     static let retryDelays: [Duration] = [.seconds(10), .seconds(60)]
 
     private unowned let host: any LibraryHost
-    private let runner: any CommandRunning
-    private let locator: ClaudeLocator
+    private let caller: AICaller
     private let status: AIStatus
     private let configuration: @MainActor () -> AIConfiguration
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -45,9 +84,11 @@ final class AssignQueue {
     private var run: Task<Void, Never>?
     /// Articles whose batch failed `maxAttempts` times; skipped until `trigger(retryingFailed: true)`.
     private var deferred = Set<Article.ID>()
+    /// Why the last call failed, shown while deferred articles wait.
+    private var lastError: String?
 
-    /// Called with the stories that got articles (for their summaries).
-    var onStoriesChanged: (@MainActor ([Story.ID]) -> Void)?
+    /// Called after every applied batch (stories changed, so summaries may be needed).
+    var onBatchApplied: (@MainActor () -> Void)?
 
     init(
         host: any LibraryHost, runner: any CommandRunning = ProcessRunner(), locator: ClaudeLocator = ClaudeLocator(),
@@ -57,8 +98,7 @@ final class AssignQueue {
         now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.host = host
-        self.runner = runner
-        self.locator = locator
+        caller = AICaller(host: host, runner: runner, locator: locator, status: status, now: now)
         self.status = status
         self.configuration = configuration
         self.sleep = sleep
@@ -105,7 +145,6 @@ final class AssignQueue {
     private func work() async {
         var isFirst = true
         var failures = 0
-        var lastError: String?
         while !Task.isCancelled {
             let configuration = configuration()
             guard configuration.isEnabled else {
@@ -121,19 +160,18 @@ final class AssignQueue {
             let batch = Array(pending.prefix(isFirst ? Self.firstBatchSize : Self.batchSize))
             let (input, map) = AssignStep.payload(
                 for: batch, in: host.library, language: configuration.language, now: now())
-            let request = AssignStep.request(input, model: configuration.assignModel, effort: configuration.effort)
-            let client = ClaudeClient(runner: runner) { [locator, path = configuration.claudePath] in
-                locator.locate(customPath: path)
-            }
+            let request = ClaudeRequest(
+                model: configuration.assignModel, effort: configuration.effort, systemPrompt: Prompts.assign,
+                schema: Prompts.assignSchema, payload: input)
             do {
-                let (output, stats) = try await client.run(request, as: AssignStep.Output.self)
-                status.record(AIStatus.Call(date: now(), step: "Organize \(batch.count)", stats: stats))
-                var result = AssignValidation.Result()
-                host.update {
-                    result = AssignValidation.apply(output, map: map, language: configuration.languageCode, to: &$0)
-                    $0.recordAICall(at: now(), stats: stats)
+                var metrics = AssignValidation.Metrics()
+                let stats = try await caller.call(
+                    request, as: AssignStep.Output.self, step: "Organize \(batch.count)",
+                    claudePath: configuration.claudePath
+                ) { output, library in
+                    metrics = AssignValidation.apply(
+                        output, map: map, language: configuration.languageCode, to: &library)
                 }
-                let metrics = result.metrics
                 Log.ai.info(
                     """
                     Assigned \(batch.count) articles in \(stats.durationMs) ms ($\(stats.costUSD)): \
@@ -141,15 +179,11 @@ final class AssignQueue {
                     missing \(metrics.missing), unknown IDs \(metrics.unknownIDs), \
                     unresolved topics \(metrics.unresolvedTopics)
                     """)
-                onStoriesChanged?(result.changedStories)
+                onBatchApplied?()
                 isFirst = false
                 failures = 0
+                lastError = nil
             } catch {
-                status.record(AIStatus.Call(date: now(), step: "Organize \(batch.count)", error: error.message))
-                if error != .notFound {
-                    host.update { $0.recordAICall(at: now(), stats: nil) }
-                }
-                Log.ai.error("Assign failed: \(error.message, privacy: .public)")
                 guard error.isTransient else {
                     status.set(.unavailable(error.message))
                     return
@@ -184,8 +218,7 @@ final class SummaryQueue {
     static let retryDelay: Duration = .seconds(30)
 
     private unowned let host: any LibraryHost
-    private let runner: any CommandRunning
-    private let locator: ClaudeLocator
+    private let caller: AICaller
     private let status: AIStatus
     private let configuration: @MainActor () -> AIConfiguration
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -199,11 +232,11 @@ final class SummaryQueue {
     init(
         host: any LibraryHost, runner: any CommandRunning = ProcessRunner(), locator: ClaudeLocator = ClaudeLocator(),
         status: AIStatus, configuration: @escaping @MainActor () -> AIConfiguration,
-        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.host = host
-        self.runner = runner
-        self.locator = locator
+        caller = AICaller(host: host, runner: runner, locator: locator, status: status, now: now)
         self.status = status
         self.configuration = configuration
         self.sleep = sleep
@@ -237,12 +270,6 @@ final class SummaryQueue {
         Set(failures.filter { $0.value >= Self.maxAttempts }.keys)
     }
 
-    private func client(_ configuration: AIConfiguration) -> ClaudeClient {
-        ClaudeClient(runner: runner) { [locator, path = configuration.claudePath] in
-            locator.locate(customPath: path)
-        }
-    }
-
     private func fill() {
         let configuration = configuration()
         guard configuration.isEnabled, !isBlocked else {
@@ -256,11 +283,12 @@ final class SummaryQueue {
                 launch { await self.translate(topics, configuration) }
             }
         }
-        while tasks.count < Self.maxParallel {
-            let pending = SummaryStep.pending(
-                in: host.library, language: configuration.languageCode, excluding: inFlight.union(deferred))
-            guard !pending.isEmpty else { break }
+        var pending = SummaryStep.pending(
+            in: host.library, language: configuration.languageCode, excluding: inFlight.union(deferred)
+        )[...]
+        while tasks.count < Self.maxParallel, !pending.isEmpty {
             let batch = Array(pending.prefix(SummaryStep.batchSize))
+            pending = pending.dropFirst(batch.count)
             inFlight.formUnion(batch)
             launch { await self.summarize(batch, configuration) }
         }
@@ -281,28 +309,24 @@ final class SummaryQueue {
     private func summarize(_ batch: [Story.ID], _ configuration: AIConfiguration) async {
         defer { inFlight.subtract(batch) }
         let (input, map) = SummaryStep.payload(for: batch, in: host.library, languageName: configuration.language)
-        let request = SummaryStep.request(input, model: configuration.summaryModel, effort: configuration.effort)
+        let request = ClaudeRequest(
+            model: configuration.summaryModel, effort: configuration.effort, systemPrompt: Prompts.summary,
+            schema: Prompts.summarySchema, payload: input)
         do {
-            let (output, stats) = try await client(configuration).run(request, as: SummaryStep.Output.self)
-            status.record(AIStatus.Call(date: .now, step: "Summarize \(batch.count)", stats: stats))
             var written = Set<Story.ID>()
-            host.update {
-                written = SummaryStep.apply(output, map: map, language: configuration.languageCode, to: &$0)
-                $0.recordAICall(at: .now, stats: stats)
+            let stats = try await caller.call(
+                request, as: SummaryStep.Output.self, step: "Summarize \(batch.count)",
+                claudePath: configuration.claudePath
+            ) { output, library in
+                written = SummaryStep.apply(output, map: map, language: configuration.languageCode, to: &library)
             }
             for id in batch where !written.contains(id) {
                 failures[id, default: 0] += 1
             }
             Log.ai.info("Summarized \(written.count) of \(batch.count) stories in \(stats.durationMs) ms")
         } catch {
-            status.record(AIStatus.Call(date: .now, step: "Summarize \(batch.count)", error: error.message))
-            if error != .notFound {
-                host.update { $0.recordAICall(at: .now, stats: nil) }
-            }
-            Log.ai.error("Summary failed: \(error.message, privacy: .public)")
             guard error.isTransient else {
-                isBlocked = true
-                status.set(.unavailable(error.message))
+                block(error)
                 return
             }
             for id in batch {
@@ -319,22 +343,28 @@ final class SummaryQueue {
         defer { isTranslating = false }
         let (payload, map) = TopicTranslation.payload(
             for: topics, in: host.library, languageName: configuration.language)
-        let request = TopicTranslation.request(payload, model: configuration.assignModel, effort: configuration.effort)
+        let request = ClaudeRequest(
+            model: configuration.assignModel, effort: configuration.effort, systemPrompt: Prompts.translateTopics,
+            schema: Prompts.translateTopicsSchema, payload: payload)
         do {
-            let (output, stats) = try await client(configuration).run(request, as: TopicTranslation.Payload.self)
-            status.record(AIStatus.Call(date: .now, step: "Translate topics", stats: stats))
-            host.update {
-                TopicTranslation.apply(output, map: map, language: configuration.languageCode, to: &$0)
-                $0.recordAICall(at: .now, stats: stats)
+            try await caller.call(
+                request, as: TopicTranslation.Payload.self, step: "Translate topics",
+                claudePath: configuration.claudePath
+            ) { output, library in
+                TopicTranslation.apply(output, map: map, language: configuration.languageCode, to: &library)
             }
         } catch {
-            status.record(AIStatus.Call(date: .now, step: "Translate topics", error: error.message))
-            if !error.isTransient {
-                isBlocked = true
-                status.set(.unavailable(error.message))
-            } else {
+            if error.isTransient {
                 try? await sleep(Self.retryDelay)
+            } else {
+                block(error)
             }
         }
+    }
+
+    /// A setup error (no claude): nothing more until the next trigger.
+    private func block(_ error: ClaudeError) {
+        isBlocked = true
+        status.set(.unavailable(error.message))
     }
 }
