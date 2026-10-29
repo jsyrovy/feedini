@@ -57,7 +57,8 @@ Feedini/
   Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
-              ClaudeClient (CLI arguments, envelope, errors)
+              ClaudeClient (CLI arguments, envelope, errors), Prompts (system prompts + JSON schemas), AssignStep
+              (payload with short IDs), Validation (pure: applying an assign answer)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail, SourcePage), WebPageView (WKWebView), Reader (window state:
@@ -243,6 +244,28 @@ claude -p --model <model> --effort <effort> --system-prompt <prompt> --safe-mode
   awaited at most `outputGracePeriod` after exit.
 - The contract with the real CLI is not tested on CI; check it by hand after CLI updates (it costs a fraction of a
   cent with Haiku).
+
+### Prompts
+
+`Prompts` holds the system prompts and schemas in English; the output language is a field of the payload
+(`output_language`). They were tuned in a prompt lab (Python, outside the repo) over saved feed data: attaching new
+articles to known stories (also across languages), topic stability with existing topics, cold start in batches,
+summaries checked for invented facts. Change a prompt by testing it the same way first, then copy it unchanged.
+
+### Assign step
+
+- Payload (`AssignStep.payload`, pure): `output_language`, `topics` (those of unread stories), `stories` (every
+  story whose newest article is younger than `attachWindow`, read ones included, with the titles and sources of
+  their articles) and `new_articles` (source, title, published, a 600-character excerpt). IDs are short and per
+  call (`a1`, `s1`, `t1`; `IDMap` maps them back), which saves tokens and makes validation simple.
+- Answer: `attach` (story id + article ids), `new_topics` (key `n1`…, name, description), `new_stories` (title,
+  topic id or key, article ids).
+- `AssignValidation.apply` (pure) never trusts the answer: unknown IDs are dropped and an article used twice stays
+  where it was first; left-out articles get a story of their own (title of the article, no topic); a topic is
+  resolved by id, then new key, then – models sometimes write names – by name ignoring case, else it becomes a new
+  topic with that name. An article joining a read story is put into its `newArticleIDs` ("+1 new"), which makes the
+  story unread again. It returns metrics (logged) and the stories whose articles changed (for summaries).
+- An article is "processed" once it belongs to a story; articles without one are shown on their own (`.loose`).
 
 ## Storage and retention
 
