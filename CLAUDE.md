@@ -245,7 +245,8 @@ Implementation:
   their own name), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
   with duration and cost or the error, and the usage: calls, time and cost per day for the last 7 days and the
-  total of the kept 30 (`Library.usage`, `AIUsageDay`, recorded with every call claude actually ran).
+  total of the kept 30 (`Library.usage`, `AIUsageDay`, recorded with every call claude actually ran). A typed path
+  to claude is used once it is submitted or Settings close, not on every keystroke.
 
 ## Refresh
 

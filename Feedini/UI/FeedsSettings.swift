@@ -155,7 +155,7 @@ private struct FeedStatus: View {
                 .foregroundStyle(.orange)
                 .help(error)
         } else if let checked = feed.lastChecked {
-            Text("Updated \(RelativeTime.short(checked, now: .now)) ago").foregroundStyle(.secondary)
+            Text(RelativeTime.updated(checked, now: .now)).foregroundStyle(.secondary)
         } else {
             Text("Not updated yet").foregroundStyle(.secondary)
         }

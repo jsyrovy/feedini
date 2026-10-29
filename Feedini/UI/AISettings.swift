@@ -37,7 +37,8 @@ struct AISettings: View {
             }
 
             Section("claude") {
-                TextField("Path", text: $preferences.claudePath, prompt: Text(detectedPath ?? "Not found"))
+                TextField("Path", text: $claudePath, prompt: Text(detectedPath ?? "Not found"))
+                    .onSubmit { preferences.claudePath = claudePath }
                 Text(pathHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -66,7 +67,27 @@ struct AISettings: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { claudePath = model.preferences.claudePath }
+        // A typed path is used once it is submitted or the settings close, not on every keystroke.
+        .onDisappear { model.preferences.claudePath = claudePath }
+        .task(id: model.preferences.claudePath) {
+            let locator = ClaudeLocator()
+            let saved = model.preferences.claudePath
+            detectedPath = locator.locate()?.path
+            if saved.isEmpty {
+                pathHint =
+                    detectedPath.map { "Found automatically: \($0)" }
+                    ?? "claude wasn't found in ~/.local/bin, /opt/homebrew/bin, /usr/local/bin or PATH."
+            } else {
+                pathHint =
+                    locator.locate(customPath: saved) == nil ? "This file isn't an executable." : "Using this path."
+            }
+        }
     }
+
+    @State private var claudePath = ""
+    @State private var detectedPath: String?
+    @State private var pathHint = ""
 
     private var languages: [String] {
         let choices = OutputLanguage.choices.sorted {
@@ -74,19 +95,6 @@ struct AISettings: View {
         }
         let saved = model.preferences.summaryLanguage
         return saved.isEmpty || choices.contains(saved) ? choices : choices + [saved]
-    }
-
-    private var detectedPath: String? {
-        ClaudeLocator().locate()?.path
-    }
-
-    private var pathHint: String {
-        if model.preferences.claudePath.isEmpty {
-            return detectedPath.map { "Found automatically: \($0)" }
-                ?? "claude wasn't found in ~/.local/bin, /opt/homebrew/bin, /usr/local/bin or PATH."
-        }
-        return ClaudeLocator().locate(customPath: model.preferences.claudePath) == nil
-            ? "This file isn't an executable." : "Using this path."
     }
 }
 
