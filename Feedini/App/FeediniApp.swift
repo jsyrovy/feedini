@@ -1,0 +1,43 @@
+import SwiftUI
+
+/// Entry point. The unit test bundle is hosted by the app; under tests an empty app runs instead of Feedini, so no
+/// window, refresh or menu bar item is started and the real app needs no test guards.
+@main
+enum FeediniMain {
+    @MainActor
+    static func main() {
+        if RuntimeEnvironment.isRunningTests {
+            TestHostApp.main()
+        } else {
+            FeediniApp.main()
+        }
+    }
+}
+
+struct FeediniApp: App {
+    /// The ID of the main window, for `openWindow(id:)`.
+    static let mainWindowID = "main"
+
+    var body: some Scene {
+        Window("Feedini", id: Self.mainWindowID) {
+            MainWindow()
+        }
+
+        Settings {
+            SettingsView()
+        }
+
+        MenuBarExtra {
+            MenuBarContent()
+        } label: {
+            Text(verbatim: "🎩")
+                .accessibilityLabel("Feedini")
+        }
+    }
+}
+
+private struct TestHostApp: App {
+    var body: some Scene {
+        Settings { EmptyView() }
+    }
+}
