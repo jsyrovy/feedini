@@ -1,0 +1,13 @@
+  
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+<title>Broken &amp; Co</title>
+<link>https://broken.example.com/</link>
+<item>
+<title>Tom &amp; Jerry&nbsp;&ndash; Q&A &hellip;</title>
+<link>https://broken.example.com/1?a=1&b=2</link>
+<description>Price: 5&nbsp;&euro; &unknownentity; &#382;</description>
+</item>
+</channel>
+</rss>

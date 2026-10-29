@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"
+	xmlns:content="http://purl.org/rss/1.0/modules/content/"
+	xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+	<title>Example Mac News</title>
+	<link>https://macnews.example.com</link>
+	<language>en</language>
+	<item>
+		<title>Example Corp Announces a Laptop With a Touch Display</title>
+		<link>https://macnews.example.com/2026/10/28/laptop-touch-display/</link>
+		<guid isPermaLink="false">https://macnews.example.com/2026/10/28/laptop-touch-display/</guid>
+		<dc:creator>Sam Reporter</dc:creator>
+		<pubDate>Wed, 28 Oct 2026 15:00:00 +0000</pubDate>
+		<description>Example Corp &lt;a href="https://macnews.example.com/x/"&gt;announced&lt;/a&gt; a laptop today.&lt;br/&gt;&lt;br/&gt;It has a touch display and a &lt;b&gt;new&lt;/b&gt; chip.&lt;br /&gt;&lt;ul&gt;&lt;li&gt;14-inch&lt;/li&gt;&lt;li&gt;16-inch&lt;/li&gt;&lt;/ul&gt;&lt;script&gt;track()&lt;/script&gt;&lt;p&gt;&lt;a href="https://macnews.example.com/forum"&gt;Discuss this article&lt;/a&gt; in our forums&lt;/p&gt;</description>
+	</item>
+	<item>
+		<title>Self-hosting Instead of a Platform</title>
+		<link>https://macnews.example.com/2026/10/27/self-hosting/</link>
+		<guid isPermaLink="false">https://macnews.example.com/?p=30430</guid>
+		<pubDate>Tue, 27 Oct 2026 12:03:40 +0000</pubDate>
+		<description><![CDATA[<div><img width="100" height="100" src="https://macnews.example.com/icon.png" /></div>Short teaser&#8230;]]></description>
+		<content:encoded><![CDATA[<div><img src="https://macnews.example.com/icon.png" /></div>
+<p>Full text of the article, <em>first</em> paragraph.</p>
+<style>p { color: red }</style>
+<p>Second&nbsp;paragraph with&nbsp;&hellip; an ellipsis.</p>
+<!-- a comment that is not text -->]]></content:encoded>
+	</item>
+</channel>
+</rss>

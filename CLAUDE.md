@@ -48,9 +48,13 @@ Feedini/
   Model/      Feed, Article, Story, Topic, Tombstone (Codable, Sendable), Library (all of them, read state, removing
               feeds)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
+  Feeds/      FeedParser (XMLParser: RSS 0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts),
+              FeedLanguage (<language> or NLLanguageRecognizer)
   Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), SettingsView, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
+  Fixtures/   feeds with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
+              content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page
   Support/    Fixture loader, ManualSleeper, model stubs (`referenceDate`, `Article.stub`, …)
 ```
 
@@ -127,6 +131,24 @@ Three columns: sidebar (All, topics by unread count, feeds), story list (newest 
 | ⌘, | settings |
 
 Keys work in the list. While the web page has focus, only Esc works (it returns focus to the list).
+
+## Feeds
+
+- `FeedParser` reads RSS 0.9x / 2.0 (no namespace), RSS 1.0 (RDF) and Atom with `XMLParser` and namespace
+  processing; the root element decides the format, anything else (a web page) is `FeedParserError.notAFeed`. The
+  encoding comes from the XML declaration (libxml2), never from the HTTP header.
+- Feeds that aren't well-formed are repaired on the byte level and parsed again (`FeedParser.repairXML`): whitespace
+  before the declaration, HTML named entities (`&nbsp;` → `&#160;`) and bare `&`. A feed broken in the middle keeps
+  the items read up to there.
+- An item's key is the guid / Atom id, else its link, else its title; items without any are dropped, duplicate keys
+  keep the first. The title falls back to the start of the text. Dates: `pubDate` (RFC 822 variants), `dc:date`,
+  Atom `published`, else `updated`. Author: `dc:creator`, the name in RSS `author` (`mail (Name)`), Atom
+  `author/name`. Links are resolved against the feed URL; only `http(s)` links are kept.
+- Text: `content:encoded` / Atom `content` when present, else `description` / `summary`, converted by
+  `HTMLText.plainText` (paragraphs as blank lines, `<br><br>` too, list items with "• ", scripts, styles and
+  comments dropped, entities decoded) and cut to `FeedParser.maxTextLength` (10 000 characters, ending in "…").
+- `FeedLanguage`: the feed's `<language>` / `dc:language` / Atom `xml:lang` reduced to the primary code (`cs-CZ` →
+  `cs`); without one, `NLLanguageRecognizer` on the title and the start of the text (at least 50 % sure).
 
 ## Storage and retention
 

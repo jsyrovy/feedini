@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="0.91">
+<channel>
+ <title>Example Trails - downhill magazine</title>
+ <link>http://www.trails.example.com</link>
+ <description>Everything about trails</description>
+ <language>cs</language>
+ <image>
+	<link>http://www.trails.example.com</link>
+	<title>Not the feed title</title>
+	<url>https://trails.example.com/logo.gif</url>
+ </image>
+ <item>
+  <title>Spotcheck: 150 kilometrů traťového ráje</title>
+  <link>https://trails.example.com/clanek/1-spotcheck</link>
+  <description>&lt;img src=&quot;https://trails.example.com/icon/1.jpg&quot; border=&quot;0&quot;&gt;
+Hned za hranicí je ráj pro bikery.</description>
+  <pubDate>Thu, 29 Oct 2026 04:00:00 +0200</pubDate>
+ </item>
+ <item>
+  <title>Test: nové tlumiče</title>
+  <link>https://trails.example.com/clanek/2-test</link>
+  <description>Krátký test.</description>
+  <pubDate>29 Oct 2026 03:00:00 +0000</pubDate>
+ </item>
+</channel>
+</rss>

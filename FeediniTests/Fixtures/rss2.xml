@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Tech Daily</title>
+    <link>https://tech.example.com</link>
+    <atom:link href="https://tech.example.com/rss/" rel="self" type="application/rss+xml" />
+    <description>     </description>
+    <language>cs-CZ</language>
+    <item>
+      <title>Nový robotický vysavač umí vyjít schody</title>
+      <link>https://tech.example.com/clanky/vysavac-schody/a-1001/</link>
+      <guid isPermaLink="false">1001-tech.example.com</guid>
+      <description>Výrobce ukázal vysavač, který zvládne schodiště &#8211; zatím jen v laboratoři.</description>
+      <pubDate>Thu, 29 Oct 2026 10:45:00 GMT</pubDate>
+      <dc:creator>Jana Nováková</dc:creator>
+    </item>
+    <item>
+      <title><![CDATA[Banka spouští platby hodinkami]]></title>
+      <link>https://tech.example.com/clanky/platby-hodinkami/a-1002/</link>
+      <guid isPermaLink="false">1002-tech.example.com</guid>
+      <description><![CDATA[<p>První odstavec o <a href="https://example.com">platbách</a>.</p><p>Druhý odstavec.</p>]]></description>
+      <pubDate>Thu, 29 Oct 2026 08:30:00 +0100</pubDate>
+      <author>redakce@tech.example.com (Petr Svoboda)</author>
+    </item>
+    <item>
+      <title>Duplicate of the second item</title>
+      <link>https://tech.example.com/clanky/platby-hodinkami/a-1002/?again</link>
+      <guid isPermaLink="false">1002-tech.example.com</guid>
+      <description>Should be dropped.</description>
+    </item>
+    <item>
+      <title>AT&amp;amp;T a T-Mobile: srovnání tarifů</title>
+      <link>/clanky/srovnani-tarifu/a-1003/</link>
+      <description>Bez data a bez guid.</description>
+    </item>
+  </channel>
+</rss>
