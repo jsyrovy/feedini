@@ -44,9 +44,14 @@ Xcode 26).
 ```
 Feedini/
   App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
-              TestHostApp under tests), RuntimeEnvironment
+              TestHostApp under tests), RuntimeEnvironment, Log (os.Logger categories)
+  Model/      Feed, Article, Story, Topic, Tombstone (Codable, Sendable), Library (all of them, read state, removing
+              feeds)
+  Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
+  Support/    OneShotSignal (an awaitable one-time event)
   UI/         MainWindow (NavigationSplitView), SettingsView, MenuBarContent
 FeediniTests/ Swift Testing tests, mirroring the app folders
+  Support/    Fixture loader, ManualSleeper, model stubs (`referenceDate`, `Article.stub`, …)
 ```
 
 ## Conventions
@@ -122,6 +127,23 @@ Three columns: sidebar (All, topics by unread count, feeds), story list (newest 
 | ⌘, | settings |
 
 Keys work in the list. While the web page has focus, only Esc works (it returns focus to the list).
+
+## Storage and retention
+
+- One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 1, "library": {…}}`, pretty-printed
+  with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
+  dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
+  migration in `LibraryStore.load()`.
+- `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
+  atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
+  newer Feedini – is moved aside as `library.unreadable-<unix time>.json`, never overwritten, and Feedini starts
+  empty.
+- An article belongs to a feed and is identified within it by `key` (guid / Atom id, else the link). `Article.date`
+  is the published date clamped to the first sighting (future dates), or the first sighting without one.
+- `Retention.prune` (pure): unread articles stay forever. Read articles go once their story (or the article alone,
+  without a story) has no article younger than `attachWindow` (72 h); each leaves a `Tombstone` (feed + key). A
+  tombstone goes once it hasn't been seen in its feed for `tombstoneMargin` (3 days) before the feed's last
+  successful download, so a feed that can't be downloaded keeps them. Topics without stories go too.
 
 ## Testing
 
