@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The project needs Xcode 27; the macos-26 image only has Xcode 26. The xcode-27 image (a preview for now) has
+    # Xcode 27 as the default /Applications/Xcode.app.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun swift --version
+
+      - name: Lint
+        run: make lint
+
+      # One job runs everything (macOS runners are scarce); later steps still run when an earlier one fails, so a lint
+      # error doesn't hide test results.
+      - name: Test with coverage
+        if: ${{ !cancelled() }}
+        run: make coverage
+
+      - name: Build Release
+        if: ${{ !cancelled() }}
+        run: CONFIG=Release make build
+
+      - name: Upload test results
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Test.xcresult
+          path: build/Test.xcresult
+          if-no-files-found: ignore
