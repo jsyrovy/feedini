@@ -31,6 +31,7 @@ final class AppModel: LibraryHost {
     @ObservationIgnored private let subscriber: FeedSubscriber
     @ObservationIgnored private(set) var assignQueue: AssignQueue?
     @ObservationIgnored private(set) var summaryQueue: SummaryQueue?
+    @ObservationIgnored private(set) var pageQueue: PageSummaryQueue?
     @ObservationIgnored private var scheduler: RefreshScheduler?
     @ObservationIgnored private var entriesCache: EntriesCache?
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
@@ -39,7 +40,8 @@ final class AppModel: LibraryHost {
     init(
         preferences: Preferences = Preferences(), store: LibraryStore = LibraryStore(),
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
-        claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator()
+        claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator(),
+        pageExtractor: (any PageExtracting)? = nil
     ) {
         self.preferences = preferences
         self.store = store
@@ -53,6 +55,9 @@ final class AppModel: LibraryHost {
         assignQueue.onBatchApplied = { [weak summaryQueue] in summaryQueue?.trigger() }
         self.assignQueue = assignQueue
         self.summaryQueue = summaryQueue
+        pageQueue = PageSummaryQueue(
+            host: self, extractor: pageExtractor ?? PageExtractor(), runner: claudeRunner, locator: claudeLocator,
+            status: aiStatus, configuration: configuration)
         if !preferences.aiEnabled {
             aiStatus.set(.off)
         }
@@ -193,6 +198,28 @@ final class AppModel: LibraryHost {
                     ], into: &library, now: .now)
             }
         }
+    }
+
+    // MARK: Source pages
+
+    /// P: loads the text of the article's source page unless it is stored.
+    func loadPage(_ id: Article.ID) {
+        pageQueue?.loadPage(id)
+    }
+
+    /// T: summarizes the article's source page, loading it first unless its text is stored.
+    func summarizePage(_ id: Article.ID) {
+        pageQueue?.summarize(id)
+    }
+
+    /// Whether T does anything for the article (`PageSummaryQueue.canSummarize`).
+    func canSummarizePage(_ id: Article.ID) -> Bool {
+        pageQueue?.canSummarize(id) ?? false
+    }
+
+    /// The user opened the article's source page in the window (`PageSummaryQueue.pageOpened`).
+    func pageOpened(_ id: Article.ID) {
+        pageQueue?.pageOpened(id)
     }
 
     // MARK: Changes

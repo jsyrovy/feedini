@@ -50,6 +50,39 @@ struct LibraryStoreTests {
         #expect(json.contains("\"version\" : 1"))
     }
 
+    @Test func savesPageTextsAndSummaries() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = store()
+        var sleeps = sleeper.sleeps.makeAsyncIterator()
+        var library = sampleLibrary()
+        let id = try #require(library.articles.keys.first)
+        library.articles[id]?.pageText = "The text of the page."
+        library.articles[id]?.pageSummary = PageSummary(
+            tldr: "The gist.", details: ["A detail."], language: "en", date: referenceDate)
+
+        await store.save(library)
+        _ = await sleeps.next()
+        await store.flush()
+
+        #expect(await LibraryStore(fileURL: fileURL).load().library == library)
+    }
+
+    /// Files from before page texts have no such fields.
+    @Test func articlesWithoutPageTextsAreSavedWithoutTheFields() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = store()
+        var sleeps = sleeper.sleeps.makeAsyncIterator()
+        let library = sampleLibrary()
+
+        await store.save(library)
+        _ = await sleeps.next()
+        await store.flush()
+
+        let json = try #require(String(data: Data(contentsOf: fileURL), encoding: .utf8))
+        #expect(!json.contains("pageText") && !json.contains("pageSummary"))
+        #expect(await LibraryStore(fileURL: fileURL).load().library == library)
+    }
+
     @Test func flushWritesAPendingChangeRightAway() async {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = store()

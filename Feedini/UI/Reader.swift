@@ -13,7 +13,7 @@ final class Reader {
         didSet {
             guard selection != oldValue else { return }
             cursor = nil
-            pageArticle = nil
+            shown = nil
             kept = []
         }
     }
@@ -21,8 +21,25 @@ final class Reader {
     private(set) var expanded: Set<StoryEntry.ID> = []
     /// Entries read while shown; they stay in the list until the selection changes or a refresh.
     private(set) var kept: Set<StoryEntry.ID> = []
-    /// The article whose source page the detail shows instead of the feed text.
-    private(set) var pageArticle: Article.ID?
+    /// What the detail shows instead of the feed text.
+    enum Shown: Equatable {
+        /// The source page in the window (V).
+        case page(Article.ID)
+        /// The text of the source page (P).
+        case preview(Article.ID)
+    }
+
+    private(set) var shown: Shown?
+    /// The article whose source page the detail shows.
+    var pageArticle: Article.ID? {
+        if case .page(let id) = shown { id } else { nil }
+    }
+    /// The article whose page text the detail shows.
+    var previewArticle: Article.ID? {
+        if case .preview(let id) = shown { id } else { nil }
+    }
+    /// The keyboard shortcuts sheet (?).
+    var isShowingShortcuts = false
     /// Increased when the story list should take the keyboard focus (after the page had it).
     private(set) var listFocusRequests = 0
 
@@ -55,7 +72,7 @@ final class Reader {
     func visit(_ row: ListRow?) {
         guard row != cursor else { return }
         cursor = row
-        pageArticle = nil
+        shown = nil
         guard let row, let entry = entry(row.entryID) else { return }
         if case .article = row {
             expanded.insert(entry.id)
@@ -87,6 +104,12 @@ final class Reader {
             open(url, inWindow: inWindow)
         case .closePage:
             closePage()
+        case .previewPage(let id):
+            togglePreview(id)
+        case .summarizePage(let id):
+            summarizePage(id)
+        case .showShortcuts:
+            isShowingShortcuts.toggle()
         case .toggleRead(let row):
             toggleRead(row)
         case .refresh:
@@ -111,7 +134,7 @@ final class Reader {
         let ids = entries.flatMap { $0.articles.filter { !$0.isRead }.map(\.id) }
         kept = []
         cursor = nil
-        pageArticle = nil
+        shown = nil
         model.markRead(ids)
     }
 
@@ -134,12 +157,34 @@ final class Reader {
             NSWorkspace.shared.open(url)
             return
         }
-        pageArticle = cursorArticle?.id
+        shown = cursorArticle.map { .page($0.id) }
+        if let pageArticle {
+            model.pageOpened(pageArticle)
+        }
     }
 
     func closePage() {
-        pageArticle = nil
+        shown = nil
         listFocusRequests += 1
+    }
+
+    /// P: the page text instead of the feed text (loaded unless stored), or the feed text again. From the source page
+    /// it goes straight to the text.
+    func togglePreview(_ id: Article.ID) {
+        guard previewArticle != id else {
+            shown = nil
+            return
+        }
+        shown = .preview(id)
+        model.loadPage(id)
+    }
+
+    /// T: from the source page in the window it goes back to the text, where the summary shows.
+    func summarizePage(_ id: Article.ID) {
+        if pageArticle != nil {
+            closePage()
+        }
+        model.summarizePage(id)
     }
 
     /// The article under the cursor: the article row, or the only article of a story.

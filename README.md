@@ -17,7 +17,9 @@ New articles show up right away; grouping and summaries arrive in the background
 - **Summaries in your language** for stories with several articles. Single articles keep their own text, unless you
   choose to summarize those in other languages (a translated gist) or all of them.
 - **Keyboard first**: J / K to move, L / H to expand and collapse, V / Enter to open the source page (in the window
-  or the browser), M to toggle read, R to refresh, Shift+A to mark everything read.
+  or the browser), M to toggle read, R to refresh, Shift+A to mark everything read, ? for all the shortcuts.
+- **The whole article** when the feed only has its first lines: P shows the full text of the source page, T a TL;DR
+  of it (with the key details for longer articles).
 - **Read means read**: moving onto an item marks it read; read items leave the list when you switch views or
   refresh, and a refresh never brings them back.
 - **Runs in the menu bar** after you close the window, refreshing and organizing in the background, with the unread
@@ -26,8 +28,9 @@ New articles show up right away; grouping and summaries arrive in the background
 
 ## Privacy and cost
 
-- Feedini only reads what the feeds contain. It never downloads web pages, except the page you open yourself, and
-  that page never goes to the AI.
+- Feedini only reads what the feeds contain. It downloads a web page only when you ask for it: the page you open
+  (V), its full text (P) or its summary (T). Only T sends the page's text to the AI. If you are logged in on the
+  site, the text may include what the page shows about you (such as "Logged in as …").
 - The AI gets titles and the start of the feed texts through the `claude` CLI, with all of its tools turned off.
 - With the default model (Claude Haiku) organizing new articles costs about $0.002–0.005 per batch of 20 and a
   summary of ten stories about $0.004; Settings → AI shows the calls, time and cost per day.

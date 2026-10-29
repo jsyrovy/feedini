@@ -54,7 +54,8 @@ Feedini/
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
               NLLanguageRecognizer), OPML (import / export), FeedSubscriber (checks an address or OPML entries before
-              adding: HTTPS only, a real feed, not subscribed yet)
+              adding: HTTPS only, a real feed, not subscribed yet), PageExtractor (a source page's text in a hidden
+              WKWebView: PageScript, PageText, PageExtracting)
   Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
@@ -62,24 +63,29 @@ Feedini/
               (payload with short IDs), Validation (pure: applying an assign answer), SummaryStep (pure: which
               stories, priority, payload, applying) + TopicTranslation, AIQueue (AICaller: one call with its
               recording; AssignQueue: serial batches, backoff; SummaryQueue: parallel batches, priority;
-              LibraryHost, AIConfiguration), AIStatus (@Observable state, stories being summarized, recent calls),
-              OutputLanguage (names, choices)
+              LibraryHost, AIConfiguration), PageSummaryStep (pure: page summary request, applying),
+              PageSummaryQueue (P / T on request: loading pages, summarizing them), AIStatus (@Observable state,
+              stories being summarized, pages being loaded or summarized, recent calls), OutputLanguage (names,
+              choices)
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
   UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
-              DetailView (StoryDetail, ArticleDetail, SourcePage), SummaryView, WebPageView (WKWebView), Reader
-              (window state: selection, cursor, expanded stories, kept entries, the shown page), KeyboardNavigation
-              (pure: what a key does), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings +
-              AISettings, MenuBarContent (+ MenuBarLabel)
+              DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
+              PageSummaryView), WebPageView (WKWebView), Reader (window state: selection, cursor, expanded stories,
+              kept entries, the shown page or page text, the shortcuts sheet), KeyboardNavigation (pure: what a key
+              does), ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime,
+              SettingsView (tabs) + FeedsSettings + GeneralSettings + AISettings, MenuBarContent (+ MenuBarLabel)
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML
-              file
+              file, article pages with made-up text for the extraction (`page-*.html`: a cookie consent overlay, an
+              article in divs, `main` with a menu and navigation, JSON-LD only, no article)
   Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), FakeCommandRunner
-              (canned CLI replies, recorded calls), TestLibraryHost + `ClaudeLocator.stub` + `AppModel.test()`, model
-              stubs (`referenceDate`, `Article.stub`, …)
+              (canned CLI replies, recorded calls), FakePageExtractor (canned page texts, recorded requests),
+              TestLibraryHost + `ClaudeLocator.stub` + `AppModel.test()` (fake claude and pages), model stubs
+              (`referenceDate`, `Article.stub`, …)
 ```
 
 ## Conventions
@@ -92,8 +98,11 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
 - The UI never waits on the network or a subprocess.
 - Logic lives in pure types with ~100 % meaningful test coverage; `App/` and `UI/` are wiring and layout, checked by
   running the app (see "Testing").
-- Data comes only from the feeds. Neither the app nor the AI downloads web pages, except the source page the user
-  explicitly opens (and that page never goes to the AI).
+- Data comes from the feeds. A web page is loaded only on the user's explicit request, never automatically: the
+  source page opened with V, its text for P (preview) and T (summary). Only T sends a page's text to the AI.
+- Privacy: the page loads with the user's cookies and logins (the default website data store), so its text may
+  include what the site shows about the user ("Logged in as …"). Choosing the article container (`article`, `main`)
+  leaves most of that out, but not reliably.
 - AI is always optional; an AI failure never blocks reading.
 - Nothing secret or personal in the repo: no API keys, personal paths or names, `claude` outputs with session IDs.
 - Feed fixtures have the structure of real feeds but made-up text (no copies of other people's articles).
@@ -122,6 +131,8 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
 - Summaries only where they add something: stories with several articles always; a single article only as chosen in
   Settings → AI ("Summarize single articles": never (default), in other languages than the summary language (then it
   is a translation), always). Otherwise a single article shows its own title and excerpt.
+- Most feeds carry only the first lines of an article (a median of 200–330 characters for most of the test feeds).
+  P shows the text of the source page instead, T a TL;DR of it; both only on request, on a single article.
 - After closing the window the app keeps running in the menu bar (`.accessory`) and keeps refreshing, so opening it
   shows everything processed. With the window open it is a regular app with a Dock icon.
 
@@ -141,6 +152,18 @@ Three columns: sidebar (All, topics by unread count, feeds), story list (newest 
   the other way (Settings → General: "Feedini window" (default) or "Default browser"). On a collapsed story with
   several articles V / Enter expands it (there is no single source page) and Shift+V / Shift+Enter does nothing.
 - In the window the page replaces the feed text in the detail; V / Enter again or Esc returns to the feed text.
+- P (preview) shows the text of the source page instead of the feed text (loaded the first time, then stored); P
+  again returns to the feed text. A text cut at `PageText.maxLength` ends with a pointer to V. Works without AI.
+- T (TL;DR) summarizes the source page with AI: a box above the text with the TL;DR and, for longer texts, details
+  as bullet points. It replaces the AI gist of the feed text of a one-article story (it is more complete). T on a
+  current summary does nothing; after a change of the summary language it writes a new one from the stored text.
+  From the source page in the window, T (or its "Summarize Page" button) returns to the text with the summary.
+- P and T work like Shift+V: on an article row or a story with one article, with a link; on a collapsed story with
+  several articles they do nothing. Opening the page in the window (V) forgets its stored text, so the next P / T
+  loads it again – after the user accepted cookies or logged in there.
+- ? shows the keyboard shortcuts (`ShortcutsView`, a sheet; Esc, ? or Done close it), also from Help → Keyboard
+  Shortcuts (without a key equivalent: a plain key would fire in text fields, ⌘? searches the Help menu). T is
+  grayed with the reason while AI can't run. The empty detail says "Press ? for keyboard shortcuts."
 
 | Key | Action |
 |---|---|
@@ -150,10 +173,15 @@ Three columns: sidebar (All, topics by unread count, feeds), story list (newest 
 | H / ← / Esc | collapse the story (from an article: jump to its story) |
 | V / Enter | open the source page the default way |
 | Shift+V / Shift+Enter | open the source page the other way |
+| P | the text of the source page instead of the feed text, again: back |
+| T | TL;DR of the source page (AI) |
 | M | toggle read / unread |
 | R | refresh now |
 | Shift+A | mark everything in the current selection (All, topic, feed) as read |
+| ? | keyboard shortcuts |
 | ⌘, | settings |
+
+S is kept free for a future "Save for later".
 
 Keys work in the list. While the web page has focus, only Esc works (it returns focus to the list).
 
@@ -169,7 +197,12 @@ Implementation:
   empties. M keeps the entry too.
 - `KeyboardNavigation.action` decides what a key does from the cursor, the rows, the expanded stories, the default
   way of opening pages and the shown page; `Reader.handle` carries it out. The story list's `onKeyPress` maps keys
-  (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus). A double click opens like V / Enter.
+  (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
+  any keyboard layout. A double click opens like V / Enter.
+- `ShortcutHelp.item(for:)` switches over every `ListKey` (`CaseIterable`), so a new key doesn't compile without
+  its line in the help.
+- `Reader.shown` is what the detail shows instead of the feed text: the source page (V) or its text (P), never both.
+  Moving, a new sidebar selection and Shift+A reset it.
 - The source page (`WebPageView`): a `WKWebView` with the default persistent website data store (logins and cookies
   work), JavaScript on, no script message handlers. Link clicks and new windows open in the default browser. Esc in
   the page (`EscapableWebView`) returns to the feed text and focuses the list (`Reader.listFocusRequests`).
@@ -181,13 +214,14 @@ Implementation:
   become bullet points. Without a summary yet: "Summarizing…" (or the error after repeated failures); an out-of-date
   one stays with "Updating summary…" while the AI works.
 - AI in the list: a loose article shows ✨ while the AI organizes (`AIStatus.organizing`); the status bar shows
-  "Organizing N new articles…", "Summarizing N stories…" or "AI unavailable: …" next to the refresh state. Stories
+  "Organizing N new articles…", "Summarizing N stories…", "Summarizing page…" or "AI unavailable: …" next to the
+  refresh state. Stories
   from several feeds have an accent bar and source labels; "+N new" marks articles that joined a read story.
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
   in order. The entries are cached with an index by ID (`AppModel.entry(_:)`) and the unread counts
   (`unreadCounts`, used by the sidebar and the menu bar) for one summary language and choice of single-article
-  summaries; the cache is rebuilt only when the articles or stories change or one of those does. Read-state changes patch it and don't notify the reader
-  (they never move articles into stories).
+  summaries; the cache is rebuilt only when the articles or stories change or one of those does. Read-state changes
+  patch it and don't notify the reader (they never move articles into stories).
 
 ## Feeds
 
@@ -214,6 +248,28 @@ Implementation:
   duplicates, URLs as written – checking them is the importer's job. `OPML.export` writes OPML 2.0.
 - `FeedLanguage`: the feed's `<language>` / `dc:language` / Atom `xml:lang` reduced to the primary code (`cs-CZ` →
   `cs`); without one, `NLLanguageRecognizer` on the title and the start of the text (at least 50 % sure).
+
+### Source pages (P, T)
+
+- `PageExtractor` (main actor) loads a page in its own hidden `WKWebView` (1200 × 900, the default website data
+  store shared with `WebPageView`, JavaScript on, images, media and fonts blocked by a content rule list compiled
+  once), waits for `didFinish` plus 1 s (a new navigation – a script redirect – restarts the wait), runs
+  `PageScript.extract` and gives up after 20 s. HTTP errors of the main frame, load failures (worded by
+  `FetchError`) and timeouts are `PageError`s with a message for the user.
+- `PageScript.extract` only reads the page. It leaves out overlays (`position: fixed`, dialogs, hidden elements,
+  ids / classes of consent tools: a cookie dialog otherwise wins with the most text), navigation, headers, footers,
+  forms, figures, comments and share buttons. The container is the biggest `[itemprop=articleBody]`, else `article`,
+  else `main` (each with at least 500 characters), else the element with the most paragraph text, else the body.
+  Its blocks (by computed `display`) become paragraphs separated by blank lines, `<br>` a line break (two a
+  paragraph), list items "• " lines, `pre` stays as it is; blocks that are mostly link text (menus, lists of other
+  articles) are dropped. JSON-LD `articleBody` is only a fallback under 500 characters (it has no paragraphs). It
+  returns at most twice `PageText.maxLength`.
+- `PageText.clean` (pure) collapses whitespace, drops empty lines and cuts at `maxLength` (100 000 characters, a
+  safeguard against a failed extraction, not a model limit; the longest article in the lab had 37 000); less than
+  `minLength` (100) is `PageError.noText`.
+- Measured on nine Czech and English feeds: 1.8–2.5 s per page; menus that the container's `innerText` kept are
+  gone. A site that redirects to its consent page on the server (iDNES) gives the consent text until the user
+  accepts it in the window (V); the AI then answers `not_article`.
 
 ## Running in the background
 
@@ -350,16 +406,39 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude
   actually ran (`ClaudeError.isTransient`), also when its answer was an error. The queues only add their retry
   policy.
+- `PageSummaryQueue` (main actor) does P and T, only on request: `loadPage` stores the page text unless it is
+  stored; `summarize` loads it if needed and writes the summary unless it is current. Requests are per article; one
+  for an article already being worked on is ignored, except that T makes a running P go on to the summary. At most
+  2 run at once. Nothing is retried by itself (it is the user's action); errors stay in `AIStatus.pages` (the only
+  record of the work) and show in the detail. `canSummarize` (also for the button) says whether T does anything;
+  `pageOpened` (V in the window) forgets the stored text. AI off: T says so at once (`AIStatus.State.problem`: "AI
+  is off (Settings → AI).") and P still works.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
-  errors, for the status line ("Organizing 12 new articles…", "Summarizing 5 stories…", "AI unavailable: …"), and
-  the last 20 calls (time, cost or error) for Settings → AI.
+  errors, the pages being loaded or summarized (`PageWork`: phase, whether T asked for a summary) and their errors,
+  for the status line ("Organizing 12 new articles…", "Summarizing 5 stories…", "Summarizing page…", "AI
+  unavailable: …"), and the last 20 calls (time, cost or error) for Settings → AI.
 - AI settings (`Preferences`): `aiEnabled` (on by default), `claudePath` (empty = look it up), `assignModel` and
   `summaryModel` (free text, default `claude-haiku-5-5`), `aiEffort` (`low` / `medium` / `high`, default `low`); a
   change calls `onAIChange`, which triggers the queues. `summaryLanguage` (a language code, empty = the system
   language from `Locale.current`) is the language of story titles, topics and summaries; the prompt gets its English
   name (`OutputLanguage`). `singleArticleSummaries` (`never` / `otherLanguages` / `always`, default `never`) decides
-  which single articles get a summary. Haiku was as accurate as Sonnet for assigning and 1.1–3× faster; for summaries it
-  invented fewer facts than Sonnet in the lab.
+  which single articles get a summary. Haiku was as accurate as Sonnet for assigning and 1.1–3× faster; for
+  summaries it invented fewer facts than Sonnet in the lab.
+
+### Page summary
+
+- `Prompts.pageSummary` (tested in the lab on the pages of nine feeds): the payload has `output_language`, `source`
+  (the feed), `title` (from the feed, so the AI can tell whether the page shows the article) and `page_text`. The
+  answer has `status` (`ok` / `not_article`: a consent, subscription or login wall, an error page, another
+  article), `tldr` (1–2 sentences) and `details` (3–7 points, only when they add facts).
+- Details only for texts of `PageSummaryStep.detailsMinLength` (2 000) characters or more, decided in code: shorter
+  texts get `pageSummaryTLDRSchema` without `details`. Even a stricter prompt didn't stop the model from repeating
+  the TL;DR as points for a short news item.
+- `summaryModel` (Haiku) with the usual effort, in `summaryLanguage`. Haiku took 1–9 s and $0.0004–0.003 per page;
+  Sonnet cost 15–20× more and wasn't better.
+- `PageSummaryStep.apply` stores an `ok` answer with a non-empty TL;DR (details trimmed, a stray "- " removed).
+  `not_article` drops the stored page text, so the next T loads the page again, and shows "Open it with V, accept
+  or log in, then press T again".
 
 ## Storage and retention
 
@@ -367,7 +446,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
   migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage` via
-  `decodeIfPresent`, `Story.summary`, `Topic.language` as optionals), so older files load without a bump. The
+  `decodeIfPresent`, `Story.summary`, `Topic.language`, `Article.pageText`, `Article.pageSummary` as optionals), so
+  older files load without a bump. The
   version is read before the library, so a file from a newer Feedini isn't decoded for nothing.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
@@ -375,6 +455,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   empty.
 - An article belongs to a feed and is identified within it by `key` (guid / Atom id, else the link). `Article.date`
   is the published date clamped to the first sighting (future dates), or the first sighting without one.
+- `Article.pageText` (P / T) and `Article.pageSummary` (T: TL;DR, details, language, date) are stored with the
+  article and go with it (`Retention`); a repeated T costs nothing.
 - Measured with 5000 articles (a third read, 30 feeds, 2 KB of text each; `-O`): the file has 14 MB, encoding takes
   0.13 s (in the store actor, off the main actor), decoding 0.06 s; building all list entries 49 ms, filtering
   + rows + counts 2 ms, marking read + comparing the library 1 ms. Enough for "unread forever"; SQLite isn't needed.
@@ -394,6 +476,10 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   processes (stdin, large input, a command that doesn't read it, timeouts, grandchildren holding the pipe).
 - Network code is tested through `StubURLProtocol` (`StubURLProtocol.session()`), never the real network. Every test
   uses unique hosts (`uniqueURL()`), so tests can run in parallel.
+- The extraction script runs in a real hidden web view in the test host (`PageExtractor.extract(html:baseURL:)`
+  with the `page-*.html` fixtures, a non-persistent data store and no settle delay; a `data:` URL for loading by
+  address). Everything above it uses `FakePageExtractor`. The queues hold their host unowned, so a test that starts
+  a page load waits for `pageQueue.waitUntilIdle()` before it ends.
 - Checking the running app: `screencapture` needs the Screen Recording permission (without it: "could not create
   image from display"). Without it, inspect windows with `CGWindowListCopyWindowInfo` (owner `Feedini`).
 
@@ -407,9 +493,10 @@ state transitions, the commands that were run), not just execute lines. There is
 total is dominated by the UI layer, which is deliberately not unit-tested.
 
 Aim for ~100 % in the pure types: `Model/`, `Store/`, `Feeds/`, `Refresh/` (the scheduler with `ManualSleeper`),
-`AI/` (the queues with `FakeCommandRunner`, `TestLibraryHost` and `ManualSleeper` for the backoff), `Debug/`,
-`KeyboardNavigation`, `RelativeTime`, `Preferences`, and `Reader` (tested with a real `AppModel` over a temporary
-store).
+`AI/` (the queues with `FakeCommandRunner`, `TestLibraryHost`, `FakePageExtractor` and `ManualSleeper` for the
+backoff), `Debug/`, `KeyboardNavigation`, `ShortcutHelp`, `RelativeTime`, `Preferences`, and `Reader` (tested with a
+real `AppModel` over a temporary store). In `PageExtractor` the WebKit callbacks for HTTP errors and failed loads
+stay uncovered (they need the network).
 
 Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp`, `AppDelegate`, `LoginItem`, `AppModel.start` and the
 non-test branch of `RuntimeEnvironment`) and `UI/` views. Keep these files pure wiring: logic that needs a test

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The keys of the story list (see "Reading model" in CLAUDE.md).
-enum ListKey: Sendable {
+enum ListKey: CaseIterable, Sendable {
     /// J / ↓
     case next
     /// K / ↑
@@ -16,12 +16,18 @@ enum ListKey: Sendable {
     case open
     /// Shift+V / Shift+Enter
     case openOther
+    /// P: the text of the source page instead of the feed text
+    case preview
+    /// T: a TL;DR of the source page
+    case summarizePage
     /// M
     case toggleRead
     /// R
     case refresh
     /// Shift+A
     case markAllRead
+    /// ?
+    case shortcuts
 }
 
 /// What a key does in the story list (pure): the decision only, carried out by the reader.
@@ -34,9 +40,13 @@ enum KeyboardNavigation {
         case openPage(URL, inWindow: Bool)
         /// Back from the source page to the feed text.
         case closePage
+        /// Shows the text of the source page instead of the feed text, or the feed text again.
+        case previewPage(Article.ID)
+        case summarizePage(Article.ID)
         case toggleRead(ListRow)
         case refresh
         case markAllRead
+        case showShortcuts
         case none
     }
 
@@ -59,6 +69,7 @@ enum KeyboardNavigation {
         switch key {
         case .refresh: return .refresh
         case .markAllRead: return .markAllRead
+        case .shortcuts: return .showShortcuts
         case .next, .previous: return move(key == .next ? 1 : -1, from: cursor, in: rows)
         default: break
         }
@@ -81,6 +92,11 @@ enum KeyboardNavigation {
             return isExpanded ? .none : .expand(entry.id)
         case (.openOther, .story) where entry.isMultiArticle:
             return .none
+        case (.preview, .story) where entry.isMultiArticle, (.summarizePage, .story) where entry.isMultiArticle:
+            return .none
+        case (.preview, _), (.summarizePage, _):
+            guard let article = entry.article(at: cursor), article.link != nil else { return .none }
+            return key == .preview ? .previewPage(article.id) : .summarizePage(article.id)
         case (.open, _), (.openOther, _):
             guard let article = entry.article(at: cursor) else { return .none }
             let inWindow = (key == .open) == opensInWindow

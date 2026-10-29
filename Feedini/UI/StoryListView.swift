@@ -90,9 +90,13 @@ struct StoryListView: View {
         case "l": return .expand
         case "h": return .collapse
         case "v": return shift ? .openOther : .open
+        case "p": return .preview
+        case "t": return .summarizePage
         case "m": return .toggleRead
         case "r": return .refresh
         case "a": return shift ? .markAllRead : nil
+        // The character, not the key: ? is typed differently on every layout.
+        case "?": return .shortcuts
         default: return nil
         }
     }

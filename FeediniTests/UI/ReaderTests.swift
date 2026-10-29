@@ -6,6 +6,7 @@ import Testing
 @MainActor
 struct ReaderTests {
     private let feed = Feed.stub("Tech")
+    private let extractor = FakePageExtractor()
     private let model: AppModel
     private let reader: Reader
     private let lone: Article
@@ -14,7 +15,7 @@ struct ReaderTests {
     private let story: Story
 
     init() {
-        model = AppModel.test()
+        model = AppModel.test(extractor: extractor)
         reader = Reader(model: model)
         lone = Article.stub("Lone", feed: feed.id, hours: -1)
         first = Article.stub("First", feed: feed.id, hours: -2)
@@ -117,6 +118,61 @@ struct ReaderTests {
         #expect(reader.cursor == .story(.story(story.id)))
         reader.toggleExpanded(.story(story.id))
         #expect(reader.expanded == [.story(story.id)])
+    }
+
+    @Test func pTogglesThePageTextAndLoadsItOnce() async {
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.preview)
+        #expect(reader.previewArticle == lone.id)
+        await model.pageQueue?.waitUntilIdle()
+        #expect(model.library.articles[lone.id]?.pageText != nil)
+
+        reader.handle(.preview)
+        #expect(reader.previewArticle == nil)
+        reader.handle(.preview)
+        #expect(reader.previewArticle == lone.id)
+        #expect(extractor.requests.count == 1)
+
+        reader.handle(.next)
+        #expect(reader.previewArticle == nil)
+    }
+
+    @Test func pFromTheSourcePageShowsThePageText() async {
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.open)
+        reader.handle(.preview)
+        #expect(reader.pageArticle == nil)
+        #expect(reader.previewArticle == lone.id)
+        await model.pageQueue?.waitUntilIdle()
+    }
+
+    @Test func openingThePageInTheWindowForgetsItsText() async {
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.preview)
+        await model.pageQueue?.waitUntilIdle()
+
+        reader.handle(.open)
+        #expect(reader.pageArticle == lone.id)
+        #expect(reader.previewArticle == nil)
+        #expect(model.library.articles[lone.id]?.pageText == nil)
+    }
+
+    @Test func tSummarizesThePageAndLeavesTheSourcePage() async {
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.open)
+        reader.handle(.summarizePage)
+
+        #expect(reader.pageArticle == nil)
+        #expect(model.aiStatus.pages[lone.id]?.summary == true)
+        await model.pageQueue?.waitUntilIdle()
+        #expect(extractor.requests == [lone.link!])
+    }
+
+    @Test func questionMarkShowsAndHidesTheShortcuts() {
+        reader.handle(.shortcuts)
+        #expect(reader.isShowingShortcuts)
+        reader.handle(.shortcuts)
+        #expect(!reader.isShowingShortcuts)
     }
 
     @Test func unknownKeysAreNotHandled() {

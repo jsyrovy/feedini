@@ -14,6 +14,19 @@ final class AIStatus {
         case unavailable(String)
     }
 
+    /// The work on an article's source page (P, T).
+    struct PageWork: Equatable, Sendable {
+        enum Phase: Equatable, Sendable {
+            case loading
+            case summarizing
+            case failed(String)
+        }
+
+        var phase: Phase
+        /// Whether T asked for a summary (P only loads the page).
+        var summary: Bool
+    }
+
     struct Call: Equatable, Sendable, Identifiable {
         var id = UUID()
         var date: Date
@@ -31,6 +44,14 @@ final class AIStatus {
     private(set) var summarizing = Set<Story.ID>()
     /// Why a story has no summary after repeated attempts.
     private(set) var summaryErrors: [Story.ID: String] = [:]
+    /// Source pages being loaded or summarized, and why that failed; nothing once done.
+    private(set) var pages: [Article.ID: PageWork] = [:]
+
+    func setPage(_ work: PageWork?, for article: Article.ID) {
+        if pages[article] != work {
+            pages[article] = work
+        }
+    }
 
     func setSummarizing(_ stories: Set<Story.ID>) {
         if summarizing != stories {
@@ -65,19 +86,36 @@ final class AIStatus {
     var message: String? {
         switch state {
         case .organizing(let count): count == 1 ? "Organizing 1 new article…" : "Organizing \(count) new articles…"
-        case .unavailable(let reason): "AI unavailable: \(reason)"
+        case .unavailable: state.problem
         case .idle, .off:
             switch summarizing.count {
-            case 0: nil
+            case 0: isSummarizingPage ? "Summarizing page…" : nil
             case 1: "Summarizing 1 story…"
             case let count: "Summarizing \(count) stories…"
             }
         }
     }
 
-    /// Whether the AI is busy (organizing or summarizing).
+    /// Whether the AI is busy (organizing or summarizing stories or pages).
     var isWorking: Bool {
         if case .organizing = state { return true }
-        return !summarizing.isEmpty
+        return !summarizing.isEmpty || isSummarizingPage
+    }
+
+    private var isSummarizingPage: Bool {
+        pages.values.contains { $0.phase == .summarizing }
+    }
+}
+
+extension AIStatus.State {
+    static let offMessage = "AI is off (Settings → AI)."
+
+    /// Why AI can't run; `nil` when it can.
+    var problem: String? {
+        switch self {
+        case .off: Self.offMessage
+        case .unavailable(let reason): "AI unavailable: \(reason)"
+        case .idle, .organizing: nil
+        }
     }
 }

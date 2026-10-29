@@ -116,10 +116,41 @@ struct KeyboardNavigationTests {
         #expect(action(.open, at: .article(multi.id, .init()), expanded: [multi.id]) == .none)
     }
 
+    @Test func previewAndSummarizeWorkOnAnArticle() {
+        #expect(action(.preview, at: .story(single.id)) == .previewPage(lone.id))
+        #expect(action(.summarizePage, at: .story(single.id)) == .summarizePage(lone.id))
+        #expect(
+            action(.preview, at: .article(multi.id, second.id), expanded: [multi.id]) == .previewPage(second.id))
+        #expect(
+            action(.summarizePage, at: .article(multi.id, second.id), expanded: [multi.id])
+                == .summarizePage(second.id))
+        // While the source page is shown too.
+        #expect(action(.summarizePage, at: .story(single.id), page: lone.id) == .summarizePage(lone.id))
+    }
+
+    @Test func previewAndSummarizeDoNothingOnAStoryWithSeveralArticles() {
+        #expect(action(.preview, at: .story(multi.id)) == .none)
+        #expect(action(.summarizePage, at: .story(multi.id), expanded: [multi.id]) == .none)
+        #expect(action(.preview, at: nil) == .none)
+    }
+
+    @Test func previewAndSummarizeNeedALink() {
+        var article = lone
+        article.link = nil
+        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article], newArticleIDs: [])
+        for key in [ListKey.preview, .summarizePage] {
+            let result = KeyboardNavigation.action(
+                for: key, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
+                opensInWindow: true, pageArticle: nil)
+            #expect(result == .none)
+        }
+    }
+
     @Test func theOtherKeysNeedNoCursor() {
         #expect(action(.toggleRead, at: .story(multi.id)) == .toggleRead(.story(multi.id)))
         #expect(action(.toggleRead, at: nil) == .none)
         #expect(action(.refresh, at: nil) == .refresh)
         #expect(action(.markAllRead, at: nil) == .markAllRead)
+        #expect(action(.shortcuts, at: nil) == .showShortcuts)
     }
 }

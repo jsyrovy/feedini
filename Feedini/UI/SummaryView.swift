@@ -67,3 +67,52 @@ struct SummaryText: View {
         }
     }
 }
+
+/// The AI summary of an article's source page (T): the TL;DR as a paragraph and the details as bullet points,
+/// "Loading page…" / "Summarizing page…" while T works, or why it failed.
+struct PageSummaryView: View {
+    @Environment(AppModel.self) private var model
+    let article: Article
+
+    /// When there is a summary, or T was asked for one.
+    static func isShown(for article: Article, status: AIStatus) -> Bool {
+        article.pageSummary != nil || status.pages[article.id]?.summary == true
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Page Summary", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let summary = article.pageSummary {
+                Text(summary.tldr)
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+                if !summary.details.isEmpty {
+                    SummaryText(text: summary.details.map { "- \($0)" }.joined(separator: "\n"))
+                }
+            }
+            if let work = model.aiStatus.pages[article.id], work.summary {
+                status(work.phase, isUpdating: article.pageSummary != nil)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private func status(_ phase: AIStatus.PageWork.Phase, isUpdating: Bool) -> some View {
+        switch phase {
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle")
+        case .loading, .summarizing:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(phase == .loading ? "Loading page…" : isUpdating ? "Updating summary…" : "Summarizing page…")
+            }
+        }
+    }
+}

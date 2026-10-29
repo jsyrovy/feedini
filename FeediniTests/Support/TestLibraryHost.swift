@@ -24,11 +24,15 @@ extension ClaudeLocator {
 }
 
 extension AppModel {
-    /// A model over a store in a new temporary directory and defaults of its own, not loaded (no refresh, no AI).
-    static func test() -> AppModel {
+    /// A model over a store in a new temporary directory and defaults of its own, not loaded (no refresh, no AI
+    /// queues running). Claude calls and source pages go to the given fakes.
+    static func test(
+        runner: FakeCommandRunner = FakeCommandRunner([]), extractor: FakePageExtractor = FakePageExtractor()
+    ) -> AppModel {
         let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-\(UUID().uuidString)")
         return AppModel(
             preferences: Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!),
-            store: LibraryStore(fileURL: directory.appending(path: "library.json")))
+            store: LibraryStore(fileURL: directory.appending(path: "library.json")), claudeRunner: runner,
+            claudeLocator: .stub(), pageExtractor: extractor)
     }
 }

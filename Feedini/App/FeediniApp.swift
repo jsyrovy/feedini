@@ -31,6 +31,11 @@ struct FeediniApp: App {
                 Button("Refresh Now") { appDelegate.model.refreshNow() }
                     .keyboardShortcut("r")
             }
+            // The default Help item has nothing to show. No key equivalent: a plain ? would fire in text fields too, and
+            // ⌘? searches the Help menu.
+            CommandGroup(replacing: .help) {
+                Button("Keyboard Shortcuts") { appDelegate.reader.isShowingShortcuts = true }
+            }
             #if DEBUG
                 DebugCommands(model: appDelegate.model)
             #endif

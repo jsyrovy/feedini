@@ -17,7 +17,8 @@ struct DetailView: View {
                 StoryDetail(entry: entry)
             }
         } else {
-            ContentUnavailableView("No Selection", systemImage: "doc.text")
+            ContentUnavailableView(
+                "No Selection", systemImage: "doc.text", description: Text("Press ? for keyboard shortcuts."))
         }
     }
 }
@@ -82,17 +83,22 @@ struct ArticleDetail: View {
                 Text(meta)
                     .foregroundStyle(.secondary)
                 if let link = article.link {
-                    OpenButtons(url: link)
+                    HStack {
+                        OpenButtons(url: link)
+                        PageButtons(article: article)
+                    }
                 }
-                if let story, story.needsSummary {
+                // The page summary replaces the AI gist of the feed text: it is more complete.
+                if PageSummaryView.isShown(for: article, status: model.aiStatus) {
+                    PageSummaryView(article: article)
+                } else if let story, story.needsSummary {
                     SummaryView(entry: story)
                 }
                 Divider()
-                ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
-                    Text(paragraph)
-                        .font(.body)
-                        .lineSpacing(3)
-                        .textSelection(.enabled)
+                if reader.previewArticle == article.id {
+                    PagePreview(article: article)
+                } else {
+                    Paragraphs(text: article.text.isEmpty ? "No text in the feed." : article.text)
                 }
             }
             .padding(24)
@@ -107,10 +113,74 @@ struct ArticleDetail: View {
         let date = article.published.map { $0.formatted(date: .abbreviated, time: .shortened) }
         return [feed, article.author, date].compactMap { $0 }.joined(separator: " · ")
     }
+}
 
-    private var paragraphs: [String] {
-        let paragraphs = article.text.components(separatedBy: "\n\n").filter { !$0.isEmpty }
-        return paragraphs.isEmpty ? ["No text in the feed."] : paragraphs
+/// Plain text with paragraphs separated by blank lines.
+struct Paragraphs: View {
+    let text: String
+
+    var body: some View {
+        ForEach(Array(text.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
+            if !paragraph.isEmpty {
+                Text(paragraph)
+                    .font(.body)
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}
+
+/// The text of the source page instead of the feed text (P), or how loading it goes.
+struct PagePreview: View {
+    @Environment(AppModel.self) private var model
+    let article: Article
+
+    var body: some View {
+        if let text = article.pageText {
+            Label("Text of the source page · P shows the feed text", systemImage: "doc.plaintext")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Paragraphs(text: text)
+            if PageText.isTruncated(text) {
+                Text("The text is cut off here. Press V for the whole page.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            switch model.aiStatus.pages[article.id]?.phase {
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
+            case .loading, .summarizing, nil:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading page…")
+                }
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// "Preview" (P) and "Summarize Page" (T).
+struct PageButtons: View {
+    @Environment(AppModel.self) private var model
+    @Environment(Reader.self) private var reader
+    let article: Article
+
+    var body: some View {
+        Toggle(
+            "Preview", systemImage: "doc.plaintext",
+            isOn: Binding(
+                get: { reader.previewArticle == article.id },
+                set: { _ in reader.togglePreview(article.id) })
+        )
+        .toggleStyle(.button)
+        .help("P")
+        Button("Summarize Page", systemImage: "sparkles") { reader.summarizePage(article.id) }
+            .help("T")
+            .disabled(!model.canSummarizePage(article.id))
     }
 }
 
@@ -159,6 +229,8 @@ struct SourcePage: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
+                Button("Summarize Page", systemImage: "sparkles") { reader.summarizePage(article.id) }
+                    .help("Back to the article with a summary of this page")
                 Button("Open in Browser", systemImage: "safari") { reader.open(url, inWindow: false) }
             }
             .padding(8)
