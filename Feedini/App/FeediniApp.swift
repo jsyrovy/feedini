@@ -27,6 +27,9 @@ struct FeediniApp: App {
                 .environment(appDelegate.reader)
         }
         .commands {
+            CommandGroup(replacing: .undoRedo) {
+                UndoCommands(reader: appDelegate.reader)
+            }
             CommandGroup(after: .toolbar) {
                 Button("Refresh Now") { appDelegate.model.refreshNow() }
                     .keyboardShortcut("r")

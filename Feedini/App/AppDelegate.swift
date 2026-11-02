@@ -18,6 +18,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [model] _ in
             MainActor.assumeIsolated { model.refreshNow() }
         }
+        // ⌘Z takes back reading only while the main window is the key window (`UndoCommands`).
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [reader] _ in
+                MainActor.assumeIsolated {
+                    reader.isMainWindowKey = NSApp.keyWindow.map(Self.isMainWindow) ?? false
+                }
+            }
+        }
+    }
+
+    /// The window of the `Window` scene with `FeediniApp.mainWindowID`.
+    private static func isMainWindow(_ window: NSWindow) -> Bool {
+        window.identifier?.rawValue.hasPrefix(FeediniApp.mainWindowID) == true
     }
 
     /// Closing the window keeps Feedini running in the menu bar.

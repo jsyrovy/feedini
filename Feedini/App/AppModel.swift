@@ -287,6 +287,22 @@ final class AppModel: LibraryHost {
 
     // MARK: Changes
 
+    /// Puts the reading state back (⌘Z); returns the state it replaced, `nil` when none of the items exists anymore.
+    /// Without a change of saving it patches the cached entries like reading does.
+    func restore(_ state: ReadingState) -> ReadingState? {
+        let replaced = library.readingState(articles: state.articles.keys, stories: state.stories.keys)
+        guard !replaced.isEmpty else { return nil }
+        let changesSaving =
+            state.articles.contains { replaced.articles[$0.key]?.savedAt != $0.value.savedAt }
+            || state.stories.contains { replaced.stories[$0.key]?.savedAt != $0.value.savedAt }
+        if changesSaving {
+            update { _ = $0.restore(state) }
+        } else {
+            changeReadState(of: Array(state.articles.keys)) { _ = $0.restore(state) }
+        }
+        return replaced
+    }
+
     /// Saves the item for later (S), or removes it from Saved for `nil`.
     func setSaved(_ item: SavedItem, at date: Date?) {
         update { $0.setSaved(item, at: date) }

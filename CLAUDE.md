@@ -51,7 +51,7 @@ Feedini/
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
               folders), Saved (SavedItem, Library's saving, names of removed feeds), AIUsage (AI calls per day),
               StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts), ReadRules (pure:
-              what visiting a row and M do; ListRow)
+              what visiting a row and M do; ListRow), UndoHistory (pure: ReadingState, the steps of ⌘Z / ⇧⌘Z)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
@@ -76,9 +76,10 @@ Feedini/
               MoveToFolderMenu), StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
               PageSummaryView), WebPageView (WKWebView), Reader (window state: selection, cursor, expanded stories,
-              kept entries, the shown page or page text, the shortcuts sheet), KeyboardNavigation (pure: what a key
-              does), ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime,
-              SettingsView (tabs) + FeedsSettings + GeneralSettings + AISettings, MenuBarContent (+ MenuBarLabel)
+              kept entries, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
+              Undo / Redo), KeyboardNavigation (pure: what a key does), ShortcutHelp (pure: the shortcuts by group)
+              + ShortcutsView (the ? sheet), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings +
+              AISettings, MenuBarContent (+ MenuBarLabel)
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
@@ -178,6 +179,14 @@ list (newest first), detail.
   goes away. Without AI the page text is still stored; on a story with several articles it only saves. While it runs
   the row shows ✨, a failure (AI off, a consent or login wall, an error) ⚠︎ with the message, in every list; only T
   tries again.
+- ⌘Z takes back reading and saving in the main window, one step at a time, ⇧⌘Z does it again (a new step clears
+  that). A step is every change of reading or saving: moving onto an unread item, M, Shift+A (all of it at once), S,
+  Shift+S (the saving; the page work goes on). It puts back exactly the state before (also the "+1 new" marks), shows
+  the item's row without reading it, keeps it in the list and doesn't change the sidebar selection. The menu names
+  the step ("Undo Mark as Read"). The history lives as long as the app (also with the window closed), at most
+  `UndoHistory.limit` (100) steps; a step whose items are gone (a removed feed, retention) is skipped. Steps that
+  change nothing (moving onto a read item) aren't recorded. Elsewhere – Settings, sheets, text fields – ⌘Z is the
+  usual text undo. Sidebar, folder and settings actions can't be undone.
 - P and T work like Shift+V: on an article row or a story with one article, with a link; on a collapsed story with
   several articles they do nothing. Opening the page in the window (V) forgets its stored text, so the next P / T
   loads it again – after the user accepted cookies or logged in there.
@@ -201,6 +210,7 @@ list (newest first), detail.
 | R | refresh now |
 | Shift+A | mark everything in the current selection (All, topic, folder, feed; not Saved) as read |
 | ? | keyboard shortcuts |
+| ⌘Z / ⇧⌘Z | undo / redo the last reading or saving |
 | ⌘, | settings |
 
 Keys work in the list. While the web page has focus, only Esc works (it returns focus to the list).
@@ -226,6 +236,12 @@ Implementation:
   way of opening pages and the shown page; `Reader.handle` carries it out. The story list's `onKeyPress` maps keys
   (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
   any keyboard layout. A double click opens like V / Enter.
+- `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles, save date and "new" marks of
+  their stories) before a change and records it in `UndoHistory` if the change changed it; undo and redo are
+  `Library.restore`, which returns the replaced state for the other stack (`AppModel.restore`: without a change of
+  saving it patches the cached entries like reading). `UndoCommands` replaces Edit → Undo / Redo: while the main
+  window is key (`Reader.isMainWindowKey`, set by `AppDelegate` from the key window notifications) they go to the
+  reader, otherwise `undo:` / `redo:` go to the responder chain.
 - `ShortcutHelp.item(for:)` switches over every `ListKey` (`CaseIterable`), so a new key doesn't compile without
   its line in the help.
 - `Reader.shown` is what the detail shows instead of the feed text: the source page (V) or its text (P), never both.
@@ -452,8 +468,9 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - `SummaryQueue` (main actor) also derives its work from the library: unread stories needing a summary that isn't
   current (`SummaryStep.pending`: stories from several feeds first, then newer first). Up to 3 calls run at once,
   10 stories each, plus one topic translation when needed. Read stories wait until they are unread again ("+1
-  new"), unless they are saved or have a saved article. Triggered with the assign queue and after every assign batch. A failing batch is retried after 30 s; a
-  story whose summary failed 3 times (or was left out of 3 answers) waits for the next refresh and shows the error.
+  new"), unless they are saved or have a saved article. Triggered with the assign queue and after every assign
+  batch. A failing batch is retried after 30 s; a story whose summary failed 3 times (or was left out of 3 answers)
+  waits for the next refresh and shows the error.
 - `AICaller` makes every AI call of the queues: it finds claude (the path from the settings), runs the call, applies
   the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude
   actually ran (`ClaudeError.isTransient`), also when its answer was an error. The queues only add their retry

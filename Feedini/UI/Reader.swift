@@ -45,6 +45,10 @@ final class Reader {
     var isShowingShortcuts = false
     /// Increased when the story list should take the keyboard focus (after the page had it).
     private(set) var listFocusRequests = 0
+    /// Reading and saving for ⌘Z / ⇧⌘Z; it lives as long as the app, not the window.
+    private(set) var history = UndoHistory()
+    /// Whether the main window is the key window, where ⌘Z takes back reading and saving (`UndoCommands`).
+    var isMainWindowKey = false
 
     init(model: AppModel) {
         self.model = model
@@ -90,7 +94,7 @@ final class Reader {
         let read = ReadRules.articlesRead(byVisiting: row, of: entry, isExpanded: expanded.contains(entry.id))
         if !read.isEmpty {
             kept.insert(entry.id)
-            model.markRead(read)
+            recording("Mark as Read", articles: read, row: row) { model.markRead(read) }
         }
     }
 
@@ -138,8 +142,8 @@ final class Reader {
         guard let entry = entry(row.entryID) else { return }
         kept.insert(entry.id)
         switch ReadRules.toggle(row, of: entry) {
-        case .markRead(let ids): model.markRead(ids)
-        case .markUnread(let ids): model.markUnread(ids)
+        case .markRead(let ids): recording("Mark as Read", articles: ids, row: row) { model.markRead(ids) }
+        case .markUnread(let ids): recording("Mark as Unread", articles: ids, row: row) { model.markUnread(ids) }
         }
     }
 
@@ -150,9 +154,9 @@ final class Reader {
             if selection == .saved, case .story = row {
                 unsaved[entry.id] = savedAt
             }
-            model.setSaved(item, at: nil)
+            recording("Remove from Saved", item, row: row) { model.setSaved(item, at: nil) }
         } else {
-            model.setSaved(item, at: .now)
+            recording("Save", item, row: row) { model.setSaved(item, at: .now) }
         }
     }
 
@@ -161,7 +165,7 @@ final class Reader {
     func saveWithSummary(_ row: ListRow, article: Article.ID?) {
         guard let entry = entry(row.entryID), let item = entry.savedItem(at: row) else { return }
         if entry.savedAt(at: row) == nil {
-            model.setSaved(item, at: .now)
+            recording("Save", item, row: row) { model.setSaved(item, at: .now) }
         }
         if let article {
             model.preparePage(article)
@@ -172,11 +176,59 @@ final class Reader {
     /// come back to.
     func markAllRead() {
         guard selection != .saved else { return }
+        let entries = entries
         let ids = entries.flatMap { $0.articles.filter { !$0.isRead }.map(\.id) }
         kept = []
         cursor = nil
         shown = nil
-        model.markRead(ids)
+        recording("Mark All as Read", articles: ids, row: entries.first.map { .story($0.id) }) { model.markRead(ids) }
+    }
+
+    // MARK: Undo
+
+    var undoName: String? { history.undoName }
+    var redoName: String? { history.redoName }
+
+    /// ⌘Z: takes back the last step of reading or saving that still has something to take back, and shows its row
+    /// without reading it.
+    func undo() {
+        show(history.undo { model.restore($0) })
+    }
+
+    /// ⇧⌘Z: does the step taken back last again.
+    func redo() {
+        show(history.redo { model.restore($0) })
+    }
+
+    /// Changes reading or saving and records the change for ⌘Z, unless nothing changed.
+    private func recording(
+        _ name: String, articles: [Article.ID] = [], stories: [Story.ID] = [], row: ListRow?, _ change: () -> Void
+    ) {
+        let before = model.library.readingState(articles: articles, stories: stories)
+        change()
+        guard model.library.readingState(articles: articles, stories: stories) != before else { return }
+        history.record(UndoHistory.Step(name: name, state: before, row: row))
+    }
+
+    private func recording(_ name: String, _ item: SavedItem, row: ListRow, _ change: () -> Void) {
+        switch item {
+        case .article(let id): recording(name, articles: [id], row: row, change)
+        case .story(let id): recording(name, stories: [id], row: row, change)
+        }
+    }
+
+    /// Moves the cursor onto the row of an undone step – without visiting it, which would read it again. It stays in
+    /// the list like an entry read there. A row that isn't in the current list (another selection) isn't shown.
+    private func show(_ step: UndoHistory.Step?) {
+        guard let row = step?.row else { return }
+        kept.insert(row.entryID)
+        if case .article = row {
+            expanded.insert(row.entryID)
+        }
+        let rows = rows
+        guard let target = rows.contains(row) ? row : rows.first(where: { $0 == .story(row.entryID) }) else { return }
+        cursor = target
+        shown = nil
     }
 
     func toggleExpanded(_ id: StoryEntry.ID) {
