@@ -20,11 +20,9 @@ enum Retention {
         let cutoff = now.addingTimeInterval(-attachWindow)
         var removed = Set<Article.ID>()
 
-        for story in library.stories.values where story.savedAt == nil {
+        for story in library.stories.values {
             let articles = library.articles(of: story)
-            let isStale =
-                articles.allSatisfy { $0.isRead && !$0.isSaved } && articles.allSatisfy { $0.date < cutoff }
-            if isStale {
+            if !story.isKeptBySaving(articles), articles.allSatisfy({ $0.isRead && $0.date < cutoff }) {
                 removed.formUnion(articles.map(\.id))
             }
         }

@@ -88,11 +88,8 @@ enum KeyboardNavigation {
             return .toggleRead(cursor)
         case (.save, _):
             return .toggleSaved(cursor)
-        case (.saveWithSummary, .story) where entry.isMultiArticle:
-            return .saveWithSummary(cursor, nil)
         case (.saveWithSummary, _):
-            let article = entry.article(at: cursor).flatMap { $0.link != nil ? $0.id : nil }
-            return .saveWithSummary(cursor, article)
+            return .saveWithSummary(cursor, entry.singleArticle(at: cursor).flatMap { $0.link != nil ? $0.id : nil })
         case (.expand, .story):
             guard entry.isMultiArticle else { return .none }
             return isExpanded ? .select(.article(entry.id, entry.articles[0].id)) : .expand(entry.id)
@@ -106,10 +103,8 @@ enum KeyboardNavigation {
             return isExpanded ? .none : .expand(entry.id)
         case (.openOther, .story) where entry.isMultiArticle:
             return .none
-        case (.preview, .story) where entry.isMultiArticle, (.summarizePage, .story) where entry.isMultiArticle:
-            return .none
         case (.preview, _), (.summarizePage, _):
-            guard let article = entry.article(at: cursor), article.link != nil else { return .none }
+            guard let article = entry.singleArticle(at: cursor), article.link != nil else { return .none }
             return key == .preview ? .previewPage(article.id) : .summarizePage(article.id)
         case (.open, _), (.openOther, _):
             guard let article = entry.article(at: cursor) else { return .none }

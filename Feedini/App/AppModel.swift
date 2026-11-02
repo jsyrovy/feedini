@@ -69,13 +69,14 @@ final class AppModel: LibraryHost {
     /// All stories and loose articles, newest first.
     var entries: [StoryEntry] { cache.entries }
 
-    /// The saved stories and articles, most recently saved first.
-    var savedEntries: [StoryEntry] { cache.saved }
-
-    /// The saved entries plus those removed from Saved while it was shown (`StoryList.savedEntries`).
-    func savedEntries(keeping: [StoryEntry.ID: Date]) -> [StoryEntry] {
-        guard !keeping.isEmpty else { return savedEntries }
-        return StoryList.savedEntries(in: library, entry: entry, keeping: keeping)
+    /// The saved stories and articles, most recently saved first, with entries removed from Saved while it was shown
+    /// at the place of their former save date.
+    func savedEntries(keeping: [StoryEntry.ID: Date] = [:]) -> [StoryEntry] {
+        let cache = cache
+        let kept = keeping.compactMap { id, date in
+            cache.savedIndex[id] == nil ? entry(id).map { (date: date, entry: $0) } : nil
+        }
+        return StoryList.savedEntries(cache.saved, keeping: kept)
     }
 
     /// Unread entries per sidebar item.
@@ -84,12 +85,14 @@ final class AppModel: LibraryHost {
     /// The folder of every feed in one.
     var folderIDsByFeed: [Feed.ID: Folder.ID] { cache.folders }
 
+    /// An entry of `entries` or Saved; a `.savedArticle` entry also for an article that isn't saved (anymore).
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
         let cache = cache
-        if case .savedArticle = id {
-            return cache.savedIndex[id].map { cache.saved[$0] }
+        guard case .savedArticle(let articleID) = id else { return cache.index[id].map { cache.entries[$0] } }
+        if let position = cache.savedIndex[id] {
+            return cache.saved[position]
         }
-        return cache.index[id].map { cache.entries[$0] }
+        return library.articles[articleID].map { StoryList.savedEntry(for: $0, in: cache.container(of: articleID)) }
     }
 
     /// Built when first needed after the articles, the stories or the summary settings changed.
@@ -288,42 +291,40 @@ final class AppModel: LibraryHost {
     // MARK: Changes
 
     /// Puts the reading state back (⌘Z); returns the state it replaced, `nil` when none of the items exists anymore.
-    /// Without a change of saving it patches the cached entries like reading does.
     func restore(_ state: ReadingState) -> ReadingState? {
-        let replaced = library.readingState(articles: state.articles.keys, stories: state.stories.keys)
-        guard !replaced.isEmpty else { return nil }
-        let changesSaving =
-            state.articles.contains { replaced.articles[$0.key]?.savedAt != $0.value.savedAt }
-            || state.stories.contains { replaced.stories[$0.key]?.savedAt != $0.value.savedAt }
-        if changesSaving {
-            update { _ = $0.restore(state) }
-        } else {
-            changeReadState(of: Array(state.articles.keys)) { _ = $0.restore(state) }
+        var replaced = ReadingState()
+        changeReadingState(of: Array(state.articles.keys), stories: Array(state.stories.keys)) {
+            replaced = $0.restore(state)
         }
-        return replaced
+        return replaced.isEmpty ? nil : replaced
     }
 
     /// Saves the item for later (S), or removes it from Saved for `nil`.
     func setSaved(_ item: SavedItem, at date: Date?) {
-        update { $0.setSaved(item, at: date) }
+        switch item {
+        case .article(let id): changeReadingState(of: [id]) { $0.setSaved(item, at: date) }
+        case .story(let id): changeReadingState(stories: [id]) { $0.setSaved(item, at: date) }
+        }
     }
 
     func markRead(_ ids: [Article.ID]) {
-        changeReadState(of: ids) { $0.markRead(ids, at: .now) }
+        changeReadingState(of: ids) { $0.markRead(ids, at: .now) }
     }
 
     func markUnread(_ ids: [Article.ID]) {
-        changeReadState(of: ids) { $0.markUnread(ids) }
+        changeReadingState(of: ids) { $0.markUnread(ids) }
     }
 
-    /// Patches the cached entries instead of building them again (reading with J/K changes the read state on every
-    /// key). Read state never moves articles into stories, so the reader isn't told.
-    private func changeReadState(of ids: [Article.ID], _ change: (inout Library) -> Void) {
-        guard !ids.isEmpty else { return }
+    /// Patches the cached entries instead of building them again: reading (with J/K on every key) and saving change
+    /// neither the order nor the grouping. Nor do they move articles into stories, so the reader isn't told.
+    private func changeReadingState(
+        of ids: [Article.ID] = [], stories: [Story.ID] = [], _ change: (inout Library) -> Void
+    ) {
+        guard !ids.isEmpty || !stories.isEmpty else { return }
         let cache = entriesCache
         apply(change, notifiesReader: false)
         if var cache {
-            cache.updateReadState(of: ids, library: library)
+            cache.updateReadingState(of: ids, stories: stories, library: library)
             entriesCache = cache
         }
     }
@@ -366,10 +367,12 @@ private struct EntriesCache {
     private(set) var entries: [StoryEntry]
     /// Positions in `entries`; reading doesn't change the order.
     let index: [StoryEntry.ID: Int]
+    /// The story of every article in one; reading and saving don't change it.
+    let storyIDs: [Article.ID: Story.ID]
     /// The entries of Saved.
-    private(set) var saved: [StoryEntry]
+    private(set) var saved: [StoryEntry] = []
     /// Positions in `saved`.
-    let savedIndex: [StoryEntry.ID: Int]
+    private(set) var savedIndex: [StoryEntry.ID: Int] = [:]
     /// The folder of every feed in one, for the folder counts.
     private(set) var folders: [Feed.ID: Folder.ID]
     private(set) var counts: StoryList.Counts
@@ -379,22 +382,42 @@ private struct EntriesCache {
         self.singleArticles = singleArticles
         self.entries = entries
         folders = library.folderIDsByFeed()
-        let index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
-        self.index = index
-        saved = StoryList.savedEntries(in: library) { id in index[id].map { entries[$0] } }
-        savedIndex = Dictionary(saved.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        counts = StoryList.unreadCounts(entries, saved: saved.count, folders: folders)
+        index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
+        storyIDs = library.storyIDsByArticle()
+        counts = StoryList.Counts()
+        buildSaved(library)
+        recount()
     }
 
-    mutating func updateReadState(of ids: [Article.ID], library: Library) {
-        StoryList.updateReadState(of: ids, in: &entries, library: library)
-        StoryList.updateReadState(of: ids, in: &saved, library: library)
-        counts = StoryList.unreadCounts(entries, saved: saved.count, folders: folders)
+    /// The entry of the article's story, or its loose entry.
+    func container(of articleID: Article.ID) -> StoryEntry? {
+        let id: StoryEntry.ID = storyIDs[articleID].map { .story($0) } ?? .loose(articleID)
+        return index[id].map { entries[$0] }
+    }
+
+    mutating func updateReadingState(of ids: [Article.ID], stories: [Story.ID], library: Library) {
+        if StoryList.updateReadingState(of: ids, stories: stories, in: &entries, library: library) {
+            buildSaved(library)
+        } else {
+            StoryList.updateReadingState(of: ids, in: &saved, library: library)
+        }
+        recount()
     }
 
     mutating func setFolders(_ folders: [Feed.ID: Folder.ID]) {
         guard folders != self.folders else { return }
         self.folders = folders
-        counts = StoryList.unreadCounts(entries, saved: saved.count, folders: folders)
+        recount()
+    }
+
+    private mutating func buildSaved(_ library: Library) {
+        let (entries, index) = (entries, index)
+        saved = StoryList.savedEntries(in: library, storyIDs: storyIDs) { id in index[id].map { entries[$0] } }
+        savedIndex = Dictionary(uniqueKeysWithValues: saved.enumerated().map { ($1.id, $0) })
+    }
+
+    private mutating func recount() {
+        counts = StoryList.unreadCounts(entries, folders: folders)
+        counts.saved = saved.count
     }
 }

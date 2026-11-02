@@ -14,14 +14,14 @@ struct SavedTests {
 
         library.setSaved(.article(article.id), at: .hours(1))
         library.setSaved(.story(story.id), at: .hours(2))
-        #expect(library.savedAt(.article(article.id)) == .hours(1))
+        #expect(library.articles[article.id]?.savedAt == .hours(1))
         #expect(library.articles[article.id]?.isSaved == true)
-        #expect(library.savedAt(.story(story.id)) == .hours(2))
+        #expect(library.stories[story.id]?.savedAt == .hours(2))
 
         library.setSaved(.article(article.id), at: nil)
         library.setSaved(.story(story.id), at: nil)
-        #expect(library.savedAt(.article(article.id)) == nil)
-        #expect(library.savedAt(.story(story.id)) == nil)
+        #expect(library.articles[article.id]?.savedAt == nil)
+        #expect(library.stories[story.id]?.savedAt == nil)
     }
 
     @Test func unknownItemsAreNotSaved() {
@@ -29,12 +29,10 @@ struct SavedTests {
         library.setSaved(.article(UUID()), at: .hours(1))
         library.setSaved(.story(UUID()), at: .hours(1))
         #expect(library == Library(feeds: [feed], articles: []))
-        #expect(library.savedAt(.article(UUID())) == nil)
     }
 
     @Test func savingKeepsSavedArticlesAndAllArticlesOfSavedStories() {
-        var saved = Article.stub(feed: feed.id)
-        saved.savedAt = .hours(1)
+        let saved = Article.stub(feed: feed.id, savedAt: .hours(1))
         let first = Article.stub(feed: feed.id)
         let second = Article.stub(feed: other.id)
         let loose = Article.stub(feed: feed.id)
@@ -45,8 +43,7 @@ struct SavedTests {
     }
 
     @Test func removingAFeedKeepsWhatSavingKeepsWithTheFeedName() {
-        var saved = Article.stub(feed: feed.id)
-        saved.savedAt = .hours(1)
+        let saved = Article.stub(feed: feed.id, savedAt: .hours(1))
         let inSavedStory = Article.stub(feed: feed.id)
         let theirs = Article.stub(feed: other.id)
         let gone = Article.stub(feed: feed.id)
@@ -67,8 +64,7 @@ struct SavedTests {
     }
 
     @Test func countsTheArticlesOfFeedsThatSavingKeeps() {
-        var saved = Article.stub(feed: feed.id)
-        saved.savedAt = .hours(1)
+        let saved = Article.stub(feed: feed.id, savedAt: .hours(1))
         let inSavedStory = Article.stub(feed: other.id)
         let story = Story(title: "Story", articleIDs: [inSavedStory.id, UUID()], savedAt: .hours(1))
         let library = Library(
@@ -87,8 +83,7 @@ struct SavedTests {
     }
 
     @Test func codableRoundTripKeepsSavingAndRemovedFeeds() throws {
-        var article = Article.stub(feed: feed.id)
-        article.savedAt = .hours(1)
+        let article = Article.stub(feed: feed.id, savedAt: .hours(1))
         let story = Story(title: "Story", articleIDs: [article.id], savedAt: .hours(2))
         var library = Library(feeds: [], articles: [article], stories: [story])
         library.removedFeeds = [feed.id: "Tech", other.id: "News"]

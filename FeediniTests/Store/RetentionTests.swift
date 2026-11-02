@@ -101,8 +101,7 @@ struct RetentionTests {
     }
 
     @Test func keepsSavedArticlesAndStoriesForever() {
-        var saved = Article.stub(feed: feed.id, hours: -24 * 365, read: true)
-        saved.savedAt = .hours(-24 * 300)
+        let saved = Article.stub(feed: feed.id, hours: -24 * 365, read: true, savedAt: .hours(-24 * 300))
         let first = Article.stub(feed: feed.id, hours: -24 * 365, read: true)
         let second = Article.stub(feed: feed.id, hours: -24 * 365, read: true)
         let story = Story(title: "Saved", articleIDs: [first.id, second.id], savedAt: .hours(-24 * 300))
@@ -114,8 +113,7 @@ struct RetentionTests {
     }
 
     @Test func keepsAStoryWithASavedArticleWhole() {
-        var saved = Article.stub(feed: feed.id, hours: old, read: true)
-        saved.savedAt = .hours(-1)
+        let saved = Article.stub(feed: feed.id, hours: old, read: true, savedAt: .hours(-1))
         let other = Article.stub(feed: feed.id, hours: old - 1, read: true)
         let story = Story(title: "Story", articleIDs: [saved.id, other.id])
         let library = pruned(Library(feeds: [feed], articles: [saved, other], stories: [story]))
@@ -126,8 +124,7 @@ struct RetentionTests {
     @Test func removesArticlesOfRemovedFeedsUnlessSavingKeepsThemAndForgetsUnusedFeedNames() {
         let removed = Feed.stub("Removed")
         let unused = Feed.stub("Unused")
-        var saved = Article.stub(feed: removed.id)
-        saved.savedAt = .hours(-1)
+        let saved = Article.stub(feed: removed.id, savedAt: .hours(-1))
         let inSavedStory = Article.stub(feed: removed.id, hours: old, read: true)
         let story = Story(title: "Story", articleIDs: [inSavedStory.id], savedAt: .hours(-1))
         let unsaved = Article.stub(feed: removed.id)

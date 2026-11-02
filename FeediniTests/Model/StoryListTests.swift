@@ -206,11 +206,26 @@ struct StoryListTests {
         var entries = StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never)
 
         library.markRead([a.id, loose.id], at: .hours(0))
-        StoryList.updateReadState(of: [a.id, loose.id], in: &entries, library: library)
+        #expect(!StoryList.updateReadingState(of: [a.id, loose.id], in: &entries, library: library))
         #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never))
 
         library.markUnread([b.id])
-        StoryList.updateReadState(of: [b.id], in: &entries, library: library)
+        StoryList.updateReadingState(of: [b.id], in: &entries, library: library)
+        #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never))
+    }
+
+    @Test func updatingTheSavingMatchesRebuildingAndSaysSo() {
+        let a = Article.stub("A", feed: tech.id, hours: -1)
+        let b = Article.stub("B", feed: news.id, hours: -2)
+        let loose = Article.stub("Loose", feed: tech.id, hours: -3)
+        let story = Story(title: "S", articleIDs: [a.id, b.id])
+        var library = Library(feeds: [tech, news], articles: [a, b, loose], stories: [story])
+        var entries = StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never)
+
+        library.setSaved(.story(story.id), at: .hours(0))
+        #expect(StoryList.updateReadingState(of: [], stories: [story.id], in: &entries, library: library))
+        library.setSaved(.article(loose.id), at: .hours(0))
+        #expect(StoryList.updateReadingState(of: [loose.id], in: &entries, library: library))
         #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never))
     }
 }

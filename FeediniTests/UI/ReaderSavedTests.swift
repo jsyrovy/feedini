@@ -3,32 +3,7 @@ import Testing
 
 @testable import Feedini
 
-@MainActor
-struct ReaderSavedTests {
-    private let feed = Feed.stub("Tech")
-    private let extractor = FakePageExtractor()
-    private let model: AppModel
-    private let reader: Reader
-    private let lone: Article
-    private let first: Article
-    private let second: Article
-    private let story: Story
-
-    init() {
-        model = AppModel.test(extractor: extractor)
-        reader = Reader(model: model)
-        lone = Article.stub("Lone", feed: feed.id, hours: -1)
-        first = Article.stub("First", feed: feed.id, hours: -2)
-        second = Article.stub("Second", feed: feed.id, hours: -3)
-        story = Story(title: "Story", articleIDs: [first.id, second.id])
-        let library = Library(feeds: [feed], articles: [lone, first, second], stories: [story])
-        model.update { $0 = library }
-    }
-
-    private var savedIDs: [StoryEntry.ID] {
-        model.savedEntries.map(\.id)
-    }
-
+extension ReaderTests {
     @Test func sSavesTheArticleOrTheStoryUnderTheCursorAndAgainRemovesIt() {
         reader.visit(.story(.loose(lone.id)))
         reader.handle(.save)
@@ -37,12 +12,12 @@ struct ReaderSavedTests {
         reader.visit(.story(.story(story.id)))
         reader.handle(.save)
         #expect(model.library.stories[story.id]?.savedAt != nil)
-        #expect(Set(savedIDs) == [.story(story.id), .savedArticle(lone.id)])
+        #expect(Set(model.savedEntries().map(\.id)) == [.story(story.id), .savedArticle(lone.id)])
         #expect(model.unreadCounts.saved == 2)
 
         reader.handle(.save)
         #expect(model.library.stories[story.id]?.savedAt == nil)
-        #expect(savedIDs == [.savedArticle(lone.id)])
+        #expect(model.savedEntries().map(\.id) == [.savedArticle(lone.id)])
     }
 
     @Test func sOnAnArticleOfAnExpandedStorySavesTheArticle() {
@@ -80,7 +55,7 @@ struct ReaderSavedTests {
         reader.visit(.story(.story(story.id)))
         reader.handle(.save)
 
-        #expect(model.savedEntries.map(\.id) == [.savedArticle(lone.id)])
+        #expect(model.savedEntries().map(\.id) == [.savedArticle(lone.id)])
         #expect(reader.entries.map(\.id) == ids)
         #expect(reader.entry(.savedArticle(first.id))?.articles.map(\.id) == [first.id])
 
@@ -112,7 +87,7 @@ struct ReaderSavedTests {
         model.removeFeeds([feed.id])
 
         #expect(model.library.articles.keys.map { $0 } == [lone.id])
-        #expect(model.savedEntries.map(\.id) == [.savedArticle(lone.id)])
+        #expect(model.savedEntries().map(\.id) == [.savedArticle(lone.id)])
         #expect(model.library.sourceTitle(of: feed.id) == "Tech")
     }
 

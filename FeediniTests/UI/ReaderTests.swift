@@ -5,14 +5,14 @@ import Testing
 
 @MainActor
 struct ReaderTests {
-    private let feed = Feed.stub("Tech")
-    private let extractor = FakePageExtractor()
-    private let model: AppModel
-    private let reader: Reader
-    private let lone: Article
-    private let first: Article
-    private let second: Article
-    private let story: Story
+    let feed = Feed.stub("Tech")
+    let extractor = FakePageExtractor()
+    let model: AppModel
+    let reader: Reader
+    let lone: Article
+    let first: Article
+    let second: Article
+    let story: Story
 
     init() {
         model = AppModel.test(extractor: extractor)
@@ -25,7 +25,7 @@ struct ReaderTests {
         model.update { $0 = library }
     }
 
-    private func isRead(_ article: Article) -> Bool {
+    func isRead(_ article: Article) -> Bool {
         model.library.articles[article.id]?.isRead == true
     }
 

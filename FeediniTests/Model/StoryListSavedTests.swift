@@ -7,19 +7,15 @@ struct StoryListSavedTests {
     private let tech = Feed.stub("Tech")
     private let news = Feed.stub("News")
 
-    private func saved(_ article: Article, hours: Double) -> Article {
-        var article = article
-        article.savedAt = .hours(hours)
-        return article
-    }
-
-    private func savedEntries(_ library: Library, keeping: [StoryEntry.ID: Date] = [:]) -> [StoryEntry] {
+    private func savedEntries(_ library: Library) -> [StoryEntry] {
         let all = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .always)
-        return StoryList.savedEntries(in: library, entry: { id in all.first { $0.id == id } }, keeping: keeping)
+        return StoryList.savedEntries(in: library, storyIDs: library.storyIDsByArticle()) { id in
+            all.first { $0.id == id }
+        }
     }
 
     @Test func savedEntriesAreOrderedBySaveTimeWhateverTheirReadState() {
-        let loose = saved(Article.stub("Loose", feed: tech.id, hours: -50, read: true), hours: -1)
+        let loose = Article.stub("Loose", feed: tech.id, hours: -50, read: true, savedAt: .hours(-1))
         let first = Article.stub("First", feed: tech.id, hours: -2)
         let second = Article.stub("Second", feed: news.id, hours: -3, read: true)
         let story = Story(title: "Story", articleIDs: [first.id, second.id], savedAt: .hours(-2))
@@ -36,7 +32,7 @@ struct StoryListSavedTests {
     }
 
     @Test func aSavedArticleOfAStoryWithSeveralArticlesShowsOnItsOwnWithTheStory() {
-        let first = saved(Article.stub("First", feed: tech.id, hours: -2), hours: -1)
+        let first = Article.stub("First", feed: tech.id, hours: -2, savedAt: .hours(-1))
         let second = Article.stub("Second", feed: news.id, hours: -3)
         let topic = Topic(name: "Apple", description: "")
         let story = Story(title: "Story", topicID: topic.id, articleIDs: [first.id, second.id])
@@ -54,7 +50,7 @@ struct StoryListSavedTests {
     }
 
     @Test func aSavedArticleOfAOneArticleStoryTakesItsSummary() {
-        let article = saved(Article.stub("Article", feed: tech.id, language: "cs"), hours: -1)
+        let article = Article.stub("Article", feed: tech.id, language: "cs", savedAt: .hours(-1))
         let summary = Summary(title: "Summary title", text: "Gist.", language: "en", articleIDs: [article.id])
         let story = Story(title: "Story", articleIDs: [article.id], summary: summary)
         let library = Library(feeds: [tech], articles: [article], stories: [story])
@@ -69,17 +65,22 @@ struct StoryListSavedTests {
         #expect(entry.partOf == nil)
     }
 
-    @Test func keptEntriesStayInTheirPlaceAfterTheyAreRemovedFromSaved() {
-        let newer = saved(Article.stub("Newer", feed: tech.id), hours: -1)
+    @Test func keptEntriesStayInTheirPlaceAfterTheyAreRemovedFromSaved() throws {
+        let newer = Article.stub("Newer", feed: tech.id, savedAt: .hours(-1))
         let removed = Article.stub("Removed", feed: tech.id)
-        let older = saved(Article.stub("Older", feed: tech.id), hours: -3)
+        let older = Article.stub("Older", feed: tech.id, savedAt: .hours(-3))
         let first = Article.stub("First", feed: tech.id)
         let second = Article.stub("Second", feed: tech.id)
         let story = Story(title: "Story", articleIDs: [first.id, second.id])
         let library = Library(feeds: [tech], articles: [newer, removed, older, first, second], stories: [story])
 
-        let entries = savedEntries(
-            library, keeping: [.savedArticle(removed.id): .hours(-2), .story(story.id): .hours(-4)])
+        let storyEntry = try #require(
+            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never).first {
+                $0.id == .story(story.id)
+            })
+        let entries = StoryList.savedEntries(
+            savedEntries(library),
+            keeping: [(.hours(-2), StoryList.savedEntry(for: removed, in: nil)), (.hours(-4), storyEntry)])
 
         #expect(
             entries.map(\.id) == [
@@ -115,9 +116,7 @@ struct StoryListSavedTests {
 
         #expect(!StoryList.matches(entry, .saved, folders: [:]))
         #expect(StoryList.entries([entry], matching: .saved, folders: [:]).isEmpty)
-        let counts = StoryList.unreadCounts([entry], saved: 3, folders: [:])
-        #expect(counts.count(for: .saved) == 3)
-        #expect(counts.all == 1)
+        #expect(StoryList.Counts(saved: 3).count(for: .saved) == 3)
         #expect(Library().contains(.saved))
     }
 }

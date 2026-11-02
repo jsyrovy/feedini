@@ -3,32 +3,9 @@ import Testing
 
 @testable import Feedini
 
-@MainActor
-struct ReaderUndoTests {
-    private let feed = Feed.stub("Tech")
-    private let model: AppModel
-    private let reader: Reader
-    private let lone: Article
-    private let first: Article
-    private let second: Article
-    private let story: Story
-
-    init() {
-        model = AppModel.test()
-        reader = Reader(model: model)
-        lone = Article.stub("Lone", feed: feed.id, hours: -1)
-        first = Article.stub("First", feed: feed.id, hours: -2)
-        second = Article.stub("Second", feed: feed.id, hours: -3)
-        story = Story(title: "Story", articleIDs: [first.id, second.id], newArticleIDs: [second.id])
-        let library = Library(feeds: [feed], articles: [lone, first, second], stories: [story])
-        model.update { $0 = library }
-    }
-
-    private func isRead(_ article: Article) -> Bool {
-        model.library.articles[article.id]?.isRead == true
-    }
-
+extension ReaderTests {
     @Test func undoTakesBackReadingStepByStepAndShowsTheRowWithoutReadingIt() {
+        model.update { $0.stories[story.id]?.newArticleIDs = [second.id] }
         reader.handle(.next)
         reader.handle(.next)
         #expect(isRead(lone) && isRead(first) && isRead(second))

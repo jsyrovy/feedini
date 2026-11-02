@@ -225,9 +225,10 @@ Implementation:
   of its feeds.
 - `StoryList.savedEntries` builds Saved from the entries: saved stories as their entry, saved articles as
   `.savedArticle` entries (`partOf` for a story with several articles; a one-article story lends its title and
-  summary). `StoryEntry.savedItem(at:)` says what S saves on a row. `AppModel` caches them with the other entries
-  (`savedEntries`, `entry(_:)` finds them too); saving rebuilds the cache, reading patches both. `Reader.unsaved`
-  remembers the save dates of entries removed while Saved is shown, so they keep their place.
+  summary). `StoryEntry.savedItem(at:)` says what S saves on a row. `AppModel` caches them with the other entries;
+  reading and saving patch the entries (`StoryList.updateReadingState`) and saving rebuilds only Saved.
+  `Reader.unsaved` remembers the save dates of entries removed while Saved is shown, so they keep their place
+  (`AppModel.savedEntries(keeping:)`; `entry(_:)` builds a `.savedArticle` entry on demand, saved or not).
 - `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story). Moving
   onto a row (`visit`) applies `ReadRules` and adds the entry to `kept`, so it stays until the sidebar selection
   changes or a refresh ends (then only the entry under the cursor stays). Shift+A doesn't keep anything: the list
@@ -237,9 +238,9 @@ Implementation:
   (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
   any keyboard layout. A double click opens like V / Enter.
 - `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles, save date and "new" marks of
-  their stories) before a change and records it in `UndoHistory` if the change changed it; undo and redo are
-  `Library.restore`, which returns the replaced state for the other stack (`AppModel.restore`: without a change of
-  saving it patches the cached entries like reading). `UndoCommands` replaces Edit → Undo / Redo: while the main
+  their stories) before a change and records it in `UndoHistory` (its callers only make changes that change
+  something); undo and redo are `Library.restore`, which returns the replaced state for the other stack
+  (`AppModel.restore` patches the cached entries like reading and saving). `UndoCommands` replaces Edit → Undo / Redo: while the main
   window is key (`Reader.isMainWindowKey`, set by `AppDelegate` from the key window notifications) they go to the
   reader, otherwise `undo:` / `redo:` go to the responder chain.
 - `ShortcutHelp.item(for:)` switches over every `ListKey` (`CaseIterable`), so a new key doesn't compile without
@@ -263,8 +264,8 @@ Implementation:
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
   in order. The entries are cached with an index by ID (`AppModel.entry(_:)`) and the unread counts
   (`unreadCounts`, used by the sidebar and the menu bar) for one summary language and choice of single-article
-  summaries; the cache is rebuilt only when the articles or stories change or one of those does. Read-state changes
-  patch it and don't notify the reader (they never move articles into stories).
+  summaries; the cache is rebuilt only when the articles or stories change or one of those does. Reading and saving
+  (and their undo) patch it and don't notify the reader (they never move articles into stories).
 
 ## Feeds
 
@@ -530,7 +531,7 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - Measured with 5000 articles (a third read, 30 feeds, 2 KB of text each; `-O`): the file has 14 MB, encoding takes
   0.13 s (in the store actor, off the main actor), decoding 0.06 s; building all list entries 49 ms, filtering
   + rows + counts 2 ms, marking read + comparing the library 1 ms. Enough for "unread forever"; SQLite isn't needed.
-  Reading only patches the cached entries (`StoryList.updateReadState`), so J/K never rebuilds the list.
+  Reading only patches the cached entries (`StoryList.updateReadingState`), so J/K never rebuilds the list.
 - `Retention.prune` (pure): unread articles stay forever. Read articles go once their story (or the article alone,
   without a story) has no article younger than `attachWindow` (72 h); each leaves a `Tombstone` (feed + key). A
   tombstone goes once it hasn't been seen in its feed for `tombstoneMargin` (3 days) before the feed's last

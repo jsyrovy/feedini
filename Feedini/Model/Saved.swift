@@ -7,15 +7,15 @@ enum SavedItem: Hashable, Sendable {
     case story(Story.ID)
 }
 
-extension Library {
-    /// When the item was saved; `nil` when it isn't saved or doesn't exist.
-    func savedAt(_ item: SavedItem) -> Date? {
-        switch item {
-        case .article(let id): articles[id]?.savedAt
-        case .story(let id): stories[id]?.savedAt
-        }
+extension Story {
+    /// Saved as a whole or holding a saved article (of `articles`, its articles): such a story is kept whole and its
+    /// summary up to date, read or not.
+    func isKeptBySaving(_ articles: [Article]) -> Bool {
+        savedAt != nil || articles.contains(where: \.isSaved)
     }
+}
 
+extension Library {
     /// Saves the item at the date, or removes it from the saved ones for `nil`.
     mutating func setSaved(_ item: SavedItem, at date: Date?) {
         switch item {

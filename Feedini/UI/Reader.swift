@@ -70,10 +70,7 @@ final class Reader {
     }
 
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
-        if case .savedArticle = id, unsaved[id] != nil {
-            return entries.first { $0.id == id }
-        }
-        return model.entry(id)
+        model.entry(id)
     }
 
     var opensInWindow: Bool {
@@ -200,14 +197,16 @@ final class Reader {
         show(history.redo { model.restore($0) })
     }
 
-    /// Changes reading or saving and records the change for ⌘Z, unless nothing changed.
+    /// Changes reading or saving and records the change for ⌘Z. The callers only make changes that change something
+    /// (they read unread articles, toggle, save what isn't saved).
     private func recording(
         _ name: String, articles: [Article.ID] = [], stories: [Story.ID] = [], row: ListRow?, _ change: () -> Void
     ) {
         let before = model.library.readingState(articles: articles, stories: stories)
         change()
-        guard model.library.readingState(articles: articles, stories: stories) != before else { return }
-        history.record(UndoHistory.Step(name: name, state: before, row: row))
+        if !before.isEmpty {
+            history.record(UndoHistory.Step(name: name, state: before, row: row))
+        }
     }
 
     private func recording(_ name: String, _ item: SavedItem, row: ListRow, _ change: () -> Void) {
@@ -282,11 +281,8 @@ final class Reader {
 
     /// The article under the cursor: the article row, or the only article of a story.
     var cursorArticle: Article? {
-        guard let cursor, let entry = entry(cursor.entryID) else { return nil }
-        if case .story = cursor, entry.isMultiArticle {
-            return nil
-        }
-        return entry.article(at: cursor)
+        guard let cursor else { return nil }
+        return entry(cursor.entryID)?.singleArticle(at: cursor)
     }
 
     // MARK: Refresh

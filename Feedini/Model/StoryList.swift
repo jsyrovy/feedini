@@ -90,6 +90,15 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
         }
     }
 
+    /// The article P, T and Shift+S work on: the article of an article row, the only article of a story row; none for
+    /// the row of a story with several articles.
+    func singleArticle(at row: ListRow) -> Article? {
+        if case .story = row, isMultiArticle {
+            return nil
+        }
+        return article(at: row)
+    }
+
     /// The article a row stands for: the article of an article row, the newest one for the story row.
     func article(at row: ListRow) -> Article? {
         switch row {
@@ -119,10 +128,15 @@ enum StoryList {
         for article in library.articles.values where !inStories.contains(article.id) {
             entries.append(entry(for: article))
         }
-        return entries.sorted { lhs, rhs in
+        return sorted(entries.map { ($0.date, $0) })
+    }
+
+    /// Newest first (ties: by title).
+    private static func sorted(_ dated: [(date: Date, entry: StoryEntry)]) -> [StoryEntry] {
+        dated.sorted { lhs, rhs in
             lhs.date != rhs.date
-                ? lhs.date > rhs.date : lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-        }
+                ? lhs.date > rhs.date : lhs.entry.title.localizedStandardCompare(rhs.entry.title) == .orderedAscending
+        }.map(\.entry)
     }
 
     /// The entry of a story; `nil` when none of its articles exists.
@@ -147,33 +161,36 @@ enum StoryList {
         StoryEntry(id: .loose(article.id), title: article.title, topicID: nil, articles: [article], newArticleIDs: [])
     }
 
-    /// The saved stories and articles, most recently saved first (ties: by title). A saved article is shown on its own
-    /// with the title of its story when that has several articles, or with the summary of its one-article story.
-    /// `keeping` adds entries removed from Saved while the list was shown, at the place their save date gave them.
-    /// `entry` gives the entries of `allEntries` by ID.
+    /// The saved stories and articles, most recently saved first (ties: by title): a saved story as its entry, a saved
+    /// article as `savedEntry`. `entry` gives the entries of `allEntries` by ID, `storyIDs` the story of every article
+    /// in one (`Library.storyIDsByArticle`).
     static func savedEntries(
-        in library: Library, entry: (StoryEntry.ID) -> StoryEntry?, keeping: [StoryEntry.ID: Date] = [:]
+        in library: Library, storyIDs: [Article.ID: Story.ID], entry: (StoryEntry.ID) -> StoryEntry?
     ) -> [StoryEntry] {
         var dated: [(date: Date, entry: StoryEntry)] = []
         for story in library.stories.values {
-            let id = StoryEntry.ID.story(story.id)
-            if let date = story.savedAt ?? keeping[id], let entry = entry(id) {
+            if let date = story.savedAt, let entry = entry(.story(story.id)) {
                 dated.append((date, entry))
             }
         }
-        let storyIDs = library.storyIDsByArticle()
         for article in library.articles.values {
-            guard let date = article.savedAt ?? keeping[.savedArticle(article.id)] else { continue }
-            let container = storyIDs[article.id].map { entry(.story($0)) } ?? entry(.loose(article.id))
-            dated.append((date, savedEntry(for: article, in: container)))
+            if let date = article.savedAt {
+                let container = storyIDs[article.id].map { entry(.story($0)) } ?? entry(.loose(article.id))
+                dated.append((date, savedEntry(for: article, in: container)))
+            }
         }
-        return dated.sorted { lhs, rhs in
-            lhs.date != rhs.date
-                ? lhs.date > rhs.date : lhs.entry.title.localizedStandardCompare(rhs.entry.title) == .orderedAscending
-        }.map(\.entry)
+        return sorted(dated)
     }
 
-    private static func savedEntry(for article: Article, in container: StoryEntry?) -> StoryEntry {
+    /// Saved with entries removed from it while it was shown, each at the place its former save date gives it.
+    static func savedEntries(_ saved: [StoryEntry], keeping kept: [(date: Date, entry: StoryEntry)]) -> [StoryEntry] {
+        guard !kept.isEmpty else { return saved }
+        return sorted(saved.map { ($0.savedAt(at: .story($0.id)) ?? .distantPast, $0) } + kept)
+    }
+
+    /// A saved article on its own (`.savedArticle`), with the title of its story when that has several articles, or
+    /// with the summary of its one-article story. `container` is the entry of its story, or its loose entry.
+    static func savedEntry(for article: Article, in container: StoryEntry?) -> StoryEntry {
         var entry = StoryEntry(
             id: .savedArticle(article.id), title: article.title, topicID: container?.topicID, articles: [article],
             newArticleIDs: [])
@@ -188,22 +205,37 @@ enum StoryList {
         return entry
     }
 
-    /// Updates the entries holding the articles after their read state changed – which changes neither the order
-    /// nor the grouping – instead of building all entries again (reading with J/K changes it on every key).
-    static func updateReadState(
-        of articleIDs: some Sequence<Article.ID>, in entries: inout [StoryEntry], library: Library
-    ) {
+    /// Updates the entries holding the articles, and those of the stories, after their reading state (read and save
+    /// dates, "new" marks) changed – which changes neither the order nor the grouping – instead of building all entries
+    /// again (reading with J/K changes it on every key). Returns whether the saving of an entry changed.
+    @discardableResult
+    static func updateReadingState(
+        of articleIDs: some Sequence<Article.ID>, stories storyIDs: some Sequence<Story.ID> = [Story.ID](),
+        in entries: inout [StoryEntry], library: Library
+    ) -> Bool {
         let wanted = Set(articleIDs)
-        for index in entries.indices where entries[index].articles.contains(where: { wanted.contains($0.id) }) {
+        let wantedStories = Set(storyIDs)
+        var savingChanged = false
+        for index in entries.indices {
+            let storyID: Story.ID? = if case .story(let id) = entries[index].id { id } else { nil }
+            guard
+                storyID.map(wantedStories.contains) == true
+                    || entries[index].articles.contains(where: { wanted.contains($0.id) })
+            else { continue }
             for position in entries[index].articles.indices {
                 if let article = library.articles[entries[index].articles[position].id] {
+                    savingChanged = savingChanged || entries[index].articles[position].savedAt != article.savedAt
                     entries[index].articles[position].readAt = article.readAt
+                    entries[index].articles[position].savedAt = article.savedAt
                 }
             }
-            if case .story(let id) = entries[index].id, let story = library.stories[id] {
+            if let storyID, let story = library.stories[storyID] {
+                savingChanged = savingChanged || entries[index].storySavedAt != story.savedAt
                 entries[index].newArticleIDs = story.newArticleIDs
+                entries[index].storySavedAt = story.savedAt
             }
         }
+        return savingChanged
     }
 
     /// The entries shown for a sidebar selection: unread ones, plus those in `keeping` (read while the list was
@@ -252,9 +284,9 @@ enum StoryList {
     }
 
     /// Unread entries per sidebar item, matching what `entries` shows: a story counts once in every feed it has an
-    /// article of, and once in every folder of those feeds (not once per feed). Saved counts every saved entry.
-    static func unreadCounts(_ all: [StoryEntry], saved: Int = 0, folders: [Feed.ID: Folder.ID]) -> Counts {
-        var counts = Counts(saved: saved)
+    /// article of, and once in every folder of those feeds (not once per feed). Saved is left to the caller.
+    static func unreadCounts(_ all: [StoryEntry], folders: [Feed.ID: Folder.ID]) -> Counts {
+        var counts = Counts()
         for entry in all where !entry.isRead {
             counts.all += 1
             if let topic = entry.topicID {

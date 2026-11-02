@@ -49,7 +49,7 @@ enum SummaryStep {
         library.stories.values.compactMap { story -> (Story.ID, Bool, Date)? in
             guard !excluding.contains(story.id) else { return nil }
             let articles = library.articles(of: story)
-            guard articles.contains(where: { !$0.isRead || $0.isSaved }) || story.savedAt != nil,
+            guard articles.contains(where: { !$0.isRead }) || story.isKeptBySaving(articles),
                 needsSummary(articles, language: language, singleArticles: singleArticles),
                 !isCurrent(story.summary, of: story, language: language)
             else { return nil }

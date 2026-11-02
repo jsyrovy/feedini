@@ -26,13 +26,13 @@ extension Article {
     /// An article first seen and published at `date` (hours from `referenceDate`).
     static func stub(
         _ title: String = "Article", feed: Feed.ID, id: UUID = UUID(), key: String? = nil, hours: Double = 0,
-        read: Bool = false, language: String? = nil
+        read: Bool = false, language: String? = nil, savedAt: Date? = nil
     ) -> Article {
         Article(
             id: id, feedID: feed, key: key ?? "https://example.com/\(id.uuidString)", title: title,
             link: URL(string: "https://example.com/\(id.uuidString)"), published: .hours(hours),
             text: "Text of \(title).", language: language, firstSeen: .hours(hours),
-            readAt: read ? .hours(hours) : nil)
+            readAt: read ? .hours(hours) : nil, savedAt: savedAt)
     }
 }
 

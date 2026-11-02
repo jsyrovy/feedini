@@ -48,8 +48,7 @@ final class PageSummaryQueue {
             status.setPage(AIStatus.PageWork(phase: .failed(AIStatus.State.offMessage), summary: true), for: id)
             return
         }
-        guard canSummarize(id) else { return }
-        enqueue(id, summary: true)
+        prepare(id)
     }
 
     /// Shift+S: like T, but also when AI is off – then the page is still loaded and stored for later, and the summary
