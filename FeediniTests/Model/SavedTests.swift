@@ -66,6 +66,19 @@ struct SavedTests {
         #expect(library.sourceTitles() == [feed.id: "Tech", other.id: "News"])
     }
 
+    @Test func countsTheArticlesOfFeedsThatSavingKeeps() {
+        var saved = Article.stub(feed: feed.id)
+        saved.savedAt = .hours(1)
+        let inSavedStory = Article.stub(feed: other.id)
+        let story = Story(title: "Story", articleIDs: [inSavedStory.id, UUID()], savedAt: .hours(1))
+        let library = Library(
+            feeds: [feed, other], articles: [saved, inSavedStory, Article.stub(feed: feed.id)], stories: [story])
+
+        #expect(library.savedArticleCount(of: [feed.id]) == 1)
+        #expect(library.savedArticleCount(of: [feed.id, other.id]) == 2)
+        #expect(library.savedArticleCount(of: []) == 0)
+    }
+
     @Test func removingAFeedWithoutSavedArticlesForgetsItsName() {
         var library = Library(feeds: [feed], articles: [Article.stub(feed: feed.id)])
         library.removeFeed(feed.id)

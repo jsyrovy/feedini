@@ -17,11 +17,13 @@ New articles show up right away; grouping and summaries arrive in the background
 - **Summaries in your language** for stories with several articles. Single articles keep their own text, unless you
   choose to summarize those in other languages (a translated gist) or all of them.
 - **Keyboard first**: J / K to move, L / H to expand and collapse, V / Enter to open the source page (in the window
-  or the browser), M to toggle read, R to refresh, Shift+A to mark everything read, ? for all the shortcuts.
+  or the browser), M to toggle read, S to save for later, R to refresh, Shift+A to mark everything read, ? for all
+  the shortcuts.
 - **The whole article** when the feed only has its first lines: P shows the full text of the source page, T a TL;DR
   of it (with the key details for longer articles).
 - **Read means read**: moving onto an item marks it read; read items leave the list when you switch views or
   refresh, and a refresh never brings them back.
+- **Saved for later**: S keeps a story or an article in Saved until you remove it, read or not.
 - **Runs in the menu bar** after you close the window, refreshing and organizing in the background, with the unread
   count next to the 🎩.
 - Feeds by address or OPML import / export (with their folders); RSS 0.9x, 1.0, 2.0 and Atom. Folders of your own

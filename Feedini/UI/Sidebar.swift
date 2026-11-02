@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// All, the topics (most unread first), the folders (in their order) with their feeds, and the feeds in no folder,
+/// All, Saved, the topics (most unread first), the folders (in their order) with their feeds, and the feeds in no folder,
 /// with unread counts. Feeds and folders are moved by dragging (`SidebarDrag`) or from the context menu.
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
@@ -16,6 +16,9 @@ struct Sidebar: View {
             Label("All", systemImage: "tray.full")
                 .badge(counts.all)
                 .tag(SidebarSelection.all)
+            Label("Saved", systemImage: "bookmark")
+                .badge(counts.saved)
+                .tag(SidebarSelection.saved)
             if !topics.isEmpty {
                 Section("Topics") {
                     ForEach(topics) { topic in

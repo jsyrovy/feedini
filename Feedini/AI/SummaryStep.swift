@@ -39,8 +39,9 @@ enum SummaryStep {
         return Set(summary.articleIDs) == Set(story.articleIDs)
     }
 
-    /// Unread stories whose summary is missing or out of date, in the order they should be written: stories from
-    /// several feeds first, then the others, newer before older. Read stories wait until they are unread again.
+    /// Unread or saved stories (saved as a whole or with a saved article) whose summary is missing or out of date, in
+    /// the order they should be written: stories from several feeds first, then the others, newer before older. Other
+    /// read stories wait until they are unread again.
     static func pending(
         in library: Library, language: String, singleArticles: SingleArticleSummaries,
         excluding: Set<Story.ID> = []
@@ -48,7 +49,7 @@ enum SummaryStep {
         library.stories.values.compactMap { story -> (Story.ID, Bool, Date)? in
             guard !excluding.contains(story.id) else { return nil }
             let articles = library.articles(of: story)
-            guard articles.contains(where: { !$0.isRead }),
+            guard articles.contains(where: { !$0.isRead || $0.isSaved }) || story.savedAt != nil,
                 needsSummary(articles, language: language, singleArticles: singleArticles),
                 !isCurrent(story.summary, of: story, language: language)
             else { return nil }

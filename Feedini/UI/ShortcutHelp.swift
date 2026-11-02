@@ -46,6 +46,7 @@ enum ShortcutHelp {
         case .summarizePage:
             (.pageAndAI, Item(keys: "T", description: "Summarize the source page (TL;DR)", unavailable: aiProblem))
         case .toggleRead: (.reading, Item(keys: "M", description: "Mark as read / unread"))
+        case .save: (.reading, Item(keys: "S", description: "Save for later / remove from Saved"))
         case .refresh: (.reading, Item(keys: "R", description: "Refresh now"))
         case .markAllRead: (.reading, Item(keys: "Shift+A", description: "Mark everything in the selection as read"))
         case .shortcuts: (.other, Item(keys: "?", description: "Keyboard shortcuts"))

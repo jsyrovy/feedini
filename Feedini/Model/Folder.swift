@@ -169,7 +169,7 @@ enum SidebarDrag {
         switch item {
         case .feed(let id): feedPrefix + id.uuidString
         case .folder(let id): folderPrefix + id.uuidString
-        case .all, .topic: nil
+        case .all, .saved, .topic: nil
         }
     }
 
@@ -194,7 +194,7 @@ enum SidebarDrag {
             switch target {
             case .folder(let id): id
             case .feed(let id): library.feed(id)?.folderID
-            case .all, .topic: nil
+            case .all, .saved, .topic: nil
             }
         switch (item, target) {
         case (.feed(let id), .folder), (.feed(let id), .feed):

@@ -69,6 +69,15 @@ final class AppModel: LibraryHost {
     /// All stories and loose articles, newest first.
     var entries: [StoryEntry] { cache.entries }
 
+    /// The saved stories and articles, most recently saved first.
+    var savedEntries: [StoryEntry] { cache.saved }
+
+    /// The saved entries plus those removed from Saved while it was shown (`StoryList.savedEntries`).
+    func savedEntries(keeping: [StoryEntry.ID: Date]) -> [StoryEntry] {
+        guard !keeping.isEmpty else { return savedEntries }
+        return StoryList.savedEntries(in: library, entry: entry, keeping: keeping)
+    }
+
     /// Unread entries per sidebar item.
     var unreadCounts: StoryList.Counts { cache.counts }
 
@@ -77,6 +86,9 @@ final class AppModel: LibraryHost {
 
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
         let cache = cache
+        if case .savedArticle = id {
+            return cache.savedIndex[id].map { cache.saved[$0] }
+        }
         return cache.index[id].map { cache.entries[$0] }
     }
 
@@ -90,7 +102,7 @@ final class AppModel: LibraryHost {
         }
         let cache = EntriesCache(
             entries: StoryList.allEntries(in: library, summaryLanguage: language, singleArticles: singleArticles),
-            folders: library.folderIDsByFeed(), language: language, singleArticles: singleArticles)
+            library: library, language: language, singleArticles: singleArticles)
         entriesCache = cache
         return cache
     }
@@ -269,6 +281,11 @@ final class AppModel: LibraryHost {
 
     // MARK: Changes
 
+    /// Saves the item for later (S), or removes it from Saved for `nil`.
+    func setSaved(_ item: SavedItem, at date: Date?) {
+        update { $0.setSaved(item, at: date) }
+    }
+
     func markRead(_ ids: [Article.ID]) {
         changeReadState(of: ids) { $0.markRead(ids, at: .now) }
     }
@@ -327,29 +344,35 @@ private struct EntriesCache {
     private(set) var entries: [StoryEntry]
     /// Positions in `entries`; reading doesn't change the order.
     let index: [StoryEntry.ID: Int]
+    /// The entries of Saved.
+    private(set) var saved: [StoryEntry]
+    /// Positions in `saved`.
+    let savedIndex: [StoryEntry.ID: Int]
     /// The folder of every feed in one, for the folder counts.
     private(set) var folders: [Feed.ID: Folder.ID]
     private(set) var counts: StoryList.Counts
 
-    init(
-        entries: [StoryEntry], folders: [Feed.ID: Folder.ID], language: String, singleArticles: SingleArticleSummaries
-    ) {
+    init(entries: [StoryEntry], library: Library, language: String, singleArticles: SingleArticleSummaries) {
         self.language = language
         self.singleArticles = singleArticles
         self.entries = entries
-        self.folders = folders
-        index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
-        counts = StoryList.unreadCounts(entries, folders: folders)
+        folders = library.folderIDsByFeed()
+        let index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
+        self.index = index
+        saved = StoryList.savedEntries(in: library) { id in index[id].map { entries[$0] } }
+        savedIndex = Dictionary(saved.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        counts = StoryList.unreadCounts(entries, saved: saved.count, folders: folders)
     }
 
     mutating func updateReadState(of ids: [Article.ID], library: Library) {
         StoryList.updateReadState(of: ids, in: &entries, library: library)
-        counts = StoryList.unreadCounts(entries, folders: folders)
+        StoryList.updateReadState(of: ids, in: &saved, library: library)
+        counts = StoryList.unreadCounts(entries, saved: saved.count, folders: folders)
     }
 
     mutating func setFolders(_ folders: [Feed.ID: Folder.ID]) {
         guard folders != self.folders else { return }
         self.folders = folders
-        counts = StoryList.unreadCounts(entries, folders: folders)
+        counts = StoryList.unreadCounts(entries, saved: saved.count, folders: folders)
     }
 }

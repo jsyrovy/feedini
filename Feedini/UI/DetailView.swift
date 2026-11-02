@@ -82,6 +82,10 @@ struct ArticleDetail: View {
                     .textSelection(.enabled)
                 Text(meta)
                     .foregroundStyle(.secondary)
+                if let partOf = story?.partOf {
+                    Text("Part of: \(partOf)")
+                        .foregroundStyle(.secondary)
+                }
                 if let link = article.link {
                     HStack {
                         OpenButtons(url: link)

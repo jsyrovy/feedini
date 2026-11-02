@@ -22,6 +22,8 @@ enum ListKey: CaseIterable, Sendable {
     case summarizePage
     /// M
     case toggleRead
+    /// S: save for later, or remove from Saved
+    case save
     /// R
     case refresh
     /// Shift+A
@@ -44,6 +46,7 @@ enum KeyboardNavigation {
         case previewPage(Article.ID)
         case summarizePage(Article.ID)
         case toggleRead(ListRow)
+        case toggleSaved(ListRow)
         case refresh
         case markAllRead
         case showShortcuts
@@ -79,6 +82,8 @@ enum KeyboardNavigation {
         switch (key, cursor) {
         case (.toggleRead, _):
             return .toggleRead(cursor)
+        case (.save, _):
+            return .toggleSaved(cursor)
         case (.expand, .story):
             guard entry.isMultiArticle else { return .none }
             return isExpanded ? .select(.article(entry.id, entry.articles[0].id)) : .expand(entry.id)

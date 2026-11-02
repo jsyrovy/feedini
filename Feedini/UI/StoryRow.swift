@@ -36,6 +36,9 @@ struct StoryRow: View {
                             Text("+\(sources.count - 3)")
                         }
                     }
+                    if entry.savedAt(at: .story(entry.id)) != nil {
+                        SavedMark()
+                    }
                     Text(meta(sources: sources))
                         .lineLimit(1)
                     if !entry.newArticleIDs.isEmpty {
@@ -51,6 +54,12 @@ struct StoryRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                if let partOf = entry.partOf {
+                    Text("Part of: \(partOf)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.vertical, 3)
@@ -102,6 +111,9 @@ struct ArticleRow: View {
                     .foregroundStyle(article.isRead ? .secondary : .primary)
                     .lineLimit(2)
                 HStack(spacing: 4) {
+                    if article.isSaved {
+                        SavedMark()
+                    }
                     if let source = model.library.sourceTitle(of: article.feedID) {
                         SourceLabel(title: source)
                     }
@@ -127,6 +139,15 @@ struct UnreadDot: View {
             .fill(isUnread ? Color.accentColor : .clear)
             .frame(width: 7, height: 7)
             .accessibilityLabel(isUnread ? "Unread" : "")
+    }
+}
+
+/// Marks a saved story or article.
+struct SavedMark: View {
+    var body: some View {
+        Image(systemName: "bookmark.fill")
+            .foregroundStyle(Color.accentColor)
+            .help("Saved")
     }
 }
 

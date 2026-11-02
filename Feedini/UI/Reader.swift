@@ -15,12 +15,15 @@ final class Reader {
             cursor = nil
             shown = nil
             kept = []
+            unsaved = [:]
         }
     }
     private(set) var cursor: ListRow?
     private(set) var expanded: Set<StoryEntry.ID> = []
     /// Entries read while shown; they stay in the list until the selection changes or a refresh.
     private(set) var kept: Set<StoryEntry.ID> = []
+    /// Entries removed from Saved while it was shown, with their save dates: they stay in their place like kept ones.
+    private(set) var unsaved: [StoryEntry.ID: Date] = [:]
     /// What the detail shows instead of the feed text.
     enum Shown: Equatable {
         /// The source page in the window (V).
@@ -54,7 +57,8 @@ final class Reader {
 
     /// The entries of the list for the current selection.
     var entries: [StoryEntry] {
-        StoryList.entries(model.entries, matching: selection, folders: model.folderIDsByFeed, keeping: kept)
+        guard selection != .saved else { return model.savedEntries(keeping: unsaved) }
+        return StoryList.entries(model.entries, matching: selection, folders: model.folderIDsByFeed, keeping: kept)
     }
 
     var rows: [ListRow] {
@@ -62,7 +66,10 @@ final class Reader {
     }
 
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
-        model.entry(id)
+        if case .savedArticle = id, unsaved[id] != nil {
+            return entries.first { $0.id == id }
+        }
+        return model.entry(id)
     }
 
     var opensInWindow: Bool {
@@ -115,6 +122,8 @@ final class Reader {
             isShowingShortcuts.toggle()
         case .toggleRead(let row):
             toggleRead(row)
+        case .toggleSaved(let row):
+            toggleSaved(row)
         case .refresh:
             model.refreshNow()
         case .markAllRead:
@@ -132,8 +141,23 @@ final class Reader {
         }
     }
 
-    /// Shift+A: everything in the current selection; the list empties.
+    /// S: saves the row's item for later, or removes it from Saved (where it stays until the selection changes).
+    func toggleSaved(_ row: ListRow) {
+        guard let entry = entry(row.entryID), let item = entry.savedItem(at: row) else { return }
+        if let savedAt = entry.savedAt(at: row) {
+            if selection == .saved, case .story = row {
+                unsaved[entry.id] = savedAt
+            }
+            model.setSaved(item, at: nil)
+        } else {
+            model.setSaved(item, at: .now)
+        }
+    }
+
+    /// Shift+A: everything in the current selection; the list empties. Saved isn't marked read: it is a list to
+    /// come back to.
     func markAllRead() {
+        guard selection != .saved else { return }
         let ids = entries.flatMap { $0.articles.filter { !$0.isRead }.map(\.id) }
         kept = []
         cursor = nil
@@ -203,6 +227,7 @@ final class Reader {
 
     private func dropReadEntries() {
         kept = cursor.map { [$0.entryID] } ?? []
+        unsaved = unsaved.filter { $0.key == cursor?.entryID }
     }
 
     /// A removed feed, folder or topic can't stay selected; All is selected instead.

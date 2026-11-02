@@ -26,6 +26,8 @@ struct StoryListView: View {
             .contextMenu(forSelectionType: ListRow.self) { rows in
                 if let row = rows.first {
                     Button("Mark as Read / Unread") { reader.toggleRead(row) }
+                    let isSaved = reader.entry(row.entryID)?.savedAt(at: row) != nil
+                    Button(isSaved ? "Remove from Saved" : "Save for Later") { reader.toggleSaved(row) }
                 }
             } primaryAction: { rows in
                 if rows.first != nil {
@@ -43,7 +45,11 @@ struct StoryListView: View {
             .onAppear { isFocused = true }
         }
         .overlay {
-            if rows.isEmpty && model.isLoaded && !model.library.feeds.isEmpty {
+            if rows.isEmpty && model.isLoaded && reader.selection == .saved {
+                ContentUnavailableView(
+                    "Nothing Saved", systemImage: "bookmark", description: Text("Press S to save an article for later.")
+                )
+            } else if rows.isEmpty && model.isLoaded && !model.library.feeds.isEmpty {
                 ContentUnavailableView(
                     "All Read", systemImage: "checkmark.circle", description: Text("No unread articles."))
             }
@@ -93,6 +99,7 @@ struct StoryListView: View {
         case "p": return .preview
         case "t": return .summarizePage
         case "m": return .toggleRead
+        case "s": return shift ? nil : .save
         case "r": return .refresh
         case "a": return shift ? .markAllRead : nil
         // The character, not the key: ? is typed differently on every layout.

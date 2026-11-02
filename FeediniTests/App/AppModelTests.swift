@@ -98,6 +98,27 @@ struct AppModelTests {
         #expect(exported.map(\.folder) == ["Daily", "Work", nil])
     }
 
+    @Test func savedEntriesFollowSavingAndReading() {
+        let tech = Feed.stub("Tech")
+        let article = Article.stub(feed: tech.id)
+        model.update { $0 = Library(feeds: [tech], articles: [article]) }
+        #expect(model.savedEntries.isEmpty)
+
+        model.setSaved(.article(article.id), at: .hours(1))
+        #expect(model.savedEntries.map(\.id) == [.savedArticle(article.id)])
+        #expect(model.unreadCounts.saved == 1)
+        #expect(model.savedEntries(keeping: [:]) == model.savedEntries)
+
+        model.markRead([article.id])
+        #expect(model.entry(.savedArticle(article.id))?.isRead == true)
+        #expect(model.unreadCounts.saved == 1)
+        #expect(model.unreadCounts.all == 0)
+
+        model.setSaved(.article(article.id), at: nil)
+        #expect(model.entry(.savedArticle(article.id)) == nil)
+        #expect(model.unreadCounts.saved == 0)
+    }
+
     @Test func managesFoldersAndTheirCounts() throws {
         let tech = Feed.stub("Tech")
         let news = Feed.stub("News")

@@ -49,8 +49,9 @@ Feedini/
               Preferences (UserDefaults), LoginItem (SMAppService), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
-              folders), Saved (SavedItem, Library's saving, names of removed feeds), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar selection,
-              unread counts), ReadRules (pure: what visiting a row and M do; ListRow)
+              folders), Saved (SavedItem, Library's saving, names of removed feeds), AIUsage (AI calls per day),
+              StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts), ReadRules (pure:
+              what visiting a row and M do; ListRow)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
@@ -142,8 +143,8 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
 
 ## Reading model
 
-Three columns: sidebar (All, topics by unread count, folders with their feeds, feeds in no folder), story list
-(newest first), detail.
+Three columns: sidebar (All, Saved, topics by unread count, folders with their feeds, feeds in no folder), story
+list (newest first), detail.
 
 - A story with one article behaves like an article. A story with several articles has an AI title, a summary and
   source labels; its articles are collapsed in the list. An expanded story shows them indented below it, and J/K
@@ -153,6 +154,15 @@ Three columns: sidebar (All, topics by unread count, folders with their feeds, f
   its articles are. M toggles read / unread (on a collapsed story: all its articles).
 - A read item doesn't vanish from the current list (no jumping under the cursor); it goes away when the sidebar
   selection changes or on refresh.
+- S saves the item under the cursor for later, S again removes it from Saved. On an article row, a story with one
+  article or a loose article it saves the article; on the row of a story with several articles (collapsed or
+  expanded) the whole story. Saved items have a bookmark in every list.
+- Saved (in the sidebar under All, with the number of saved items, not in the menu bar count) shows every saved
+  item, read or not, most recently saved first: saving happens on items that moving onto them already read. A saved
+  article is shown on its own even when its story has several articles, with "Part of: <story title>" (also after
+  the AI puts a saved loose article into a story). An item removed from Saved stays in its place until the selection
+  changes or a refresh; Shift+A does nothing there. Saved items are never forgotten, a saved story keeps its summary
+  up to date even when read, and removing a feed keeps its saved articles.
 - The detail shows the text from the feed. V / Enter opens the source page the default way, Shift+V / Shift+Enter
   the other way (Settings → General: "Feedini window" (default) or "Default browser"). On a collapsed story with
   several articles V / Enter expands it (there is no single source page) and Shift+V / Shift+Enter does nothing.
@@ -181,12 +191,11 @@ Three columns: sidebar (All, topics by unread count, folders with their feeds, f
 | P | the text of the source page instead of the feed text, again: back |
 | T | TL;DR of the source page (AI) |
 | M | toggle read / unread |
+| S | save for later / remove from Saved |
 | R | refresh now |
-| Shift+A | mark everything in the current selection (All, topic, feed) as read |
+| Shift+A | mark everything in the current selection (All, topic, folder, feed; not Saved) as read |
 | ? | keyboard shortcuts |
 | ⌘, | settings |
-
-S is kept free for a future "Save for later".
 
 Keys work in the list. While the web page has focus, only Esc works (it returns focus to the list).
 
@@ -198,6 +207,11 @@ Implementation:
   with an article of it, a folder every story with an article of one of its feeds) and hides read entries unless
   they are in `keeping`. Counts match what is shown: a story counts once in a folder, even with articles of several
   of its feeds.
+- `StoryList.savedEntries` builds Saved from the entries: saved stories as their entry, saved articles as
+  `.savedArticle` entries (`partOf` for a story with several articles; a one-article story lends its title and
+  summary). `StoryEntry.savedItem(at:)` says what S saves on a row. `AppModel` caches them with the other entries
+  (`savedEntries`, `entry(_:)` finds them too); saving rebuilds the cache, reading patches both. `Reader.unsaved`
+  remembers the save dates of entries removed while Saved is shown, so they keep their place.
 - `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story). Moving
   onto a row (`visit`) applies `ReadRules` and adds the entry to `kept`, so it stays until the sidebar selection
   changes or a refresh ends (then only the entry under the cursor stays). Shift+A doesn't keep anything: the list
@@ -319,7 +333,8 @@ Implementation:
 ## Settings
 
 - **Feeds** (`FeedsSettings`): the feeds with the state of their last download (`lastChecked` or `lastError`), an
-  address field, removal (with confirmation; articles go too), OPML import and export. Adding goes through
+  address field, removal (with confirmation; articles go too, saved ones stay and the dialog says how many), OPML
+  import and export. Adding goes through
   `FeedSubscriber`: a missing scheme and `http://` / `feed://` become `https://`; an `http://` address whose HTTPS
   variant fails is rejected with "Only HTTPS feeds are supported, …"; the address must give an RSS / Atom feed and
   not be subscribed yet (`isSame` ignores the case of scheme and host and a trailing slash). The first download is
@@ -431,7 +446,7 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - `SummaryQueue` (main actor) also derives its work from the library: unread stories needing a summary that isn't
   current (`SummaryStep.pending`: stories from several feeds first, then newer first). Up to 3 calls run at once,
   10 stories each, plus one topic translation when needed. Read stories wait until they are unread again ("+1
-  new"). Triggered with the assign queue and after every assign batch. A failing batch is retried after 30 s; a
+  new"), unless they are saved or have a saved article. Triggered with the assign queue and after every assign batch. A failing batch is retried after 30 s; a
   story whose summary failed 3 times (or was left out of 3 answers) waits for the next refresh and shows the error.
 - `AICaller` makes every AI call of the queues: it finds claude (the path from the settings), runs the call, applies
   the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude

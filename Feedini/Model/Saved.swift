@@ -33,6 +33,11 @@ extension Library {
         return ids
     }
 
+    /// How many articles of the feeds saving keeps (they stay when the feeds are removed).
+    func savedArticleCount(of feedIDs: Set<Feed.ID>) -> Int {
+        articleIDsKeptBySaving().count { articles[$0].map { feedIDs.contains($0.feedID) } ?? false }
+    }
+
     /// The name of the feed the article comes from, also when the feed has been removed and only saved articles
     /// remain.
     func sourceTitle(of feedID: Feed.ID) -> String? {

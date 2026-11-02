@@ -90,7 +90,7 @@ struct FeedsSettings: View {
                 selection = []
             }
         } message: {
-            Text("Their articles are removed too.")
+            Text(removalMessage)
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.opmlTypes) { result in
             guard case .success(let url) = result else { return }
@@ -116,6 +116,14 @@ struct FeedsSettings: View {
     private var removalTitle: String {
         selection.count == 1
             ? "Remove “\(model.library.feed(selection.first!)?.title ?? "")”?" : "Remove \(selection.count) feeds?"
+    }
+
+    private var removalMessage: String {
+        switch model.library.savedArticleCount(of: selection) {
+        case 0: "Their articles are removed too."
+        case 1: "Their articles are removed too, except 1 saved article, which stays in Saved."
+        case let count: "Their articles are removed too, except \(count) saved articles, which stay in Saved."
+        }
     }
 
     private static let opmlTypes: [UTType] = [UTType(filenameExtension: "opml") ?? .xml, .xml]

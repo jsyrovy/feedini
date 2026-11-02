@@ -207,7 +207,7 @@ final class AssignQueue {
     }
 }
 
-/// Writes summaries of unread stories that need one, up to `maxParallel` calls at a time, in the order of
+/// Writes summaries of unread (or saved) stories that need one, up to `maxParallel` calls at a time, in the order of
 /// `SummaryStep.pending` (stories from several feeds first, newer first). Like the assign queue it derives the work
 /// from the library, so a story that gets a new article, or a change of the summary language, simply makes stories
 /// pending again. Topics in another language are translated alongside, in one call.

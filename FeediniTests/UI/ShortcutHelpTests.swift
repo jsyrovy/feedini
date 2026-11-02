@@ -12,7 +12,7 @@ struct ShortcutHelpTests {
         #expect(
             sections.map { $0.items.map(\.keys) } == [
                 ["J / ↓", "K / ↑", "L / →", "H / ←", "Esc"],
-                ["M", "R", "Shift+A"],
+                ["M", "S", "R", "Shift+A"],
                 ["V / Enter", "Shift+V / Shift+Enter", "P", "T"],
                 ["?", "⌘,"],
             ])

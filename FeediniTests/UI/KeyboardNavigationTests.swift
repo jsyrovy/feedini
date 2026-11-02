@@ -149,6 +149,11 @@ struct KeyboardNavigationTests {
     @Test func theOtherKeysNeedNoCursor() {
         #expect(action(.toggleRead, at: .story(multi.id)) == .toggleRead(.story(multi.id)))
         #expect(action(.toggleRead, at: nil) == .none)
+        #expect(action(.save, at: .story(multi.id)) == .toggleSaved(.story(multi.id)))
+        #expect(
+            action(.save, at: .article(multi.id, first.id), expanded: [multi.id])
+                == .toggleSaved(.article(multi.id, first.id)))
+        #expect(action(.save, at: nil) == .none)
         #expect(action(.refresh, at: nil) == .refresh)
         #expect(action(.markAllRead, at: nil) == .markAllRead)
         #expect(action(.shortcuts, at: nil) == .showShortcuts)

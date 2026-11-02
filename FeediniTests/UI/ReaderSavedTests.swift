@@ -1,0 +1,117 @@
+import Foundation
+import Testing
+
+@testable import Feedini
+
+@MainActor
+struct ReaderSavedTests {
+    private let feed = Feed.stub("Tech")
+    private let model: AppModel
+    private let reader: Reader
+    private let lone: Article
+    private let first: Article
+    private let second: Article
+    private let story: Story
+
+    init() {
+        model = AppModel.test()
+        reader = Reader(model: model)
+        lone = Article.stub("Lone", feed: feed.id, hours: -1)
+        first = Article.stub("First", feed: feed.id, hours: -2)
+        second = Article.stub("Second", feed: feed.id, hours: -3)
+        story = Story(title: "Story", articleIDs: [first.id, second.id])
+        let library = Library(feeds: [feed], articles: [lone, first, second], stories: [story])
+        model.update { $0 = library }
+    }
+
+    private var savedIDs: [StoryEntry.ID] {
+        model.savedEntries.map(\.id)
+    }
+
+    @Test func sSavesTheArticleOrTheStoryUnderTheCursorAndAgainRemovesIt() {
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.save)
+        #expect(model.library.articles[lone.id]?.isSaved == true)
+
+        reader.visit(.story(.story(story.id)))
+        reader.handle(.save)
+        #expect(model.library.stories[story.id]?.savedAt != nil)
+        #expect(Set(savedIDs) == [.story(story.id), .savedArticle(lone.id)])
+        #expect(model.unreadCounts.saved == 2)
+
+        reader.handle(.save)
+        #expect(model.library.stories[story.id]?.savedAt == nil)
+        #expect(savedIDs == [.savedArticle(lone.id)])
+    }
+
+    @Test func sOnAnArticleOfAnExpandedStorySavesTheArticle() {
+        reader.visit(.article(.story(story.id), second.id))
+        reader.handle(.save)
+
+        #expect(model.library.articles[second.id]?.isSaved == true)
+        #expect(model.library.stories[story.id]?.savedAt == nil)
+        #expect(model.entry(.savedArticle(second.id))?.partOf == "Story")
+    }
+
+    @Test func savedShowsSavedEntriesReadOrNotAndShiftADoesNothing() {
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.save)
+        reader.selection = .saved
+
+        #expect(reader.entries.map(\.id) == [.savedArticle(lone.id)])
+        reader.visit(.story(.savedArticle(lone.id)))
+        reader.handle(.markAllRead)
+        #expect(reader.cursor == .story(.savedArticle(lone.id)))
+        #expect(reader.entries.count == 1)
+        #expect(model.library.articles[lone.id]?.isRead == true)
+    }
+
+    @Test func removingFromSavedKeepsTheEntryInItsPlaceUntilTheSelectionChanges() {
+        model.setSaved(.article(lone.id), at: .hours(-1))
+        model.setSaved(.article(first.id), at: .hours(-2))
+        model.setSaved(.story(story.id), at: .hours(-3))
+        reader.selection = .saved
+        let ids: [StoryEntry.ID] = [.savedArticle(lone.id), .savedArticle(first.id), .story(story.id)]
+        #expect(reader.entries.map(\.id) == ids)
+
+        reader.visit(.story(.savedArticle(first.id)))
+        reader.handle(.save)
+        reader.visit(.story(.story(story.id)))
+        reader.handle(.save)
+
+        #expect(model.savedEntries.map(\.id) == [.savedArticle(lone.id)])
+        #expect(reader.entries.map(\.id) == ids)
+        #expect(reader.entry(.savedArticle(first.id))?.articles.map(\.id) == [first.id])
+
+        // S again saves it anew.
+        reader.handle(.save)
+        #expect(model.library.stories[story.id]?.savedAt != nil)
+
+        reader.selection = .all
+        reader.selection = .saved
+        #expect(reader.entries.map(\.id) == [.story(story.id), .savedArticle(lone.id)])
+    }
+
+    @Test func aRefreshKeepsOnlyTheEntryUnderTheCursor() {
+        model.setSaved(.article(lone.id), at: .hours(-1))
+        model.setSaved(.article(first.id), at: .hours(-2))
+        reader.selection = .saved
+        reader.visit(.story(.savedArticle(lone.id)))
+        reader.handle(.save)
+        reader.visit(.story(.savedArticle(first.id)))
+        reader.handle(.save)
+
+        model.onRefresh?()
+
+        #expect(reader.entries.map(\.id) == [.savedArticle(first.id)])
+    }
+
+    @Test func removingAFeedKeepsItsSavedArticlesInSaved() {
+        model.setSaved(.article(lone.id), at: .hours(-1))
+        model.removeFeeds([feed.id])
+
+        #expect(model.library.articles.keys.map { $0 } == [lone.id])
+        #expect(model.savedEntries.map(\.id) == [.savedArticle(lone.id)])
+        #expect(model.library.sourceTitle(of: feed.id) == "Tech")
+    }
+}

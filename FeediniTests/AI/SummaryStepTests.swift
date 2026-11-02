@@ -91,6 +91,25 @@ struct SummaryStepTests {
         #expect(pending(.always) == [twoFeeds.id, single.id, sameFeed.id, foreign.id])
     }
 
+    @Test func readStoriesAreSummarizedWhenSavedOrWithASavedArticle() {
+        let a1 = article("Saved story 1", feed: tech, hours: -1, read: true)
+        let a2 = article("Saved story 2", feed: tech, hours: -1, read: true)
+        var b1 = article("Saved article", feed: tech, hours: -2, read: true)
+        b1.savedAt = .hours(0)
+        let b2 = article("Other", feed: tech, hours: -2, read: true)
+        let c1 = article("Read 1", feed: tech, hours: -3, read: true)
+        let c2 = article("Read 2", feed: tech, hours: -3, read: true)
+        let savedStory = Story(title: "1", articleIDs: [a1.id, a2.id], savedAt: .hours(0))
+        let withSavedArticle = Story(title: "2", articleIDs: [b1.id, b2.id])
+        let read = Story(title: "3", articleIDs: [c1.id, c2.id])
+        let library = Library(
+            feeds: [tech], articles: [a1, a2, b1, b2, c1, c2], stories: [savedStory, withSavedArticle, read])
+
+        #expect(
+            SummaryStep.pending(in: library, language: "cs", singleArticles: .never)
+                == [savedStory.id, withSavedArticle.id])
+    }
+
     @Test func buildsThePayloadOldestArticleFirst() throws {
         let first = article("First", feed: tech, hours: -3)
         var second = article("Second", feed: news, hours: -1)

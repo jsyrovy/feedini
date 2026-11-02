@@ -3,6 +3,8 @@ import Foundation
 /// What the sidebar selects.
 enum SidebarSelection: Hashable, Sendable {
     case all
+    /// The saved stories and articles (S).
+    case saved
     case topic(Topic.ID)
     case folder(Folder.ID)
     case feed(Feed.ID)
@@ -12,7 +14,7 @@ extension Library {
     /// Whether the sidebar item still exists.
     func contains(_ selection: SidebarSelection) -> Bool {
         switch selection {
-        case .all: true
+        case .all, .saved: true
         case .topic(let id): topics[id] != nil
         case .folder(let id): folder(id) != nil
         case .feed(let id): feed(id) != nil
@@ -26,6 +28,8 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
         case story(Story.ID)
         /// An article without a story.
         case loose(Article.ID)
+        /// A saved article in Saved, shown on its own whether it belongs to a story or not.
+        case savedArticle(Article.ID)
     }
 
     var id: ID
@@ -41,6 +45,10 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
     var summary: Summary?
     /// The summary covers exactly these articles in the summary language.
     var isSummaryCurrent = false
+    /// When the story was saved as a whole (S).
+    var storySavedAt: Date?
+    /// The list title of the story with several articles a saved article belongs to (in Saved).
+    var partOf: String?
 
     /// The date of the newest article.
     var date: Date { articles.first?.date ?? .distantPast }
@@ -57,6 +65,29 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
 
     func article(_ id: Article.ID) -> Article? {
         articles.first { $0.id == id }
+    }
+
+    /// What S saves on the row: an article row its article; the story row the story when it has several articles
+    /// (or was saved as a whole), else its article.
+    func savedItem(at row: ListRow) -> SavedItem? {
+        switch row {
+        case .article(_, let id):
+            return .article(id)
+        case .story:
+            if case .story(let id) = id, isMultiArticle || storySavedAt != nil {
+                return .story(id)
+            }
+            return articles.first.map { .article($0.id) }
+        }
+    }
+
+    /// When the item the row stands for was saved; `nil` when it isn't saved.
+    func savedAt(at row: ListRow) -> Date? {
+        switch savedItem(at: row) {
+        case .story: storySavedAt
+        case .article(let id): article(id)?.savedAt
+        case nil: nil
+        }
     }
 
     /// The article a row stands for: the article of an article row, the newest one for the story row.
@@ -107,12 +138,54 @@ enum StoryList {
         return StoryEntry(
             id: .story(story.id), title: title, topicID: story.topicID, articles: newestFirst(articles),
             newArticleIDs: story.newArticleIDs, needsSummary: needsSummary, summary: summary,
-            isSummaryCurrent: SummaryStep.isCurrent(summary, of: story, language: summaryLanguage))
+            isSummaryCurrent: SummaryStep.isCurrent(summary, of: story, language: summaryLanguage),
+            storySavedAt: story.savedAt)
     }
 
     /// The entry of an article no story holds.
     static func entry(for article: Article) -> StoryEntry {
         StoryEntry(id: .loose(article.id), title: article.title, topicID: nil, articles: [article], newArticleIDs: [])
+    }
+
+    /// The saved stories and articles, most recently saved first (ties: by title). A saved article is shown on its own
+    /// with the title of its story when that has several articles, or with the summary of its one-article story.
+    /// `keeping` adds entries removed from Saved while the list was shown, at the place their save date gave them.
+    /// `entry` gives the entries of `allEntries` by ID.
+    static func savedEntries(
+        in library: Library, entry: (StoryEntry.ID) -> StoryEntry?, keeping: [StoryEntry.ID: Date] = [:]
+    ) -> [StoryEntry] {
+        var dated: [(date: Date, entry: StoryEntry)] = []
+        for story in library.stories.values {
+            let id = StoryEntry.ID.story(story.id)
+            if let date = story.savedAt ?? keeping[id], let entry = entry(id) {
+                dated.append((date, entry))
+            }
+        }
+        let storyIDs = library.storyIDsByArticle()
+        for article in library.articles.values {
+            guard let date = article.savedAt ?? keeping[.savedArticle(article.id)] else { continue }
+            let container = storyIDs[article.id].map { entry(.story($0)) } ?? entry(.loose(article.id))
+            dated.append((date, savedEntry(for: article, in: container)))
+        }
+        return dated.sorted { lhs, rhs in
+            lhs.date != rhs.date
+                ? lhs.date > rhs.date : lhs.entry.title.localizedStandardCompare(rhs.entry.title) == .orderedAscending
+        }.map(\.entry)
+    }
+
+    private static func savedEntry(for article: Article, in container: StoryEntry?) -> StoryEntry {
+        var entry = StoryEntry(
+            id: .savedArticle(article.id), title: article.title, topicID: container?.topicID, articles: [article],
+            newArticleIDs: [])
+        if let container, container.isMultiArticle {
+            entry.partOf = container.title
+        } else if let container, case .story = container.id {
+            entry.title = container.title
+            entry.needsSummary = container.needsSummary
+            entry.summary = container.summary
+            entry.isSummaryCurrent = container.isSummaryCurrent
+        }
+        return entry
     }
 
     /// Updates the entries holding the articles after their read state changed – which changes neither the order
@@ -151,6 +224,8 @@ enum StoryList {
     ) -> Bool {
         switch selection {
         case .all: true
+        // Saved has its own entries (`savedEntries`).
+        case .saved: false
         case .topic(let id): entry.topicID == id
         case .folder(let id): entry.articles.contains { folders[$0.feedID] == id }
         case .feed(let id): entry.articles.contains { $0.feedID == id }
@@ -159,6 +234,8 @@ enum StoryList {
 
     struct Counts: Equatable, Sendable {
         var all = 0
+        /// Every saved entry, read or not.
+        var saved = 0
         var topics: [Topic.ID: Int] = [:]
         var folders: [Folder.ID: Int] = [:]
         var feeds: [Feed.ID: Int] = [:]
@@ -166,6 +243,7 @@ enum StoryList {
         func count(for selection: SidebarSelection) -> Int {
             switch selection {
             case .all: all
+            case .saved: saved
             case .topic(let id): topics[id, default: 0]
             case .folder(let id): folders[id, default: 0]
             case .feed(let id): feeds[id, default: 0]
@@ -174,9 +252,9 @@ enum StoryList {
     }
 
     /// Unread entries per sidebar item, matching what `entries` shows: a story counts once in every feed it has an
-    /// article of, and once in every folder of those feeds (not once per feed).
-    static func unreadCounts(_ all: [StoryEntry], folders: [Feed.ID: Folder.ID]) -> Counts {
-        var counts = Counts()
+    /// article of, and once in every folder of those feeds (not once per feed). Saved counts every saved entry.
+    static func unreadCounts(_ all: [StoryEntry], saved: Int = 0, folders: [Feed.ID: Folder.ID]) -> Counts {
+        var counts = Counts(saved: saved)
         for entry in all where !entry.isRead {
             counts.all += 1
             if let topic = entry.topicID {
