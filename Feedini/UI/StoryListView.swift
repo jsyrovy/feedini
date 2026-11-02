@@ -99,7 +99,7 @@ struct StoryListView: View {
         case "p": return .preview
         case "t": return .summarizePage
         case "m": return .toggleRead
-        case "s": return shift ? nil : .save
+        case "s": return shift ? .saveWithSummary : .save
         case "r": return .refresh
         case "a": return shift ? .markAllRead : nil
         // The character, not the key: ? is typed differently on every layout.

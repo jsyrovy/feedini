@@ -173,6 +173,11 @@ list (newest first), detail.
   as bullet points. It replaces the AI gist of the feed text of a one-article story (it is more complete). T on a
   current summary does nothing; after a change of the summary language it writes a new one from the stored text.
   From the source page in the window, T (or its "Summarize Page" button) returns to the text with the summary.
+- Shift+S saves the item like S (never removes it) and on an article with a link prepares its TL;DR in the
+  background, as T would, without changing the detail: P and T are then instant, and the text stays even if the page
+  goes away. Without AI the page text is still stored; on a story with several articles it only saves. While it runs
+  the row shows ✨, a failure (AI off, a consent or login wall, an error) ⚠︎ with the message, in every list; only T
+  tries again.
 - P and T work like Shift+V: on an article row or a story with one article, with a link; on a collapsed story with
   several articles they do nothing. Opening the page in the window (V) forgets its stored text, so the next P / T
   loads it again – after the user accepted cookies or logged in there.
@@ -190,6 +195,7 @@ list (newest first), detail.
 | Shift+V / Shift+Enter | open the source page the other way |
 | P | the text of the source page instead of the feed text, again: back |
 | T | TL;DR of the source page (AI) |
+| Shift+S | save for later and prepare the TL;DR of the source page |
 | M | toggle read / unread |
 | S | save for later / remove from Saved |
 | R | refresh now |
@@ -458,7 +464,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   2 run at once. Nothing is retried by itself (it is the user's action); errors stay in `AIStatus.pages` (the only
   record of the work) and show in the detail. `canSummarize` (also for the button) says whether T does anything;
   `pageOpened` (V in the window) forgets the stored text. AI off: T says so at once (`AIStatus.State.problem`: "AI
-  is off (Settings → AI).") and P still works.
+  is off (Settings → AI).") and P still works. `prepare` (Shift+S) is T that loads the page even with AI off and
+  then fails with that message.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
   errors, the pages being loaded or summarized (`PageWork`: phase, whether T asked for a summary) and their errors,
   for the status line ("Organizing 12 new articles…", "Summarizing 5 stories…", "Summarizing page…", "AI

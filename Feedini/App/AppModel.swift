@@ -269,6 +269,12 @@ final class AppModel: LibraryHost {
         pageQueue?.summarize(id)
     }
 
+    /// Shift+S: loads and summarizes the article's source page, the page also without AI
+    /// (`PageSummaryQueue.prepare`).
+    func preparePage(_ id: Article.ID) {
+        pageQueue?.prepare(id)
+    }
+
     /// Whether T does anything for the article (`PageSummaryQueue.canSummarize`).
     func canSummarizePage(_ id: Article.ID) -> Bool {
         pageQueue?.canSummarize(id) ?? false

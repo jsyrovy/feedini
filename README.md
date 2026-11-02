@@ -23,7 +23,8 @@ New articles show up right away; grouping and summaries arrive in the background
   of it (with the key details for longer articles).
 - **Read means read**: moving onto an item marks it read; read items leave the list when you switch views or
   refresh, and a refresh never brings them back.
-- **Saved for later**: S keeps a story or an article in Saved until you remove it, read or not.
+- **Saved for later**: S keeps a story or an article in Saved until you remove it, read or not; Shift+S also has
+  its TL;DR ready by the time you come back.
 - **Runs in the menu bar** after you close the window, refreshing and organizing in the background, with the unread
   count next to the 🎩.
 - Feeds by address or OPML import / export (with their folders); RSS 0.9x, 1.0, 2.0 and Atom. Folders of your own

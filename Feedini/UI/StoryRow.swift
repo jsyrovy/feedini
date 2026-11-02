@@ -39,6 +39,9 @@ struct StoryRow: View {
                     if entry.savedAt(at: .story(entry.id)) != nil {
                         SavedMark()
                     }
+                    if !entry.isMultiArticle, let article = entry.articles.first {
+                        PageSummaryMark(article: article.id)
+                    }
                     Text(meta(sources: sources))
                         .lineLimit(1)
                     if !entry.newArticleIDs.isEmpty {
@@ -114,6 +117,7 @@ struct ArticleRow: View {
                     if article.isSaved {
                         SavedMark()
                     }
+                    PageSummaryMark(article: article.id)
                     if let source = model.library.sourceTitle(of: article.feedID) {
                         SourceLabel(title: source)
                     }
@@ -148,6 +152,27 @@ struct SavedMark: View {
         Image(systemName: "bookmark.fill")
             .foregroundStyle(Color.accentColor)
             .help("Saved")
+    }
+}
+
+/// A TL;DR of the source page being written (Shift+S, T), or why it failed – the user may be elsewhere by then.
+struct PageSummaryMark: View {
+    @Environment(AppModel.self) private var model
+    let article: Article.ID
+
+    var body: some View {
+        if let work = model.aiStatus.pages[article], work.summary {
+            switch work.phase {
+            case .loading, .summarizing:
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.tertiary)
+                    .help("Summarizing the page…")
+            case .failed(let message):
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .help(message)
+            }
+        }
     }
 }
 

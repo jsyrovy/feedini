@@ -13,7 +13,7 @@ struct ShortcutHelpTests {
             sections.map { $0.items.map(\.keys) } == [
                 ["J / ↓", "K / ↑", "L / →", "H / ←", "Esc"],
                 ["M", "S", "R", "Shift+A"],
-                ["V / Enter", "Shift+V / Shift+Enter", "P", "T"],
+                ["V / Enter", "Shift+V / Shift+Enter", "P", "T", "Shift+S"],
                 ["?", "⌘,"],
             ])
     }

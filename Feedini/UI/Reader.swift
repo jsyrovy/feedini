@@ -124,6 +124,8 @@ final class Reader {
             toggleRead(row)
         case .toggleSaved(let row):
             toggleSaved(row)
+        case .saveWithSummary(let row, let article):
+            saveWithSummary(row, article: article)
         case .refresh:
             model.refreshNow()
         case .markAllRead:
@@ -151,6 +153,18 @@ final class Reader {
             model.setSaved(item, at: nil)
         } else {
             model.setSaved(item, at: .now)
+        }
+    }
+
+    /// Shift+S: saves the row's item unless it is saved and prepares the TL;DR of the article's source page in the
+    /// background; the detail stays as it is.
+    func saveWithSummary(_ row: ListRow, article: Article.ID?) {
+        guard let entry = entry(row.entryID), let item = entry.savedItem(at: row) else { return }
+        if entry.savedAt(at: row) == nil {
+            model.setSaved(item, at: .now)
+        }
+        if let article {
+            model.preparePage(article)
         }
     }
 

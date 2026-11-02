@@ -6,6 +6,7 @@ import Testing
 @MainActor
 struct ReaderSavedTests {
     private let feed = Feed.stub("Tech")
+    private let extractor = FakePageExtractor()
     private let model: AppModel
     private let reader: Reader
     private let lone: Article
@@ -14,7 +15,7 @@ struct ReaderSavedTests {
     private let story: Story
 
     init() {
-        model = AppModel.test()
+        model = AppModel.test(extractor: extractor)
         reader = Reader(model: model)
         lone = Article.stub("Lone", feed: feed.id, hours: -1)
         first = Article.stub("First", feed: feed.id, hours: -2)
@@ -113,5 +114,32 @@ struct ReaderSavedTests {
         #expect(model.library.articles.keys.map { $0 } == [lone.id])
         #expect(model.savedEntries.map(\.id) == [.savedArticle(lone.id)])
         #expect(model.library.sourceTitle(of: feed.id) == "Tech")
+    }
+
+    @Test func shiftSSavesAndPreparesTheSummaryWithoutLeavingTheDetail() async {
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.open)
+        reader.handle(.saveWithSummary)
+
+        #expect(model.library.articles[lone.id]?.isSaved == true)
+        #expect(reader.pageArticle == lone.id)
+        #expect(model.aiStatus.pages[lone.id]?.summary == true)
+        await model.pageQueue?.waitUntilIdle()
+        #expect(extractor.requests == [lone.link!])
+
+        // Shift+S never removes it from Saved.
+        reader.handle(.saveWithSummary)
+        #expect(model.library.articles[lone.id]?.isSaved == true)
+        await model.pageQueue?.waitUntilIdle()
+    }
+
+    @Test func shiftSOnAStoryWithSeveralArticlesOnlySavesIt() async {
+        reader.visit(.story(.story(story.id)))
+        reader.handle(.saveWithSummary)
+
+        #expect(model.library.stories[story.id]?.savedAt != nil)
+        #expect(model.aiStatus.pages.isEmpty)
+        await model.pageQueue?.waitUntilIdle()
+        #expect(extractor.requests.isEmpty)
     }
 }

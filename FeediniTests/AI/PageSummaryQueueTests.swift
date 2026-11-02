@@ -72,6 +72,44 @@ struct PageSummaryQueueTests {
         #expect(!queue.isRunning)
     }
 
+    @Test func preparingLoadsAndSummarizesUnlessTheSummaryIsCurrent() async {
+        let runner = FakeCommandRunner([Self.ok])
+        let queue = queue(runner)
+
+        queue.prepare(article.id)
+        #expect(status.pages[article.id] == AIStatus.PageWork(phase: .loading, summary: true))
+        await queue.waitUntilIdle()
+        #expect(stored?.pageSummary?.tldr == "The gist.")
+
+        queue.prepare(article.id)
+        #expect(!queue.isRunning)
+        #expect(extractor.requests.count == 1)
+    }
+
+    @Test func preparingWithoutAIStillStoresThePageAndSaysWhy() async {
+        let runner = FakeCommandRunner([])
+        let setting = Setting()
+        setting.isEnabled = false
+        let queue = queue(runner, setting: setting)
+
+        queue.prepare(article.id)
+        await queue.waitUntilIdle()
+
+        #expect(stored?.pageText != nil)
+        #expect(
+            status.pages[article.id]
+                == AIStatus.PageWork(phase: .failed(AIStatus.State.offMessage), summary: true))
+        #expect(runner.calls.isEmpty)
+
+        // Once AI is on, the stored text is summarized without loading the page again.
+        setting.isEnabled = true
+        let again = self.queue(FakeCommandRunner([Self.ok]), setting: setting)
+        again.prepare(article.id)
+        await again.waitUntilIdle()
+        #expect(stored?.pageSummary != nil)
+        #expect(extractor.requests.count == 1)
+    }
+
     @Test func requestsForTheSameArticleAreIgnoredButTContinuesARunningP() async {
         let runner = FakeCommandRunner([Self.ok])
         let queue = queue(runner)

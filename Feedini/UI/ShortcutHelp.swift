@@ -45,6 +45,8 @@ enum ShortcutHelp {
             (.pageAndAI, Item(keys: "P", description: "Full text of the source page instead of the feed text"))
         case .summarizePage:
             (.pageAndAI, Item(keys: "T", description: "Summarize the source page (TL;DR)", unavailable: aiProblem))
+        case .saveWithSummary:
+            (.pageAndAI, Item(keys: "Shift+S", description: "Save for later with a TL;DR of the source page"))
         case .toggleRead: (.reading, Item(keys: "M", description: "Mark as read / unread"))
         case .save: (.reading, Item(keys: "S", description: "Save for later / remove from Saved"))
         case .refresh: (.reading, Item(keys: "R", description: "Refresh now"))

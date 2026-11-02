@@ -1,6 +1,7 @@
 import Foundation
 
-/// Loads source pages (P) and summarizes them (T), only on the user's request, at most `maxParallel` at a time.
+/// Loads source pages (P) and summarizes them (T, Shift+S), only on the user's request, at most `maxParallel` at a
+/// time.
 ///
 /// The page text is stored with the article, so T after P (or a second T after the summary language changed) doesn't
 /// load the page again. A request for an article already being worked on is ignored, except that T makes a running
@@ -47,6 +48,13 @@ final class PageSummaryQueue {
             status.setPage(AIStatus.PageWork(phase: .failed(AIStatus.State.offMessage), summary: true), for: id)
             return
         }
+        guard canSummarize(id) else { return }
+        enqueue(id, summary: true)
+    }
+
+    /// Shift+S: like T, but also when AI is off – then the page is still loaded and stored for later, and the summary
+    /// fails with the reason (the user isn't looking at the article, the error waits in its row).
+    func prepare(_ id: Article.ID) {
         guard canSummarize(id) else { return }
         enqueue(id, summary: true)
     }

@@ -146,6 +146,21 @@ struct KeyboardNavigationTests {
         }
     }
 
+    @Test func saveWithSummaryPreparesThePageOfAnArticleWithALink() {
+        #expect(action(.saveWithSummary, at: .story(single.id)) == .saveWithSummary(.story(single.id), lone.id))
+        #expect(
+            action(.saveWithSummary, at: .article(multi.id, second.id), expanded: [multi.id])
+                == .saveWithSummary(.article(multi.id, second.id), second.id))
+        #expect(action(.saveWithSummary, at: .story(multi.id)) == .saveWithSummary(.story(multi.id), nil))
+        var article = lone
+        article.link = nil
+        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article], newArticleIDs: [])
+        let result = KeyboardNavigation.action(
+            for: .saveWithSummary, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
+            opensInWindow: true, pageArticle: nil)
+        #expect(result == .saveWithSummary(.story(entry.id), nil))
+    }
+
     @Test func theOtherKeysNeedNoCursor() {
         #expect(action(.toggleRead, at: .story(multi.id)) == .toggleRead(.story(multi.id)))
         #expect(action(.toggleRead, at: nil) == .none)
@@ -154,6 +169,7 @@ struct KeyboardNavigationTests {
             action(.save, at: .article(multi.id, first.id), expanded: [multi.id])
                 == .toggleSaved(.article(multi.id, first.id)))
         #expect(action(.save, at: nil) == .none)
+        #expect(action(.saveWithSummary, at: nil) == .none)
         #expect(action(.refresh, at: nil) == .refresh)
         #expect(action(.markAllRead, at: nil) == .markAllRead)
         #expect(action(.shortcuts, at: nil) == .showShortcuts)
