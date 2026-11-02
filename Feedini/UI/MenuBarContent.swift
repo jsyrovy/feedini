@@ -1,13 +1,19 @@
 import SwiftUI
 
-/// The menu bar item: 🎩 with the number of unread stories.
+/// The menu bar item: the pixel-art hat (a template image) with the number of unread stories.
 struct MenuBarLabel: View {
     let model: AppModel
 
     var body: some View {
         let unread = model.unreadCounts.all
-        Text(verbatim: model.preferences.showsUnreadCount && unread > 0 ? "🎩 \(unread)" : "🎩")
-            .accessibilityLabel("Feedini, \(unreadStories(unread))")
+        HStack {
+            Image(.menuBarIcon)
+            if model.preferences.showsUnreadCount && unread > 0 {
+                Text(verbatim: "\(unread)")
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Feedini, \(unreadStories(unread))")
     }
 }
 

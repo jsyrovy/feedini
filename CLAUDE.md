@@ -34,8 +34,11 @@ Xcode 26).
 - Bundle ID `cz.jsyrovy.feedini`, a regular app (`LSUIElement = NO`), generated Info.plist, App Sandbox off (the app
   runs the `claude` CLI, which a sandboxed app can't), no hardened runtime yet, ad-hoc signing ("Sign to Run Locally",
   no team). App Transport Security keeps its defaults (no exceptions): only HTTPS feeds work.
-- The app icon (`Feedini/AppIcon.icon`, Icon Composer format) is a placeholder: the 🎩 emoji on a purple gradient.
-  The menu bar item shows the same emoji.
+- The app icon (`Feedini/AppIcon.icon`, Icon Composer format) is a pixel-art top hat (32 × 32 grid) with the RSS
+  symbol cut out of its crown: a black hat on cream in the light appearance, a cream hat on charcoal in the dark one
+  (`fill-specializations`, `image-name-specializations`). Layers: outline, brim, band, crown, without glass (it
+  blurs the pixels). The menu bar item shows the same hat, 16 × 16 pixels without the RSS symbol, as a template
+  image (`Assets.xcassets/MenuBarIcon`, @1x and @2x).
 - Nothing may be installed on the dev machine (no XcodeGen, SwiftLint, xcbeautify, …). Formatting is `swift-format`
   from the toolchain, configured in `.swift-format` (4 spaces, 120 columns).
 
@@ -324,8 +327,8 @@ Implementation:
   lives in `AppDelegate`, so refreshing, organizing and summarizing go on. With the window open Feedini is a
   regular app (Dock icon, menus); when it closes it switches to `.accessory` and only the menu bar item stays
   (`AppDelegate.mainWindowIsOpen`, called from `MainWindow` appearing and disappearing).
-- Menu bar item (`MenuBarExtra`, menu style): 🎩 with the number of unread stories (optional), and a menu with the
-  count, "Open Feedini" (⌘O), "Refresh Now" (⌘R), the time of the last refresh, the AI status (always shown:
+- Menu bar item (`MenuBarExtra`, menu style): the hat with the number of unread stories (optional), and a menu with
+  the count, "Open Feedini" (⌘O), "Refresh Now" (⌘R), the time of the last refresh, the AI status (always shown:
   "AI: ready", "AI: off", or what it is doing / why it can't run), Settings and Quit.
 - After the Mac wakes from sleep (`NSWorkspace.didWakeNotification`) the feeds are refreshed right away.
 - Quitting waits for pending changes to be saved (`applicationShouldTerminate` → `AppModel.flush`). `pkill` (as in

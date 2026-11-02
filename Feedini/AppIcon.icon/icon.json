@@ -1,15 +1,101 @@
 {
-  "fill" : {
-    "automatic-gradient" : "extended-srgb:0.40000,0.22000,0.70000,1.00000"
-  },
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.95686,0.92549,0.86275,1.00000",
+          "srgb:0.90980,0.86275,0.76863,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.20392,0.20392,0.23529,1.00000",
+          "srgb:0.09020,0.09020,0.10588,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    }
+  ],
   "groups" : [
     {
       "layers" : [
         {
           "blend-mode" : "normal",
           "glass" : false,
-          "image-name" : "top-hat.png",
-          "name" : "top-hat"
+          "image-name-specializations" : [
+            {
+              "value" : "outline-light.png"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "outline-dark.png"
+            }
+          ],
+          "name" : "outline"
+        },
+        {
+          "blend-mode" : "normal",
+          "glass" : false,
+          "image-name-specializations" : [
+            {
+              "value" : "brim-light.png"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "brim-dark.png"
+            }
+          ],
+          "name" : "brim"
+        },
+        {
+          "blend-mode" : "normal",
+          "glass" : false,
+          "image-name-specializations" : [
+            {
+              "value" : "band-light.png"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "band-dark.png"
+            }
+          ],
+          "name" : "band"
+        },
+        {
+          "blend-mode" : "normal",
+          "glass" : false,
+          "image-name-specializations" : [
+            {
+              "value" : "crown-light.png"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "crown-dark.png"
+            }
+          ],
+          "name" : "crown"
         }
       ],
       "shadow" : {
