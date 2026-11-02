@@ -46,12 +46,15 @@ final class Reader {
     init(model: AppModel) {
         self.model = model
         model.onRefresh = { [weak self] in self?.dropReadEntries() }
-        model.onLibraryChange = { [weak self] in self?.followArticlesIntoStories() }
+        model.onLibraryChange = { [weak self] in
+            self?.dropRemovedSelection()
+            self?.followArticlesIntoStories()
+        }
     }
 
     /// The entries of the list for the current selection.
     var entries: [StoryEntry] {
-        StoryList.entries(model.entries, matching: selection, keeping: kept)
+        StoryList.entries(model.entries, matching: selection, folders: model.folderIDsByFeed, keeping: kept)
     }
 
     var rows: [ListRow] {
@@ -200,6 +203,13 @@ final class Reader {
 
     private func dropReadEntries() {
         kept = cursor.map { [$0.entryID] } ?? []
+    }
+
+    /// A removed feed, folder or topic can't stay selected; All is selected instead.
+    private func dropRemovedSelection() {
+        if !model.library.contains(selection) {
+            selection = .all
+        }
     }
 
     /// When the AI puts a loose article into a story, the list entry changes its ID. The cursor follows the article

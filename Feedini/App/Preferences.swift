@@ -15,6 +15,7 @@ final class Preferences {
     private static let aiEffortKey = "aiEffort"
     private static let summaryLanguageKey = "summaryLanguage"
     private static let singleArticleSummariesKey = "singleArticleSummaries"
+    private static let collapsedFoldersKey = "collapsedFolders"
 
     /// The choices for `refreshMinutes`.
     static let refreshMinutesChoices = [5, 15, 30, 60]
@@ -45,6 +46,13 @@ final class Preferences {
     var showsUnreadCount: Bool {
         didSet {
             defaults.set(showsUnreadCount, forKey: Self.showsUnreadCountKey)
+        }
+    }
+
+    /// The folders collapsed in the sidebar (a window state, not data, so not in the library).
+    var collapsedFolders: Set<Folder.ID> {
+        didSet {
+            defaults.set(collapsedFolders.map(\.uuidString).sorted(), forKey: Self.collapsedFoldersKey)
         }
     }
 
@@ -134,6 +142,8 @@ final class Preferences {
         refreshMinutes = Self.refreshMinutesChoices.contains(minutes) ? minutes : Self.defaultRefreshMinutes
         pageOpening = defaults.string(forKey: Self.pageOpeningKey).flatMap(PageOpening.init(rawValue:)) ?? .window
         showsUnreadCount = defaults.object(forKey: Self.showsUnreadCountKey) as? Bool ?? true
+        collapsedFolders = Set(
+            (defaults.stringArray(forKey: Self.collapsedFoldersKey) ?? []).compactMap(UUID.init(uuidString:)))
         aiEnabled = defaults.object(forKey: Self.aiEnabledKey) as? Bool ?? true
         claudePath = defaults.string(forKey: Self.claudePathKey) ?? ""
         // Model names are free text (new models appear), only empty ones fall back.

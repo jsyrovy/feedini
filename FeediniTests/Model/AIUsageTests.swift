@@ -42,5 +42,6 @@ struct AIUsageTests {
         let json = #"{"feeds":[],"articles":[],"stories":[],"topics":[],"tombstones":[]}"#
         let library = try JSONDecoder().decode(Library.self, from: Data(json.utf8))
         #expect(library.usage.isEmpty)
+        #expect(library.folders.isEmpty)
     }
 }

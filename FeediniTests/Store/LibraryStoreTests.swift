@@ -14,8 +14,10 @@ struct LibraryStoreTests {
     }
 
     private func sampleLibrary(title: String = "Tech") -> Library {
-        let feed = Feed.stub(title)
-        return Library(feeds: [feed], articles: [.stub(feed: feed.id)])
+        let folder = Folder(name: "Daily")
+        let feed = Feed.stub(title, folder: folder.id)
+        return Library(
+            feeds: [feed, .stub("Other")], articles: [.stub(feed: feed.id)], folders: [folder, Folder(name: "Empty")])
     }
 
     private func backups() throws -> [String] {

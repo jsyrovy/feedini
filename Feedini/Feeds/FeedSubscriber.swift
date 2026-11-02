@@ -9,6 +9,8 @@ struct FeedSubscriber: Sendable {
         var parsed: ParsedFeed
         var etag: String?
         var lastModified: String?
+        /// The name of the folder (an OPML category) the feed is listed in, if any.
+        var folder: String?
 
         /// The feed's title, or its host when it has none.
         var title: String {
@@ -111,7 +113,8 @@ struct FeedSubscriber: Sendable {
         var result = ImportResult()
         for (entry, outcome) in zip(entries, results) {
             switch outcome {
-            case .success(let subscription):
+            case .success(var subscription):
+                subscription.folder = entry.folder
                 // The same feed under two addresses (http and https) is added once.
                 if result.added.contains(where: { Self.isSame($0.url, subscription.url) }) {
                     result.skipped.append((entry, Failure.alreadySubscribed.message))

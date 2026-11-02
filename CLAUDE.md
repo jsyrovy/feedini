@@ -48,8 +48,9 @@ Feedini/
               refresh after wake), AppModel (library on the main actor, saving, refreshing, the AI queues),
               Preferences (UserDefaults), LoginItem (SMAppService), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
-              state, removing feeds), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar
-              selection, unread counts), ReadRules (pure: what visiting a row and M do; ListRow)
+              state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
+              folders), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar selection,
+              unread counts), ReadRules (pure: what visiting a row and M do; ListRow)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
@@ -70,7 +71,8 @@ Feedini/
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
-  UI/         MainWindow (NavigationSplitView), Sidebar, StoryListView (keys, status bar), StoryRow / ArticleRow,
+  UI/         MainWindow (NavigationSplitView), Sidebar (+ folders, dragging), FolderViews (FolderNameSheet,
+              MoveToFolderMenu), StoryListView (keys, status bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
               PageSummaryView), WebPageView (WKWebView), Reader (window state: selection, cursor, expanded stories,
               kept entries, the shown page or page text, the shortcuts sheet), KeyboardNavigation (pure: what a key
@@ -135,10 +137,13 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
   P shows the text of the source page instead, T a TL;DR of it; both only on request, on a single article.
 - After closing the window the app keeps running in the menu bar (`.accessory`) and keeps refreshing, so opening it
   shows everything processed. With the window open it is a regular app with a Dock icon.
+- Folders ("Folders" in the UI, not "categories", which would blur with the AI topics) group feeds by hand: one
+  level, a feed in at most one folder, folders in the user's order. They don't reach the AI.
 
 ## Reading model
 
-Three columns: sidebar (All, topics by unread count, feeds), story list (newest first), detail.
+Three columns: sidebar (All, topics by unread count, folders with their feeds, feeds in no folder), story list
+(newest first), detail.
 
 - A story with one article behaves like an article. A story with several articles has an AI title, a summary and
   source labels; its articles are collapsed in the list. An expanded story shows them indented below it, and J/K
@@ -189,8 +194,10 @@ Implementation:
 
 - `StoryList.allEntries` turns the library into `StoryEntry`s: every story, plus every article no story holds yet
   (`.loose`, shown like a one-article story), newest first by their newest article. A one-article story uses the
-  article's title. `entries(_:matching:keeping:)` filters by the sidebar selection (a feed shows every story with an
-  article of it) and hides read entries unless they are in `keeping`. Counts match what is shown.
+  article's title. `entries(_:matching:folders:keeping:)` filters by the sidebar selection (a feed shows every story
+  with an article of it, a folder every story with an article of one of its feeds) and hides read entries unless
+  they are in `keeping`. Counts match what is shown: a story counts once in a folder, even with articles of several
+  of its feeds.
 - `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story). Moving
   onto a row (`visit`) applies `ReadRules` and adds the entry to `kept`, so it stays until the sidebar selection
   changes or a refresh ends (then only the entry under the cursor stays). Shift+A doesn't keep anything: the list
@@ -245,7 +252,10 @@ Implementation:
   `HTMLText.plainText` (paragraphs as blank lines, `<br><br>` too, list items with "• ", scripts, styles and
   comments dropped, entities decoded) and cut to `FeedParser.maxTextLength` (10 000 characters, ending in "…").
 - `OPML.parse` returns every outline with an `xmlUrl` (any case), nested ones (categories) included, without
-  duplicates, URLs as written – checking them is the importer's job. `OPML.export` writes OPML 2.0.
+  duplicates (the first wins), URLs as written – checking them is the importer's job. A feed's folder is the name of
+  the nearest named category; deeper levels are flattened. Import puts new feeds into the folder of that name
+  (ignoring case), adding it when needed; feeds already subscribed aren't moved. `OPML.export` writes OPML 2.0 with
+  folders as categories in their order (empty ones left out), then the feeds in no folder.
 - `FeedLanguage`: the feed's `<language>` / `dc:language` / Atom `xml:lang` reduced to the primary code (`cs-CZ` →
   `cs`); without one, `NLLanguageRecognizer` on the title and the start of the text (at least 50 % sure).
 
@@ -284,6 +294,27 @@ Implementation:
 - Quitting waits for pending changes to be saved (`applicationShouldTerminate` → `AppModel.flush`). `pkill` (as in
   `make run`) skips that; quit with ⌘Q or `osascript -e 'tell application id "cz.jsyrovy.feedini" to quit'` when
   the last seconds of reading matter.
+
+## Folders
+
+- `Library.folders` (in the sidebar's order) and `Feed.folderID`, which is `nil` or an existing folder: removing a
+  folder clears it, `moveFeeds` ignores unknown folders and loading drops them (`repairFolders`). Removing a folder
+  keeps its feeds, in no folder (no confirmation).
+- Names are one line (runs of whitespace and line breaks become one space, trimmed), not empty, at most
+  `Folder.maxNameLength` (40) characters – the sidebar shows about 30, and menus and pickers grow with the longest
+  name – and unique ignoring case (`FolderNameError`). A name typed by the user that breaks a rule is refused, never
+  merged or cut. OPML categories and names in a loaded file are shortened instead (`Folder.shortenedName`: 39
+  characters + "…"); loading also numbers names that clash ("Name 2").
+- Sidebar: a folder is a `DisclosureGroup` (collapsed ones in `Preferences.collapsedFolders`, window state, not in
+  the library) with its feeds by title; feeds in no folder follow by title. A folder can be selected (Shift+A
+  marks it all read); a selected folder, feed or topic that goes away falls back to All (`Library.contains`).
+- Moving: dragging (`SidebarDrag`, carried as text `feedini-feed:<id>` / `feedini-folder:<id>`) puts the dragged
+  item where the target is – a feed into the target folder, the target feed's folder or no folder; a folder to the
+  target folder's place (after it when moving down), or to the end onto a feed in no folder. The context menu has
+  New Folder…, Rename…, Move Up / Down, Delete Folder (folders) and Move to Folder ▸ (feeds). There are no keys.
+- Settings → Feeds: the folder for a new feed next to the address, a Folder column, Move to Folder ▸ for the
+  selected feeds, New Folder….
+- `AppModel` caches the folder of every feed with the entries; moving feeds only recounts (`EntriesCache.setFolders`).
 
 ## Settings
 
@@ -446,7 +477,7 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
   migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage` via
-  `decodeIfPresent`, `Story.summary`, `Topic.language`, `Article.pageText`, `Article.pageSummary` as optionals), so
+  `decodeIfPresent`, `folders` too, `Feed.folderID`, `Story.summary`, `Topic.language`, `Article.pageText`, `Article.pageSummary` as optionals), so
   older files load without a bump. The
   version is read before the library, so a file from a newer Feedini isn't decoded for nothing.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are

@@ -24,7 +24,8 @@ New articles show up right away; grouping and summaries arrive in the background
   refresh, and a refresh never brings them back.
 - **Runs in the menu bar** after you close the window, refreshing and organizing in the background, with the unread
   count next to the 🎩.
-- Feeds by address or OPML import / export; RSS 0.9x, 1.0, 2.0 and Atom.
+- Feeds by address or OPML import / export (with their folders); RSS 0.9x, 1.0, 2.0 and Atom. Folders of your own
+  in the sidebar: drag feeds into them and the folders into your order.
 
 ## Privacy and cost
 

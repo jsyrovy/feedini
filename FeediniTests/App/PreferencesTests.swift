@@ -20,6 +20,17 @@ struct PreferencesTests {
         #expect(preferences.showsUnreadCount)
     }
 
+    @Test func savesTheCollapsedFolders() {
+        let folder = UUID()
+        #expect(Preferences(defaults: defaults).collapsedFolders.isEmpty)
+
+        Preferences(defaults: defaults).collapsedFolders = [folder]
+
+        #expect(Preferences(defaults: defaults).collapsedFolders == [folder])
+        defaults.set(["nonsense", folder.uuidString], forKey: "collapsedFolders")
+        #expect(Preferences(defaults: defaults).collapsedFolders == [folder])
+    }
+
     @Test func savesWhetherTheMenuBarShowsTheCount() {
         Preferences(defaults: defaults).showsUnreadCount = false
         #expect(!Preferences(defaults: defaults).showsUnreadCount)

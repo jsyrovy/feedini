@@ -1,10 +1,12 @@
 import Foundation
 
-/// Everything Feedini keeps: feeds, articles, stories, topics and tombstones. A value type; the app holds one on the
+/// Everything Feedini keeps: feeds and their folders, articles, stories, topics and tombstones. A value type; the app holds one on the
 /// main actor and hands copies to the store for saving.
 struct Library: Sendable, Equatable {
     /// In the order they were added.
     var feeds: [Feed] = []
+    /// In the order of the sidebar.
+    var folders: [Folder] = []
     var articles: [Article.ID: Article] = [:]
     var stories: [Story.ID: Story] = [:]
     var topics: [Topic.ID: Topic] = [:]
@@ -105,7 +107,7 @@ extension Article {
 // that unchanged data gives an unchanged file.
 extension Library: Codable {
     private enum CodingKeys: String, CodingKey {
-        case feeds, articles, stories, topics, tombstones, usage
+        case feeds, folders, articles, stories, topics, tombstones, usage
     }
 
     init(from decoder: any Decoder) throws {
@@ -116,12 +118,15 @@ extension Library: Codable {
         topics = Self.index(try container.decode([Topic].self, forKey: .topics), by: \.id)
         tombstones = Self.index(try container.decode([Tombstone].self, forKey: .tombstones), by: \.id)
         // Added after the first version; older files have none.
+        folders = try container.decodeIfPresent([Folder].self, forKey: .folders) ?? []
+        repairFolders()
         usage = try container.decodeIfPresent([AIUsageDay].self, forKey: .usage) ?? []
     }
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(feeds, forKey: .feeds)
+        try container.encode(folders, forKey: .folders)
         try container.encode(
             articles.values.map { (date: $0.firstSeen, id: $0.id.uuidString, article: $0) }
                 .sorted { ($0.date, $0.id) < ($1.date, $1.id) }.map(\.article),

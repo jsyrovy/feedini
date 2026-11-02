@@ -20,11 +20,13 @@ struct Feed: Codable, Sendable, Hashable, Identifiable {
     var lastChecked: Date?
     /// Why the last refresh failed; `nil` after a successful one.
     var lastError: String?
+    /// The folder the feed is in, if any.
+    var folderID: Folder.ID?
 
     init(
         id: UUID = UUID(), title: String, url: URL, siteURL: URL? = nil, language: String? = nil,
         etag: String? = nil, lastModified: String? = nil, lastSuccess: Date? = nil, lastChecked: Date? = nil,
-        lastError: String? = nil
+        lastError: String? = nil, folderID: Folder.ID? = nil
     ) {
         self.id = id
         self.title = title
@@ -36,5 +38,6 @@ struct Feed: Codable, Sendable, Hashable, Identifiable {
         self.lastSuccess = lastSuccess
         self.lastChecked = lastChecked
         self.lastError = lastError
+        self.folderID = folderID
     }
 }

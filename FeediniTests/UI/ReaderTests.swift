@@ -175,6 +175,28 @@ struct ReaderTests {
         #expect(!reader.isShowingShortcuts)
     }
 
+    @Test func aFolderShowsTheStoriesOfItsFeedsUntilItIsRemoved() throws {
+        let daily = try model.addFolder(named: "Daily")
+        reader.selection = .folder(daily)
+        #expect(reader.entries.isEmpty)
+
+        model.moveFeeds([feed.id], to: daily)
+        #expect(reader.entries.map(\.title) == ["Lone", "Story"])
+
+        model.removeFolder(daily)
+        #expect(reader.selection == .all)
+    }
+
+    @Test func removingTheSelectedFeedSelectsAll() {
+        reader.selection = .feed(feed.id)
+        model.update { $0.feeds[0].title = "Renamed" }
+        #expect(reader.selection == .feed(feed.id))
+
+        model.removeFeeds([feed.id])
+
+        #expect(reader.selection == .all)
+    }
+
     @Test func unknownKeysAreNotHandled() {
         #expect(!reader.handle(.collapse))
     }

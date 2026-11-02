@@ -4,7 +4,20 @@ import Foundation
 enum SidebarSelection: Hashable, Sendable {
     case all
     case topic(Topic.ID)
+    case folder(Folder.ID)
     case feed(Feed.ID)
+}
+
+extension Library {
+    /// Whether the sidebar item still exists.
+    func contains(_ selection: SidebarSelection) -> Bool {
+        switch selection {
+        case .all: true
+        case .topic(let id): topics[id] != nil
+        case .folder(let id): folder(id) != nil
+        case .feed(let id): feed(id) != nil
+        }
+    }
 }
 
 /// One item of the story list: a story, or an article no story holds yet (shown like a story with one article).
@@ -121,19 +134,25 @@ enum StoryList {
     }
 
     /// The entries shown for a sidebar selection: unread ones, plus those in `keeping` (read while the list was
-    /// shown, so they don't vanish under the cursor).
+    /// shown, so they don't vanish under the cursor). `folders` is the folder of every feed in one
+    /// (`Library.folderIDsByFeed`).
     static func entries(
-        _ all: [StoryEntry], matching selection: SidebarSelection, keeping: Set<StoryEntry.ID> = []
+        _ all: [StoryEntry], matching selection: SidebarSelection, folders: [Feed.ID: Folder.ID],
+        keeping: Set<StoryEntry.ID> = []
     ) -> [StoryEntry] {
         all.filter { entry in
-            (!entry.isRead || keeping.contains(entry.id)) && matches(entry, selection)
+            (!entry.isRead || keeping.contains(entry.id)) && matches(entry, selection, folders: folders)
         }
     }
 
-    static func matches(_ entry: StoryEntry, _ selection: SidebarSelection) -> Bool {
+    /// A folder shows every story with an article of one of its feeds.
+    static func matches(
+        _ entry: StoryEntry, _ selection: SidebarSelection, folders: [Feed.ID: Folder.ID]
+    ) -> Bool {
         switch selection {
         case .all: true
         case .topic(let id): entry.topicID == id
+        case .folder(let id): entry.articles.contains { folders[$0.feedID] == id }
         case .feed(let id): entry.articles.contains { $0.feedID == id }
         }
     }
@@ -141,28 +160,35 @@ enum StoryList {
     struct Counts: Equatable, Sendable {
         var all = 0
         var topics: [Topic.ID: Int] = [:]
+        var folders: [Folder.ID: Int] = [:]
         var feeds: [Feed.ID: Int] = [:]
 
         func count(for selection: SidebarSelection) -> Int {
             switch selection {
             case .all: all
             case .topic(let id): topics[id, default: 0]
+            case .folder(let id): folders[id, default: 0]
             case .feed(let id): feeds[id, default: 0]
             }
         }
     }
 
     /// Unread entries per sidebar item, matching what `entries` shows: a story counts once in every feed it has an
-    /// article of.
-    static func unreadCounts(_ all: [StoryEntry]) -> Counts {
+    /// article of, and once in every folder of those feeds (not once per feed).
+    static func unreadCounts(_ all: [StoryEntry], folders: [Feed.ID: Folder.ID]) -> Counts {
         var counts = Counts()
         for entry in all where !entry.isRead {
             counts.all += 1
             if let topic = entry.topicID {
                 counts.topics[topic, default: 0] += 1
             }
+            var countedFolders: [Folder.ID] = []
             for feed in entry.feedIDs {
                 counts.feeds[feed, default: 0] += 1
+                if let folder = folders[feed], !countedFolders.contains(folder) {
+                    countedFolders.append(folder)
+                    counts.folders[folder, default: 0] += 1
+                }
             }
         }
         return counts

@@ -71,6 +71,67 @@ struct AppModelTests {
         #expect(model.library.articles.isEmpty)
     }
 
+    @Test func subscribingIntoAFolderAndImportingCategoriesAsFolders() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let (first, second, third) = (
+            StubURLProtocol.uniqueURL(), StubURLProtocol.uniqueURL(), StubURLProtocol.uniqueURL()
+        )
+        StubURLProtocol.stub(first, try .feed("rss2.xml"))
+        StubURLProtocol.stub(second, try .feed("atom.xml"))
+        StubURLProtocol.stub(third, try .feed("rdf.xml"))
+        let daily = try model.addFolder(named: "Daily")
+
+        #expect(await model.subscribe(to: first.absoluteString, folder: daily) == nil)
+        let work = Folder(name: "Work")
+        let opml = OPML.export(
+            [
+                Feed(title: "Second", url: second, folderID: work.id),
+                Feed(title: "Third", url: third, folderID: UUID()),
+            ], folders: [Folder(id: UUID(), name: "daily"), work])
+        _ = try await model.importOPML(opml)
+
+        // The OPML category "Work" is a new folder; "Third" is in none.
+        #expect(model.library.folders.map(\.name) == ["Daily", "Work"])
+        let folders = model.library.feeds.map { $0.folderID.flatMap { model.library.folder($0)?.name } }
+        #expect(folders == ["Daily", "Work", nil])
+        let exported = try OPML.parse(model.exportOPML())
+        #expect(exported.map(\.folder) == ["Daily", "Work", nil])
+    }
+
+    @Test func managesFoldersAndTheirCounts() throws {
+        let tech = Feed.stub("Tech")
+        let news = Feed.stub("News")
+        let techArticle = Article.stub(feed: tech.id)
+        let newsArticle = Article.stub(feed: news.id)
+        model.update { $0 = Library(feeds: [tech, news], articles: [techArticle, newsArticle]) }
+        #expect(model.unreadCounts.all == 2)
+
+        let daily = try model.addFolder(named: "Daily", moving: [tech.id])
+        #expect(model.unreadCounts.count(for: .folder(daily)) == 1)
+        #expect(model.folderIDsByFeed == [tech.id: daily])
+        #expect(throws: FolderNameError.taken) { try model.addFolder(named: "daily") }
+
+        model.moveFeeds([news.id], to: daily)
+        #expect(model.unreadCounts.count(for: .folder(daily)) == 2)
+        model.markRead([newsArticle.id])
+        #expect(model.unreadCounts.count(for: .folder(daily)) == 1)
+
+        let work = try model.addFolder(named: "Work")
+        try model.renameFolder(work, to: "Office")
+        #expect(throws: FolderNameError.empty) { try model.renameFolder(work, to: "") }
+        model.moveFolder(work, by: -1)
+        #expect(model.library.folders.map(\.name) == ["Office", "Daily"])
+        #expect(model.drop(.feed(tech.id), onto: .folder(work)))
+        #expect(!model.drop(.feed(tech.id), onto: .folder(work)))
+        #expect(model.unreadCounts.count(for: .folder(work)) == 1)
+        #expect(model.unreadCounts.count(for: .folder(daily)) == 0)
+
+        model.removeFolder(work)
+        #expect(model.library.folders.map(\.name) == ["Daily"])
+        #expect(model.library.feed(tech.id)?.folderID == nil)
+        #expect(model.unreadCounts.count(for: .folder(work)) == 0)
+    }
+
     @Test func readStateChangesAreSaved() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let feed = Feed.stub()

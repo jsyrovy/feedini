@@ -1,10 +1,14 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Feeds: the list with the state of the last download, adding by address, removing, OPML import and export.
+/// Feeds: the list with the folder and the state of the last download, adding by address (into a folder), moving
+/// between folders, removing, OPML import and export.
 struct FeedsSettings: View {
     @Environment(AppModel.self) private var model
     @State private var address = ""
+    /// The folder a new feed goes into.
+    @State private var folder: Folder.ID?
+    @State private var naming: FolderNaming?
     @State private var isAdding = false
     @State private var addError: String?
     @State private var selection = Set<Feed.ID>()
@@ -19,6 +23,11 @@ struct FeedsSettings: View {
                 TextField("Feed address", text: $address, prompt: Text("https://example.com/feed.xml"))
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(add)
+                    .disabled(isAdding)
+                // A fixed width: a picker sized to fit grows with the longest folder name.
+                FolderPicker(folders: model.library.folders, selection: $folder)
+                    .frame(width: 150)
+                    .help("The folder new feeds go into")
                     .disabled(isAdding)
                 Button("Add", action: add)
                     .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty || isAdding)
@@ -35,11 +44,20 @@ struct FeedsSettings: View {
                 TableColumn("Title") { feed in
                     Text(feed.title).help(feed.url.absoluteString)
                 }
+                TableColumn("Folder") { feed in
+                    FolderPicker(
+                        folders: model.library.folders,
+                        selection: Binding(
+                            get: { feed.folderID }, set: { model.moveFeeds([feed.id], to: $0) }))
+                }
+                .width(min: 90, ideal: 130)
                 TableColumn("Status") { feed in
                     FeedStatus(feed: feed)
                 }
             }
             .contextMenu(forSelectionType: Feed.ID.self) { ids in
+                MoveToFolderMenu(model: model, feeds: ids) { naming = $0 }
+                Divider()
                 Button("Remove…") {
                     selection = ids
                     isConfirmingRemoval = true
@@ -50,6 +68,7 @@ struct FeedsSettings: View {
             HStack {
                 Button("Remove…", systemImage: "minus") { isConfirmingRemoval = true }
                     .disabled(selection.isEmpty)
+                Button("New Folder…") { naming = FolderNaming() }
                 Spacer()
                 if isImportRunning {
                     ProgressView().controlSize(.small)
@@ -80,10 +99,18 @@ struct FeedsSettings: View {
         .sheet(item: $importReport) { report in
             ImportReportView(report: report)
         }
+        .sheet(item: $naming) { naming in
+            FolderNameSheet(naming: naming)
+        }
+        .onChange(of: model.library.folders) {
+            if let folder, model.library.folder(folder) == nil {
+                self.folder = nil
+            }
+        }
     }
 
     private var feeds: [Feed] {
-        model.library.feeds.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        model.library.feedsByTitle
     }
 
     private var removalTitle: String {
@@ -99,7 +126,7 @@ struct FeedsSettings: View {
         isAdding = true
         addError = nil
         Task {
-            let failure = await model.subscribe(to: address)
+            let failure = await model.subscribe(to: address, folder: folder)
             isAdding = false
             addError = failure?.message
             if failure == nil {

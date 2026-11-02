@@ -61,13 +61,19 @@ struct StoryListTests {
         let all = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
         let keeping: Set<StoryEntry.ID> = [.loose(keptRead.id)]
 
-        #expect(StoryList.entries(all, matching: .all).map(\.title) == ["Unread", "Mixed"])
-        #expect(StoryList.entries(all, matching: .all, keeping: keeping).map(\.title) == ["Unread", "Kept", "Mixed"])
+        #expect(StoryList.entries(all, matching: .all, folders: [:]).map(\.title) == ["Unread", "Mixed"])
+        #expect(
+            StoryList.entries(all, matching: .all, folders: [:], keeping: keeping).map(\.title) == [
+                "Unread", "Kept", "Mixed",
+            ])
         // A story shows in every feed it has an article of.
-        #expect(StoryList.entries(all, matching: .feed(tech.id)).map(\.title) == ["Unread", "Mixed"])
-        #expect(StoryList.entries(all, matching: .feed(news.id), keeping: keeping).map(\.title) == ["Kept", "Mixed"])
-        #expect(StoryList.entries(all, matching: .topic(topic.id)).map(\.title) == ["Mixed"])
-        #expect(StoryList.entries(all, matching: .topic(UUID())).isEmpty)
+        #expect(StoryList.entries(all, matching: .feed(tech.id), folders: [:]).map(\.title) == ["Unread", "Mixed"])
+        #expect(
+            StoryList.entries(all, matching: .feed(news.id), folders: [:], keeping: keeping).map(\.title) == [
+                "Kept", "Mixed",
+            ])
+        #expect(StoryList.entries(all, matching: .topic(topic.id), folders: [:]).map(\.title) == ["Mixed"])
+        #expect(StoryList.entries(all, matching: .topic(UUID()), folders: [:]).isEmpty)
     }
 
     @Test func countsUnreadEntriesPerSidebarItem() {
@@ -89,7 +95,7 @@ struct StoryListTests {
             stories: [both, gamesStory1, gamesStory2, readStory], topics: [apple, games, empty])
 
         let counts = StoryList.unreadCounts(
-            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never))
+            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never), folders: [:])
 
         #expect(counts.all == 4)
         #expect(counts.count(for: .all) == 4)
@@ -99,6 +105,35 @@ struct StoryListTests {
         #expect(counts.count(for: .feed(tech.id)) == 2)
         #expect(counts.count(for: .feed(news.id)) == 3)
         #expect(StoryList.topics(in: library, counts: counts).map(\.name) == ["Games", "Apple"])
+    }
+
+    @Test func aFolderShowsAndCountsEachStoryOnce() {
+        let blog = Feed.stub("Blog")
+        let folder = Folder(name: "Daily")
+        let empty = Folder(name: "Empty")
+        let folders = [tech.id: folder.id, news.id: folder.id]
+        let techArticle = Article.stub("Tech", feed: tech.id, hours: -1)
+        let newsArticle = Article.stub("News", feed: news.id, hours: -2)
+        let blogArticle = Article.stub("Blog", feed: blog.id, hours: -3)
+        let blogRead = Article.stub("Blog read", feed: blog.id, hours: -4, read: true)
+        let shared = Story(title: "Shared", articleIDs: [techArticle.id, newsArticle.id])
+        let blogStory = Story(title: "Blog story", articleIDs: [blogArticle.id, blogRead.id])
+        let library = Library(
+            feeds: [tech, news, blog], articles: [techArticle, newsArticle, blogArticle, blogRead],
+            stories: [shared, blogStory])
+        let all = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
+
+        #expect(StoryList.entries(all, matching: .folder(folder.id), folders: folders).map(\.title) == ["Shared"])
+        #expect(StoryList.entries(all, matching: .folder(empty.id), folders: folders).isEmpty)
+        #expect(StoryList.entries(all, matching: .folder(folder.id), folders: [:]).isEmpty)
+
+        let counts = StoryList.unreadCounts(all, folders: folders)
+        // The shared story counts once in the folder, though it is in both of its feeds.
+        #expect(counts.count(for: .folder(folder.id)) == 1)
+        #expect(counts.count(for: .feed(tech.id)) == 1)
+        #expect(counts.count(for: .feed(news.id)) == 1)
+        #expect(counts.count(for: .folder(empty.id)) == 0)
+        #expect(counts.count(for: .all) == 2)
     }
 
     @Test func topicsWithTheSameCountAreSortedByName() {
@@ -113,7 +148,7 @@ struct StoryListTests {
                 Story(title: "2", topicID: a.id, articleIDs: [second.id]),
             ], topics: [b, a])
         let counts = StoryList.unreadCounts(
-            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never))
+            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never), folders: [:])
         #expect(StoryList.topics(in: library, counts: counts).map(\.name) == ["A", "b"])
     }
 

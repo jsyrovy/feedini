@@ -12,6 +12,9 @@ final class AppModel: LibraryHost {
             // Comparing unchanged collections is cheap (they share their storage).
             if library.articles != oldValue.articles || library.stories != oldValue.stories {
                 entriesCache = nil
+            } else if entriesCache != nil, library.feeds != oldValue.feeds || library.folders != oldValue.folders {
+                // Moving feeds between folders changes only the folder counts.
+                entriesCache?.setFolders(library.folderIDsByFeed())
             }
         }
     }
@@ -69,6 +72,9 @@ final class AppModel: LibraryHost {
     /// Unread entries per sidebar item.
     var unreadCounts: StoryList.Counts { cache.counts }
 
+    /// The folder of every feed in one.
+    var folderIDsByFeed: [Feed.ID: Folder.ID] { cache.folders }
+
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
         let cache = cache
         return cache.index[id].map { cache.entries[$0] }
@@ -84,7 +90,7 @@ final class AppModel: LibraryHost {
         }
         let cache = EntriesCache(
             entries: StoryList.allEntries(in: library, summaryLanguage: language, singleArticles: singleArticles),
-            language: language, singleArticles: singleArticles)
+            folders: library.folderIDsByFeed(), language: language, singleArticles: singleArticles)
         entriesCache = cache
         return cache
     }
@@ -150,11 +156,11 @@ final class AppModel: LibraryHost {
 
     // MARK: Feeds
 
-    /// Checks the address and adds the feed with its articles; returns why it wasn't added.
-    func subscribe(to address: String) async -> FeedSubscriber.Failure? {
+    /// Checks the address and adds the feed with its articles into the folder; returns why it wasn't added.
+    func subscribe(to address: String, folder: Folder.ID? = nil) async -> FeedSubscriber.Failure? {
         switch await subscriber.subscribe(address, existing: library.feeds.map(\.url)) {
         case .success(let subscription):
-            add([subscription])
+            add([subscription], folder: folder)
             organize()
             return nil
         case .failure(let failure):
@@ -162,7 +168,7 @@ final class AppModel: LibraryHost {
         }
     }
 
-    /// Adds the feeds of an OPML file that pass the check.
+    /// Adds the feeds of an OPML file that pass the check, into the folders named after their categories.
     func importOPML(_ data: Data) async throws(OPML.ParseError) -> FeedSubscriber.ImportResult {
         let entries = try OPML.parse(data)
         let result = await subscriber.subscribe(entries, existing: library.feeds.map(\.url))
@@ -173,7 +179,7 @@ final class AppModel: LibraryHost {
     }
 
     func exportOPML() -> Data {
-        OPML.export(library.feeds)
+        OPML.export(library.feeds, folders: library.folders)
     }
 
     func removeFeeds(_ ids: Set<Feed.ID>) {
@@ -184,13 +190,15 @@ final class AppModel: LibraryHost {
         }
     }
 
-    private func add(_ subscriptions: [FeedSubscriber.Subscription]) {
+    /// Adds the feeds into the folder, or (OPML) into the folder named as their category.
+    private func add(_ subscriptions: [FeedSubscriber.Subscription], folder: Folder.ID? = nil) {
         guard !subscriptions.isEmpty else { return }
         update { library in
             for subscription in subscriptions
             where !library.feeds.contains(where: { FeedSubscriber.isSame($0.url, subscription.url) }) {
                 let feed = Feed(title: subscription.title, url: subscription.url, siteURL: subscription.parsed.siteURL)
                 library.feeds.append(feed)
+                library.moveFeeds([feed.id], to: folder ?? subscription.folder.flatMap { library.folderID(named: $0) })
                 FeedMerge.merge(
                     [
                         feed.id: .updated(
@@ -198,6 +206,43 @@ final class AppModel: LibraryHost {
                     ], into: &library, now: .now)
             }
         }
+    }
+
+    // MARK: Folders
+
+    /// Adds a folder at the end, with the feeds in it.
+    @discardableResult
+    func addFolder(named name: String, moving feedIDs: Set<Feed.ID> = []) throws(FolderNameError) -> Folder.ID {
+        try change { library throws(FolderNameError) in
+            let id = try library.addFolder(named: name)
+            library.moveFeeds(feedIDs, to: id)
+            return id
+        }
+    }
+
+    func renameFolder(_ id: Folder.ID, to name: String) throws(FolderNameError) {
+        try change { library throws(FolderNameError) in try library.renameFolder(id, to: name) }
+    }
+
+    /// Removes the folder; its feeds stay, in no folder.
+    func removeFolder(_ id: Folder.ID) {
+        update { $0.removeFolder(id) }
+    }
+
+    /// Moves the feeds into the folder, or out of any for `nil`.
+    func moveFeeds(_ ids: some Sequence<Feed.ID>, to folder: Folder.ID?) {
+        update { $0.moveFeeds(ids, to: folder) }
+    }
+
+    /// Moves the folder up (negative) or down in the sidebar.
+    func moveFolder(_ id: Folder.ID, by offset: Int) {
+        update { $0.moveFolder(id, by: offset) }
+    }
+
+    /// Drops a dragged feed or folder of the sidebar onto another item (`SidebarDrag.drop`).
+    @discardableResult
+    func drop(_ item: SidebarSelection, onto target: SidebarSelection) -> Bool {
+        change { SidebarDrag.drop(item, onto: target, in: &$0) }
     }
 
     // MARK: Source pages
@@ -249,6 +294,16 @@ final class AppModel: LibraryHost {
         apply(change, notifiesReader: true)
     }
 
+    /// Changes the library and saves it, unless the change fails; returns what the change returns.
+    private func change<Result, Failure: Error>(
+        _ change: (inout Library) throws(Failure) -> Result
+    ) throws(Failure) -> Result {
+        var library = library
+        let result = try change(&library)
+        update { $0 = library }
+        return result
+    }
+
     private func apply(_ change: (inout Library) -> Void, notifiesReader: Bool) {
         var library = library
         change(&library)
@@ -272,18 +327,29 @@ private struct EntriesCache {
     private(set) var entries: [StoryEntry]
     /// Positions in `entries`; reading doesn't change the order.
     let index: [StoryEntry.ID: Int]
+    /// The folder of every feed in one, for the folder counts.
+    private(set) var folders: [Feed.ID: Folder.ID]
     private(set) var counts: StoryList.Counts
 
-    init(entries: [StoryEntry], language: String, singleArticles: SingleArticleSummaries) {
+    init(
+        entries: [StoryEntry], folders: [Feed.ID: Folder.ID], language: String, singleArticles: SingleArticleSummaries
+    ) {
         self.language = language
         self.singleArticles = singleArticles
         self.entries = entries
+        self.folders = folders
         index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
-        counts = StoryList.unreadCounts(entries)
+        counts = StoryList.unreadCounts(entries, folders: folders)
     }
 
     mutating func updateReadState(of ids: [Article.ID], library: Library) {
         StoryList.updateReadState(of: ids, in: &entries, library: library)
-        counts = StoryList.unreadCounts(entries)
+        counts = StoryList.unreadCounts(entries, folders: folders)
+    }
+
+    mutating func setFolders(_ folders: [Feed.ID: Folder.ID]) {
+        guard folders != self.folders else { return }
+        self.folders = folders
+        counts = StoryList.unreadCounts(entries, folders: folders)
     }
 }

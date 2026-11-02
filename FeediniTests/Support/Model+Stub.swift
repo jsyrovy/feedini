@@ -13,10 +13,12 @@ extension Date {
 }
 
 extension Feed {
-    static func stub(_ title: String = "Feed", id: UUID = UUID(), lastSuccess: Date? = nil) -> Feed {
+    static func stub(
+        _ title: String = "Feed", id: UUID = UUID(), lastSuccess: Date? = nil, folder: Folder.ID? = nil
+    ) -> Feed {
         Feed(
             id: id, title: title, url: URL(string: "https://example.com/\(title.lowercased()).xml")!,
-            lastSuccess: lastSuccess)
+            lastSuccess: lastSuccess, folderID: folder)
     }
 }
 
@@ -36,9 +38,12 @@ extension Article {
 
 extension Library {
     /// A library with the given feeds, articles and stories.
-    init(feeds: [Feed], articles: [Article], stories: [Story] = [], topics: [Topic] = []) {
+    init(
+        feeds: [Feed], articles: [Article], stories: [Story] = [], topics: [Topic] = [], folders: [Folder] = []
+    ) {
         self.init()
         self.feeds = feeds
+        self.folders = folders
         self.articles = Dictionary(uniqueKeysWithValues: articles.map { ($0.id, $0) })
         self.stories = Dictionary(uniqueKeysWithValues: stories.map { ($0.id, $0) })
         self.topics = Dictionary(uniqueKeysWithValues: topics.map { ($0.id, $0) })
