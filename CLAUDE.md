@@ -49,7 +49,7 @@ Feedini/
               Preferences (UserDefaults), LoginItem (SMAppService), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
-              folders), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar selection,
+              folders), Saved (SavedItem, Library's saving, names of removed feeds), AIUsage (AI calls per day), StoryList (pure: entries, filtering by the sidebar selection,
               unread counts), ReadRules (pure: what visiting a row and M do; ListRow)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
@@ -476,9 +476,9 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 1, "library": {…}}`, pretty-printed
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
-  migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage` via
-  `decodeIfPresent`, `folders` too, `Feed.folderID`, `Story.summary`, `Topic.language`, `Article.pageText`, `Article.pageSummary` as optionals), so
-  older files load without a bump. The
+  migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage`, `folders` and
+  `removedFeeds` via `decodeIfPresent`; `Feed.folderID`, `Story.summary`, `Story.savedAt`, `Topic.language`,
+  `Article.pageText`, `Article.pageSummary`, `Article.savedAt` as optionals), so older files load without a bump. The
   version is read before the library, so a file from a newer Feedini isn't decoded for nothing.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
@@ -496,6 +496,11 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   without a story) has no article younger than `attachWindow` (72 h); each leaves a `Tombstone` (feed + key). A
   tombstone goes once it hasn't been seen in its feed for `tombstoneMargin` (3 days) before the feed's last
   successful download, so a feed that can't be downloaded keeps them. Topics without stories go too.
+- Saving (`Article.savedAt`, `Story.savedAt`; `SavedItem`) keeps forever: a saved article, every article of a saved
+  story, and a whole story with a saved article. Removing a feed keeps them too (`articleIDsKeptBySaving`), with the
+  feed's name in `Library.removedFeeds` for their source labels (`sourceTitle(of:)`, also in the AI payloads).
+  Articles of removed feeds that nothing saved keeps go at the next prune, without a tombstone, and so do the names
+  of removed feeds no article comes from.
 
 ## Testing
 

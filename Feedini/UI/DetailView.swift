@@ -46,8 +46,8 @@ struct StoryDetail: View {
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             UnreadDot(isUnread: !article.isRead)
-                            if let feed = model.library.feed(article.feedID) {
-                                SourceLabel(title: feed.title).font(.caption)
+                            if let source = model.library.sourceTitle(of: article.feedID) {
+                                SourceLabel(title: source).font(.caption)
                             }
                             Text(article.title)
                                 .foregroundStyle(article.isRead ? .secondary : .primary)
@@ -109,7 +109,7 @@ struct ArticleDetail: View {
     }
 
     private var meta: String {
-        let feed = model.library.feed(article.feedID)?.title
+        let feed = model.library.sourceTitle(of: article.feedID)
         let date = article.published.map { $0.formatted(date: .abbreviated, time: .shortened) }
         return [feed, article.author, date].compactMap { $0 }.joined(separator: " · ")
     }

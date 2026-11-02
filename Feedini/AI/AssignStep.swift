@@ -95,7 +95,7 @@ enum AssignStep {
     ) -> (Input, IDMap) {
         var map = IDMap()
         let cutoff = now.addingTimeInterval(-Retention.attachWindow)
-        let sources = Dictionary(library.feeds.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
+        let sources = library.sourceTitles()
 
         let candidates = library.stories.values
             .map { story in (story, library.articles(of: story)) }

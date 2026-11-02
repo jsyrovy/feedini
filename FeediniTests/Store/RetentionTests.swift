@@ -99,4 +99,48 @@ struct RetentionTests {
 
         #expect(pruned(library).tombstones[later.id]?.lastSeen == .hours(1))
     }
+
+    @Test func keepsSavedArticlesAndStoriesForever() {
+        var saved = Article.stub(feed: feed.id, hours: -24 * 365, read: true)
+        saved.savedAt = .hours(-24 * 300)
+        let first = Article.stub(feed: feed.id, hours: -24 * 365, read: true)
+        let second = Article.stub(feed: feed.id, hours: -24 * 365, read: true)
+        let story = Story(title: "Saved", articleIDs: [first.id, second.id], savedAt: .hours(-24 * 300))
+        let library = pruned(Library(feeds: [feed], articles: [saved, first, second], stories: [story]))
+
+        #expect(library.articles.count == 3)
+        #expect(library.stories[story.id]?.articleIDs == [first.id, second.id])
+        #expect(library.tombstones.isEmpty)
+    }
+
+    @Test func keepsAStoryWithASavedArticleWhole() {
+        var saved = Article.stub(feed: feed.id, hours: old, read: true)
+        saved.savedAt = .hours(-1)
+        let other = Article.stub(feed: feed.id, hours: old - 1, read: true)
+        let story = Story(title: "Story", articleIDs: [saved.id, other.id])
+        let library = pruned(Library(feeds: [feed], articles: [saved, other], stories: [story]))
+
+        #expect(library.stories[story.id]?.articleIDs == [saved.id, other.id])
+    }
+
+    @Test func removesArticlesOfRemovedFeedsUnlessSavingKeepsThemAndForgetsUnusedFeedNames() {
+        let removed = Feed.stub("Removed")
+        let unused = Feed.stub("Unused")
+        var saved = Article.stub(feed: removed.id)
+        saved.savedAt = .hours(-1)
+        let inSavedStory = Article.stub(feed: removed.id, hours: old, read: true)
+        let story = Story(title: "Story", articleIDs: [inSavedStory.id], savedAt: .hours(-1))
+        let unsaved = Article.stub(feed: removed.id)
+        let staleOrphan = Article.stub(feed: removed.id, hours: old, read: true)
+        var library = Library(
+            feeds: [feed], articles: [saved, inSavedStory, unsaved, staleOrphan], stories: [story])
+        library.removedFeeds = [removed.id: "Removed", unused.id: "Unused"]
+
+        library = pruned(library)
+
+        #expect(Set(library.articles.keys) == [saved.id, inSavedStory.id])
+        // The feed is gone: no tombstone would ever be dropped.
+        #expect(library.tombstones.isEmpty)
+        #expect(library.removedFeeds == [removed.id: "Removed"])
+    }
 }

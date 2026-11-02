@@ -13,6 +13,8 @@ struct Library: Sendable, Equatable {
     var tombstones: [Tombstone.Key: Tombstone] = [:]
     /// AI calls per day, oldest first (`recordAICall`).
     var usage: [AIUsageDay] = []
+    /// The names of removed feeds that saved articles still come from (`sourceTitle(of:)`).
+    var removedFeeds: [Feed.ID: String] = [:]
 
     func feed(_ id: Feed.ID) -> Feed? {
         feeds.first { $0.id == id }
@@ -65,9 +67,16 @@ struct Library: Sendable, Equatable {
     // MARK: Feeds
 
     /// Removes the feed with its articles and tombstones. Stories lose its articles; stories left empty are removed.
+    /// Articles that saving keeps stay, and so does the feed's name for them.
     mutating func removeFeed(_ id: Feed.ID) {
+        let title = feed(id)?.title
         feeds.removeAll { $0.id == id }
-        let removed = Set(articles.values.filter { $0.feedID == id }.map(\.id))
+        let ofFeed = articles.values.filter { $0.feedID == id }.map(\.id)
+        let saved = articleIDsKeptBySaving()
+        let removed = Set(ofFeed.filter { !saved.contains($0) })
+        if removed.count < ofFeed.count, let title {
+            removedFeeds[id] = title
+        }
         for articleID in removed {
             articles[articleID] = nil
         }
@@ -107,7 +116,13 @@ extension Article {
 // that unchanged data gives an unchanged file.
 extension Library: Codable {
     private enum CodingKeys: String, CodingKey {
-        case feeds, folders, articles, stories, topics, tombstones, usage
+        case feeds, folders, articles, stories, topics, tombstones, usage, removedFeeds
+    }
+
+    /// A removed feed in the file.
+    private struct RemovedFeed: Codable {
+        var id: Feed.ID
+        var title: String
     }
 
     init(from decoder: any Decoder) throws {
@@ -121,6 +136,9 @@ extension Library: Codable {
         folders = try container.decodeIfPresent([Folder].self, forKey: .folders) ?? []
         repairFolders()
         usage = try container.decodeIfPresent([AIUsageDay].self, forKey: .usage) ?? []
+        removedFeeds = Dictionary(
+            (try container.decodeIfPresent([RemovedFeed].self, forKey: .removedFeeds) ?? []).map { ($0.id, $0.title) },
+            uniquingKeysWith: { _, last in last })
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -137,6 +155,9 @@ extension Library: Codable {
         try container.encode(
             Self.sorted(tombstones.values) { "\($0.feedID.uuidString) \($0.key)" }, forKey: .tombstones)
         try container.encode(usage, forKey: .usage)
+        try container.encode(
+            Self.sorted(removedFeeds.map { RemovedFeed(id: $0.key, title: $0.value) }) { $0.id.uuidString },
+            forKey: .removedFeeds)
     }
 
     /// Sorted by a key computed once per value (not twice per comparison).

@@ -8,7 +8,7 @@ struct StoryRow: View {
     let toggleExpanded: () -> Void
 
     var body: some View {
-        let feeds = entry.feedIDs.compactMap(model.library.feed)
+        let sources = entry.feedIDs.compactMap(model.library.sourceTitle)
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             UnreadDot(isUnread: !entry.isRead)
             VStack(alignment: .leading, spacing: 3) {
@@ -28,15 +28,15 @@ struct StoryRow: View {
                         .lineLimit(3)
                 }
                 HStack(spacing: 4) {
-                    if feeds.count > 1 {
-                        ForEach(feeds.prefix(3)) { feed in
-                            SourceLabel(title: feed.title)
+                    if sources.count > 1 {
+                        ForEach(Array(sources.prefix(3).enumerated()), id: \.offset) { _, source in
+                            SourceLabel(title: source)
                         }
-                        if feeds.count > 3 {
-                            Text("+\(feeds.count - 3)")
+                        if sources.count > 3 {
+                            Text("+\(sources.count - 3)")
                         }
                     }
-                    Text(meta(feeds: feeds))
+                    Text(meta(sources: sources))
                         .lineLimit(1)
                     if !entry.newArticleIDs.isEmpty {
                         Text("+\(entry.newArticleIDs.count) new")
@@ -56,7 +56,7 @@ struct StoryRow: View {
         .padding(.vertical, 3)
         .padding(.leading, 4)
         .overlay(alignment: .leading) {
-            if feeds.count > 1 {
+            if sources.count > 1 {
                 // Stories covered by several sources stand out.
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(Color.accentColor)
@@ -74,14 +74,14 @@ struct StoryRow: View {
         return false
     }
 
-    private func meta(feeds: [Feed]) -> String {
+    private func meta(sources: [String]) -> String {
         let age = RelativeTime.short(entry.date, now: .now)
         guard entry.isMultiArticle else {
-            return [feeds.first?.title, age].compactMap { $0 }.joined(separator: " · ")
+            return [sources.first, age].compactMap { $0 }.joined(separator: " · ")
         }
         var parts: [String] = []
-        if feeds.count > 1 {
-            parts.append("\(feeds.count) sources")
+        if sources.count > 1 {
+            parts.append("\(sources.count) sources")
         }
         parts += ["\(entry.articles.count) articles", age]
         return parts.joined(separator: " · ")
@@ -102,8 +102,8 @@ struct ArticleRow: View {
                     .foregroundStyle(article.isRead ? .secondary : .primary)
                     .lineLimit(2)
                 HStack(spacing: 4) {
-                    if let feed = model.library.feed(article.feedID) {
-                        SourceLabel(title: feed.title)
+                    if let source = model.library.sourceTitle(of: article.feedID) {
+                        SourceLabel(title: source)
                     }
                     Text(RelativeTime.short(article.date, now: .now))
                     if isNew {

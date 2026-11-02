@@ -101,7 +101,7 @@ enum SummaryStep {
     typealias IDMap = [String: (story: Story.ID, articles: [Article.ID])]
 
     static func payload(for storyIDs: [Story.ID], in library: Library, languageName: String) -> (Input, IDMap) {
-        let sources = Dictionary(library.feeds.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
+        let sources = library.sourceTitles()
         var map: IDMap = [:]
         var items: [Input.StoryItem] = []
         for story in storyIDs.compactMap({ library.stories[$0] }) {

@@ -47,7 +47,7 @@ enum PageSummaryStep {
     ) -> ClaudeRequest? {
         guard let pageText = article.pageText else { return nil }
         let input = Input(
-            outputLanguage: configuration.language, source: library.feed(article.feedID)?.title ?? "",
+            outputLanguage: configuration.language, source: library.sourceTitle(of: article.feedID) ?? "",
             title: article.title, pageText: pageText)
         return ClaudeRequest(
             model: configuration.summaryModel, effort: configuration.effort, systemPrompt: Prompts.pageSummary,

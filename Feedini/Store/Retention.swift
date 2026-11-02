@@ -8,6 +8,9 @@ import Foundation
 ///   leaves a tombstone, so the next refresh doesn't bring it back.
 /// - A tombstone goes once its article has been missing from the feed for `tombstoneMargin`, judged by the feed's
 ///   last successful download (a feed that can't be downloaded keeps its tombstones).
+/// - Saved articles and stories are kept forever, and so is a story with a saved article (with all its articles).
+/// - Articles of removed feeds that saving doesn't keep go (without a tombstone: the feed is gone), and so do the names
+///   of removed feeds no article comes from.
 /// - A topic goes once no story belongs to it.
 enum Retention {
     static let attachWindow: TimeInterval = 72 * 60 * 60
@@ -17,21 +20,29 @@ enum Retention {
         let cutoff = now.addingTimeInterval(-attachWindow)
         var removed = Set<Article.ID>()
 
-        for story in library.stories.values {
+        for story in library.stories.values where story.savedAt == nil {
             let articles = library.articles(of: story)
-            let isStale = articles.allSatisfy(\.isRead) && articles.allSatisfy { $0.date < cutoff }
+            let isStale =
+                articles.allSatisfy { $0.isRead && !$0.isSaved } && articles.allSatisfy { $0.date < cutoff }
             if isStale {
                 removed.formUnion(articles.map(\.id))
             }
         }
         let storyIDs = library.storyIDsByArticle()
         for article in library.articles.values
-        where storyIDs[article.id] == nil && article.isRead && article.date < cutoff {
+        where storyIDs[article.id] == nil && article.isRead && !article.isSaved && article.date < cutoff {
+            removed.insert(article.id)
+        }
+        let feedIDs = Set(library.feeds.map(\.id))
+        let saved = library.articleIDsKeptBySaving()
+        for article in library.articles.values where !feedIDs.contains(article.feedID) && !saved.contains(article.id) {
             removed.insert(article.id)
         }
 
         for id in removed {
-            guard let article = library.articles.removeValue(forKey: id) else { continue }
+            guard let article = library.articles.removeValue(forKey: id), feedIDs.contains(article.feedID) else {
+                continue
+            }
             let key = article.tombstoneKey
             let lastSeen = max(library.tombstones[key]?.lastSeen ?? now, now)
             library.tombstones[key] = Tombstone(feedID: article.feedID, key: article.key, lastSeen: lastSeen)
@@ -51,6 +62,9 @@ enum Retention {
 
         let usedTopics = Set(library.stories.values.compactMap(\.topicID))
         remove(from: &library.topics) { id, _ in !usedTopics.contains(id) }
+
+        let sources = Set(library.articles.values.map(\.feedID))
+        remove(from: &library.removedFeeds) { id, _ in !sources.contains(id) }
     }
 
     /// Removes the matching entries in place: a dictionary with nothing to remove keeps its storage, so comparing

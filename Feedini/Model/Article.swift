@@ -23,11 +23,13 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
     var pageText: String?
     /// The AI summary of the source page (T).
     var pageSummary: PageSummary?
+    /// When the article was saved for later (S); `nil` while it isn't saved.
+    var savedAt: Date?
 
     init(
         id: UUID = UUID(), feedID: Feed.ID, key: String, title: String, link: URL? = nil, published: Date? = nil,
         author: String? = nil, text: String = "", language: String? = nil, firstSeen: Date, readAt: Date? = nil,
-        pageText: String? = nil, pageSummary: PageSummary? = nil
+        pageText: String? = nil, pageSummary: PageSummary? = nil, savedAt: Date? = nil
     ) {
         self.id = id
         self.feedID = feedID
@@ -42,9 +44,11 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
         self.readAt = readAt
         self.pageText = pageText
         self.pageSummary = pageSummary
+        self.savedAt = savedAt
     }
 
     var isRead: Bool { readAt != nil }
+    var isSaved: Bool { savedAt != nil }
 
     /// The date used for ordering and retention: the published date, but never later than when the article was first
     /// seen (feeds sometimes give future dates), and the first sighting when the feed gives no date.

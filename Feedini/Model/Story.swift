@@ -12,10 +12,12 @@ struct Story: Codable, Sendable, Hashable, Identifiable {
     var newArticleIDs: Set<Article.ID>
     /// The AI summary, if the story needs one and it has been written.
     var summary: Summary?
+    /// When the whole story was saved for later (S); `nil` while it isn't saved.
+    var savedAt: Date?
 
     init(
         id: UUID = UUID(), title: String, topicID: Topic.ID? = nil, articleIDs: [Article.ID],
-        newArticleIDs: Set<Article.ID> = [], summary: Summary? = nil
+        newArticleIDs: Set<Article.ID> = [], summary: Summary? = nil, savedAt: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -23,6 +25,7 @@ struct Story: Codable, Sendable, Hashable, Identifiable {
         self.articleIDs = articleIDs
         self.newArticleIDs = newArticleIDs
         self.summary = summary
+        self.savedAt = savedAt
     }
 }
 
