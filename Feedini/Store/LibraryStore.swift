@@ -193,7 +193,9 @@ actor LibraryStore {
         return LoadResult(library: Library(), problem: problem)
     }
 
-    private struct File: Codable {
+    /// The content of the library file, also inside a backup (`BackupFile`). Migrations of older schema versions go
+    /// into its decoding, so restoring an old backup migrates it like loading does.
+    struct File: Codable {
         struct NewerVersion: Error {
             var version: Int
         }

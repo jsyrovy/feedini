@@ -46,14 +46,34 @@ extension ClaudeLocator {
 
 extension AppModel {
     /// A model over a store in a new temporary directory and defaults of its own, not loaded (no refresh, no AI
-    /// queues running). Claude calls and source pages go to the given fakes.
+    /// queues running). Claude calls and source pages go to the given fakes, backups to a temporary folder.
     static func test(
-        runner: FakeCommandRunner = FakeCommandRunner([]), extractor: FakePageExtractor = FakePageExtractor()
+        runner: FakeCommandRunner = FakeCommandRunner([]), extractor: FakePageExtractor = FakePageExtractor(),
+        backupStore: BackupStore = .temporary()
     ) -> AppModel {
         let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-\(UUID().uuidString)")
         return AppModel(
-            preferences: Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!),
+            preferences: Preferences.test(),
             store: LibraryStore(fileURL: directory.appending(path: "library.json")), claudeRunner: runner,
-            claudeLocator: .stub(), pageExtractor: extractor)
+            claudeLocator: .stub(), pageExtractor: extractor, backupStore: backupStore)
+    }
+}
+
+extension BackupStore {
+    /// A store over a new temporary folder standing in for iCloud Drive, in UTC; `drive` exists unless asked not to.
+    static func temporary(device: String = "Test Mac", driveExists: Bool = true) -> BackupStore {
+        let drive = FileManager.default.temporaryDirectory.appending(
+            path: "feedini-drive-\(UUID().uuidString)", directoryHint: .isDirectory)
+        if driveExists {
+            try? FileManager.default.createDirectory(at: drive, withIntermediateDirectories: true)
+        }
+        return BackupStore(drive: drive, device: device, timeZone: .gmt)
+    }
+}
+
+extension Preferences {
+    /// Preferences over defaults of their own.
+    static func test() -> Preferences {
+        Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!)
     }
 }

@@ -13,6 +13,9 @@ struct SettingsView: View {
             Tab("AI", systemImage: "sparkles") {
                 AISettings()
             }
+            Tab("Backup", systemImage: "externaldrive.badge.icloud") {
+                BackupSettings()
+            }
         }
         .frame(width: 640, height: 520)
     }

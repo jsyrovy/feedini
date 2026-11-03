@@ -12,10 +12,7 @@ final class Reader {
     var selection: SidebarSelection = .all {
         didSet {
             guard selection != oldValue else { return }
-            cursor = nil
-            shown = nil
-            kept = []
-            unsaved = [:]
+            resetList()
         }
     }
     private(set) var cursor: ListRow?
@@ -43,6 +40,8 @@ final class Reader {
     }
     /// The keyboard shortcuts sheet (?).
     var isShowingShortcuts = false
+    /// The sheet for restoring a backup (File → Restore from Backup…).
+    var isShowingRestore = false
     /// Increased when the story list should take the keyboard focus (after the page had it).
     private(set) var listFocusRequests = 0
     /// Reading and saving for ⌘Z / ⇧⌘Z; it lives as long as the app, not the window.
@@ -57,6 +56,7 @@ final class Reader {
             self?.dropRemovedSelection()
             self?.followArticlesIntoStories()
         }
+        model.onRestore = { [weak self] in self?.startOver() }
     }
 
     /// The entries of the list for the current selection.
@@ -286,6 +286,22 @@ final class Reader {
     }
 
     // MARK: Refresh
+
+    /// The list of a new selection: no cursor, nothing shown or kept.
+    private func resetList() {
+        cursor = nil
+        shown = nil
+        kept = []
+        unsaved = [:]
+    }
+
+    /// After a restore: nothing of the replaced library applies any more, not even the steps of ⌘Z.
+    private func startOver() {
+        selection = .all
+        resetList()
+        expanded = []
+        history = UndoHistory()
+    }
 
     private func dropReadEntries() {
         kept = cursor.map { [$0.entryID] } ?? []

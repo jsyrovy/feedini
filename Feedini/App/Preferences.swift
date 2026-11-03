@@ -16,6 +16,8 @@ final class Preferences {
     private static let summaryLanguageKey = "summaryLanguage"
     private static let singleArticleSummariesKey = "singleArticleSummaries"
     private static let collapsedFoldersKey = "collapsedFolders"
+    private static let backsUpKey = "backsUp"
+    private static let backupFrequencyKey = "backupFrequency"
 
     /// The choices for `refreshMinutes`.
     static let refreshMinutesChoices = [5, 15, 30, 60]
@@ -115,6 +117,23 @@ final class Preferences {
         }
     }
 
+    /// Whether the library and settings are backed up to iCloud Drive automatically. Off by default: the first backup
+    /// makes macOS ask for access to iCloud Drive, which should happen when the user turned it on.
+    var backsUp: Bool {
+        didSet {
+            defaults.set(backsUp, forKey: Self.backsUpKey)
+            onBackupChange?()
+        }
+    }
+
+    /// Daily by default.
+    var backupFrequency: BackupFrequency {
+        didSet {
+            defaults.set(backupFrequency.rawValue, forKey: Self.backupFrequencyKey)
+            onBackupChange?()
+        }
+    }
+
     /// The language code in effect.
     var summaryLanguageCode: String {
         summaryLanguage.isEmpty ? OutputLanguage.systemCode : summaryLanguage
@@ -133,29 +152,52 @@ final class Preferences {
     /// Called after a preference changed.
     @ObservationIgnored var onChange: (@MainActor () -> Void)?
 
+    /// Called after a backup preference changed.
+    @ObservationIgnored var onBackupChange: (@MainActor () -> Void)?
+
     @ObservationIgnored private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         // A value that isn't offered (none saved, or edited by hand) falls back to the default.
-        let minutes = defaults.integer(forKey: Self.refreshMinutesKey)
-        refreshMinutes = Self.refreshMinutesChoices.contains(minutes) ? minutes : Self.defaultRefreshMinutes
+        refreshMinutes =
+            Self.refreshMinutes(defaults.integer(forKey: Self.refreshMinutesKey)) ?? Self.defaultRefreshMinutes
         pageOpening = defaults.string(forKey: Self.pageOpeningKey).flatMap(PageOpening.init(rawValue:)) ?? .window
         showsUnreadCount = defaults.object(forKey: Self.showsUnreadCountKey) as? Bool ?? true
         collapsedFolders = Set(
             (defaults.stringArray(forKey: Self.collapsedFoldersKey) ?? []).compactMap(UUID.init(uuidString:)))
         aiEnabled = defaults.object(forKey: Self.aiEnabledKey) as? Bool ?? true
         claudePath = defaults.string(forKey: Self.claudePathKey) ?? ""
-        // Model names are free text (new models appear), only empty ones fall back.
-        assignModel =
-            defaults.string(forKey: Self.assignModelKey).flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultModel
-        summaryModel =
-            defaults.string(forKey: Self.summaryModelKey).flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultModel
-        let effort = defaults.string(forKey: Self.aiEffortKey) ?? ""
-        aiEffort = Self.effortChoices.contains(effort) ? effort : Self.defaultEffort
-        summaryLanguage = FeedLanguage.code(defaults.string(forKey: Self.summaryLanguageKey)) ?? ""
+        assignModel = Self.model(defaults.string(forKey: Self.assignModelKey)) ?? Self.defaultModel
+        summaryModel = Self.model(defaults.string(forKey: Self.summaryModelKey)) ?? Self.defaultModel
+        aiEffort = Self.effort(defaults.string(forKey: Self.aiEffortKey)) ?? Self.defaultEffort
+        summaryLanguage = Self.summaryLanguage(defaults.string(forKey: Self.summaryLanguageKey)) ?? ""
         singleArticleSummaries =
             defaults.string(forKey: Self.singleArticleSummariesKey).flatMap(SingleArticleSummaries.init(rawValue:))
             ?? AIConfiguration.defaultSingleArticleSummaries
+        backsUp = defaults.bool(forKey: Self.backsUpKey)
+        backupFrequency =
+            defaults.string(forKey: Self.backupFrequencyKey).flatMap(BackupFrequency.init(rawValue:)) ?? .daily
+    }
+}
+
+// The rules for stored values, also for those of a backup (`apply`): `nil` for a value that isn't valid.
+extension Preferences {
+    static func refreshMinutes(_ minutes: Int?) -> Int? {
+        minutes.flatMap { refreshMinutesChoices.contains($0) ? $0 : nil }
+    }
+
+    /// Model names are free text (new models appear), only empty ones aren't valid.
+    static func model(_ name: String?) -> String? {
+        name.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    static func effort(_ effort: String?) -> String? {
+        effort.flatMap { effortChoices.contains($0) ? $0 : nil }
+    }
+
+    /// A language code, or empty for the system language.
+    static func summaryLanguage(_ language: String?) -> String? {
+        language == "" ? "" : FeedLanguage.code(language)
     }
 }

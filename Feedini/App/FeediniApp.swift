@@ -27,6 +27,9 @@ struct FeediniApp: App {
                 .environment(appDelegate.reader)
         }
         .commands {
+            CommandGroup(after: .importExport) {
+                BackupCommands(model: appDelegate.model, reader: appDelegate.reader)
+            }
             CommandGroup(replacing: .undoRedo) {
                 UndoCommands(reader: appDelegate.reader)
             }

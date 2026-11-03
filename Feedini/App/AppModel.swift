@@ -7,6 +7,7 @@ import Observation
 final class AppModel: LibraryHost {
     let preferences: Preferences
     let aiStatus = AIStatus()
+    let backups: Backups
     private(set) var library = Library() {
         didSet {
             // Comparing unchanged collections is cheap (they share their storage).
@@ -28,6 +29,8 @@ final class AppModel: LibraryHost {
     @ObservationIgnored var onRefresh: (@MainActor () -> Void)?
     /// Called after every change of the library (the reader follows articles into their new stories).
     @ObservationIgnored var onLibraryChange: (@MainActor () -> Void)?
+    /// Called after a backup replaced the library (the reader starts over).
+    @ObservationIgnored var onRestore: (@MainActor () -> Void)?
 
     @ObservationIgnored private let store: LibraryStore
     @ObservationIgnored private let coordinator: RefreshCoordinator
@@ -44,9 +47,10 @@ final class AppModel: LibraryHost {
         preferences: Preferences = Preferences(), store: LibraryStore = LibraryStore(),
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
         claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator(),
-        pageExtractor: (any PageExtracting)? = nil
+        pageExtractor: (any PageExtracting)? = nil, backupStore: BackupStore = BackupStore()
     ) {
         self.preferences = preferences
+        backups = Backups(store: backupStore, preferences: preferences)
         self.store = store
         self.coordinator = coordinator
         self.subscriber = subscriber
@@ -127,6 +131,11 @@ final class AppModel: LibraryHost {
         preferences.onAIChange = { [weak self] in
             self?.organize(retryingFailed: true)
         }
+        // Turning backups on backs up at once (the first one, or one that is due), so macOS asks for access to iCloud
+        // Drive now and a problem shows right away.
+        preferences.onBackupChange = { [weak self] in
+            self?.backUpIfDue()
+        }
         scheduler.start()
         self.scheduler = scheduler
         organize()
@@ -157,6 +166,7 @@ final class AppModel: LibraryHost {
         lastRefresh = .now
         onRefresh?()
         organize(retryingFailed: true)
+        backUpIfDue()
     }
 
     /// Downloads the feeds and merges them into the library as it is by then.
@@ -167,6 +177,50 @@ final class AppModel: LibraryHost {
             Retention.prune(&library, now: .now)
             Log.refresh.info("\(added.count) new articles")
         }
+    }
+
+    // MARK: Backups
+
+    /// An automatic backup if it is due. Not awaited: the refresh loop mustn't wait for iCloud Drive (or for the user
+    /// to answer macOS asking for access to it).
+    private func backUpIfDue() {
+        Task { [weak self] in
+            guard let self else { return }
+            await backups.backUpIfDue { self.library }
+        }
+    }
+
+    /// Whether Back Up Now does anything.
+    var canBackUpNow: Bool {
+        !backups.isBackingUp && !library.feeds.isEmpty
+    }
+
+    /// Back Up Now; a failure shows in `backups.problem`.
+    func backUpNow() {
+        Task { [backups, library] in try? await backups.backUp(library) }
+    }
+
+    /// Replaces the library with a backup's, and the settings too if asked. The current library is backed up first
+    /// (unless it has no feeds, as on a new Mac: `Backups.backUp`); if that fails, nothing changes. Refreshing and the AI stop meanwhile
+    /// and start again with the restored library; page texts stay for the articles that are in it.
+    func restore(_ contents: BackupFile.Contents, settings: Bool) async throws(BackupError) {
+        try await backups.backUp(library, kind: .beforeRestore)
+        await scheduler?.stop()
+        assignQueue?.cancel()
+        summaryQueue?.cancel()
+        await assignQueue?.waitUntilIdle()
+        await summaryQueue?.waitUntilIdle()
+        var restored = contents.library
+        restored.pageTextIDs = library.pageTextIDs.filter { restored.articles[$0] != nil }
+        update { $0 = restored }
+        if settings {
+            preferences.apply(contents.settings)
+        }
+        Log.store.info(
+            "Restored a backup of \(contents.created, privacy: .public) from \(contents.device, privacy: .public)")
+        onRestore?()
+        scheduler?.start()
+        organize(retryingFailed: true)
     }
 
     // MARK: Feeds

@@ -73,6 +73,10 @@ Feedini/
               PageSummaryQueue (P / T on request: loading pages, summarizing them), AIStatus (@Observable state,
               stories being summarized, pages being loaded or summarized, recent calls), OutputLanguage (names,
               choices)
+  Backup/     BackupFile (pure: the file format, names, compression; BackupError), BackupPlan (pure: when a backup
+              is due, thinning out; BackupFrequency), BackupStore (the files in iCloud Drive, file coordination),
+              Backups (@Observable: automatic backups, Back Up Now, reading backups), BackedUpSettings (the settings
+              in a backup, `Preferences.apply`)
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
@@ -84,7 +88,7 @@ Feedini/
               kept entries, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
               Undo / Redo), KeyboardNavigation (pure: what a key does), ShortcutHelp (pure: the shortcuts by group)
               + ShortcutsView (the ? sheet), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings +
-              AISettings, MenuBarContent (+ MenuBarLabel)
+              AISettings + BackupSettings, RestoreSheet, BackupCommands (File menu), MenuBarContent (+ MenuBarLabel)
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
@@ -332,7 +336,8 @@ Implementation:
   (`AppDelegate.mainWindowIsOpen`, called from `MainWindow` appearing and disappearing).
 - Menu bar item (`MenuBarExtra`, menu style): the hat with the number of unread stories (optional), and a menu with
   the count, "Open Feedini" (⌘O), "Refresh Now" (⌘R), the time of the last refresh, the AI status (always shown:
-  "AI: ready", "AI: off", or what it is doing / why it can't run), Settings and Quit.
+  "AI: ready", "AI: off", or what it is doing / why it can't run), a backup problem if there is one, Settings and
+  Quit.
 - After the Mac wakes from sleep (`NSWorkspace.didWakeNotification`) the feeds are refreshed right away.
 - Quitting waits for pending changes to be saved (`applicationShouldTerminate` → `AppModel.flush`). `pkill` (as in
   `make run`) skips that; quit with ⌘Q or `osascript -e 'tell application id "cz.jsyrovy.feedini" to quit'` when
@@ -384,6 +389,9 @@ Implementation:
   with duration and cost or the error, and the usage: calls, time and cost per day for the last 7 days and the
   total of the kept 30 (`Library.usage`, `AIUsageDay`, recorded with every call claude actually ran). A typed path
   to claude is used once it is submitted or Settings close, not on every keystroke.
+- **Backup** (`BackupSettings`): automatic backups on / off (`backsUp`, off by default) and how often
+  (`backupFrequency`: hourly / daily (default) / weekly), the last backup (shown once known) or its problem, Back Up
+  Now, Restore… and Show in Finder. See "Backup".
 
 ## Refresh
 
@@ -522,12 +530,45 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   `not_article` drops the stored page text, so the next T loads the page again, and shows "Open it with V, accept
   or log in, then press T again".
 
+## Backup
+
+- Backups go to iCloud Drive: `~/Library/Mobile Documents/com~apple~CloudDocs/Feedini/Backups/<Mac name>/`, one
+  folder per Mac (`BackupStore.folderName` of the computer name), so a Mac thins out only its own backups and a
+  restore can pick those of any Mac. The app isn't sandboxed, so it writes there like into any folder, without
+  iCloud entitlements. macOS may ask once for access to iCloud Drive (it didn't for Feedini started with
+  `make run`; a throwaway ad-hoc signed app got the prompt once, and a rebuild with the same bundle ID kept the
+  grant); while such a prompt waits, so do file calls, so they never run on the main actor and the refresh loop
+  doesn't await a backup.
+- A backup is one file, `2026-11-03_14-30-15.feedinibackup` (local time, no spaces; `…_before-restore.feedinibackup`
+  for the safety backup of a restore): zlib-compressed JSON with `format`, `version`, `created`, `device`, `app`,
+  `settings` (`BackedUpSettings`) and `library`, the same object as `library.json`, so restoring reads it like
+  loading does (a newer schema or format is refused). Page texts aren't in it (big, may show what the site knows about
+  the user; P / T load them again); page summaries are. Settings of one Mac (the path to claude, collapsed folders,
+  open at login) and the backup settings stay out.
+- Nothing touches iCloud Drive until the user turns automatic backups on (off by default) or asks (Back Up Now,
+  Restore…), so a possible access prompt comes then. Turning them on or changing the frequency checks at once; then
+  after every refresh (also after start and wake). A backup is due after 90 % of the interval (`BackupPlan.isDue`; checks run every 5–60 minutes). The last
+  backup is learned from this Mac's folder at the first check. A library without feeds isn't backed up (on a new Mac it
+  would thin out the backups worth restoring). Backups run one at a time (`Backups.backUp`).
+- Thinning out after each backup (`BackupPlan.expired`): every backup of the last 24 h, then the newest of every day
+  for 14 days, the newest of every week for 8 weeks; the newest backup always stays.
+- Restore (`RestoreSheet`; Settings → Backup, File → Restore from Backup…, the empty sidebar): the backups of all
+  Macs, newest first and selected, those only in iCloud marked (a coordinated read downloads them), "Also restore
+  settings" (on). Reading a backup shows a confirmation with what it holds (`BackupFile.Contents.summary`).
+  `AppModel.restore` first backs up the current library (unless it has no feeds; if that fails nothing changes),
+  stops the refresh loop and the AI queues, replaces the library (page texts stay for the articles it has), applies
+  the settings if asked, lets the reader start over (`Reader.startOver`: selection All, no cursor, an empty ⌘Z history)
+  and starts refreshing and organizing again. Restoring replaces, it never merges.
+- Problems (`BackupError`: iCloud Drive off, no access, not a backup, newer version, other errors with their message)
+  show in Settings → Backup and in the menu bar menu until a backup works.
+
 ## Storage and retention
 
 - One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 1, "library": {…}}`, pretty-printed
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
-  migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage`, `folders` and
+  migration in decoding `LibraryStore.File` (shared by loading and restoring a backup; only work on files, like
+  moving the old page texts out, stays in `LibraryStore.load()`). Fields added later are optional when decoding (`usage`, `folders` and
   `removedFeeds` via `decodeIfPresent`; `Feed.folderID`, `Story.summary`, `Story.savedAt`, `Topic.language`,
   `Article.pageSummary`, `Article.savedAt` as optionals), so older files load without a bump. The version is read
   before the library, so a file from a newer Feedini isn't decoded for nothing.
@@ -590,6 +631,7 @@ state transitions, the commands that were run), not just execute lines. There is
 total is dominated by the UI layer, which is deliberately not unit-tested.
 
 Aim for ~100 % in the pure types: `Model/`, `Store/`, `Feeds/`, `Refresh/` (the scheduler with `ManualSleeper`),
+`Backup/` (`BackupStore.temporary()`: a temporary folder standing in for iCloud Drive, UTC names),
 `AI/` (the queues with `FakeCommandRunner`, `TestLibraryHost`, `FakePageExtractor` and `ManualSleeper` for the
 backoff), `Debug/`, `KeyboardNavigation`, `ShortcutHelp`, `RelativeTime`, `Preferences`, and `Reader` (tested with a
 real `AppModel` over a temporary store). In `PageExtractor` the WebKit callbacks for HTTP errors and failed loads
@@ -605,6 +647,6 @@ hold their `LibraryHost` unowned (the app's `AppModel` outlives them) – keep t
 ## Logs
 
 `os.Logger` subsystem `cz.jsyrovy.feedini`, categories `refresh`, `feeds`, `ai` (one line per call with the metrics
-of the answer) and `store`. Watch with
+of the answer), `store` and `backup`. Watch with
 `/usr/bin/log stream --level info --predicate 'subsystem == "cz.jsyrovy.feedini"'` – in zsh, plain `log` is a shell
 builtin. The test host is also called Feedini; filter by `processID` to see only the running app.

@@ -69,9 +69,10 @@ struct Sidebar: View {
                 ContentUnavailableView {
                     Label("No Feeds", systemImage: "dot.radiowaves.up.forward")
                 } description: {
-                    Text("Add feeds in Settings.")
+                    Text("Add feeds in Settings, or restore a backup.")
                 } actions: {
                     SettingsLink { Text("Open Settings") }
+                    Button("Restore from Backup…") { reader.isShowingRestore = true }
                 }
             }
         }

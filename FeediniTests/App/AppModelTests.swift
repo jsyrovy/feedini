@@ -11,10 +11,10 @@ struct AppModelTests {
     init() {
         let session = StubURLProtocol.session()
         model = AppModel(
-            preferences: Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!),
+            preferences: Preferences.test(),
             store: LibraryStore(fileURL: directory.appending(path: "library.json")),
             coordinator: RefreshCoordinator(fetcher: FeedFetcher(session: session)),
-            subscriber: FeedSubscriber(fetcher: FeedFetcher(session: session)))
+            subscriber: FeedSubscriber(fetcher: FeedFetcher(session: session)), backupStore: .temporary())
     }
 
     @Test func subscribingAddsTheFeedWithItsArticles() async throws {

@@ -142,3 +142,54 @@ struct PreferencesTests {
         #expect(!OutputLanguage.systemCode.isEmpty)
     }
 }
+
+extension PreferencesTests {
+    @Test func backupsAreOffAndDailyByDefault() {
+        let preferences = Preferences(defaults: defaults)
+        var changes = 0
+        preferences.onBackupChange = { changes += 1 }
+        #expect(!preferences.backsUp)
+        #expect(preferences.backupFrequency == .daily)
+
+        preferences.backsUp = true
+        preferences.backupFrequency = .hourly
+
+        #expect(changes == 2)
+        let reloaded = Preferences(defaults: defaults)
+        #expect(reloaded.backsUp)
+        #expect(reloaded.backupFrequency == .hourly)
+        defaults.set("monthly", forKey: "backupFrequency")
+        #expect(Preferences(defaults: defaults).backupFrequency == .daily)
+    }
+
+    @Test func backsUpTheSettingsOfAllMacsAndAppliesTheValidOnes() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.claudePath = "/tools/claude"
+        preferences.refreshMinutes = 60
+        preferences.pageOpening = .browser
+        preferences.showsUnreadCount = false
+        preferences.aiEnabled = false
+        preferences.assignModel = "claude-sonnet-5-5"
+        preferences.summaryModel = "claude-opus-5-5"
+        preferences.aiEffort = "high"
+        preferences.summaryLanguage = "cs"
+        preferences.singleArticleSummaries = .always
+        let settings = preferences.backedUpSettings
+
+        let restored = Preferences.test()
+        restored.apply(settings)
+
+        #expect(restored.backedUpSettings == settings)
+        #expect(restored.claudePath == "")
+
+        restored.apply(
+            BackedUpSettings(
+                refreshMinutes: 7, pageOpening: "tab", assignModel: "", summaryModel: "", aiEffort: "extreme",
+                summaryLanguage: "not a language", singleArticleSummaries: "sometimes"))
+        #expect(restored.backedUpSettings == settings)
+        restored.apply(BackedUpSettings())
+        #expect(restored.backedUpSettings == settings)
+        restored.apply(BackedUpSettings(summaryLanguage: ""))
+        #expect(restored.summaryLanguage == "")
+    }
+}

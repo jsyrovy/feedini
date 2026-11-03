@@ -24,6 +24,10 @@ struct MainWindow: View {
                 .environment(model)
                 .environment(reader)
         }
+        .sheet(isPresented: $reader.isShowingRestore) {
+            RestoreSheet()
+                .environment(model)
+        }
         .toolbar {
             ToolbarItem {
                 Button("Refresh", systemImage: "arrow.clockwise") { model.refreshNow() }

@@ -35,6 +35,9 @@ struct MenuBarContent: View {
             .disabled(model.library.feeds.isEmpty || model.isRefreshing)
         Text(refreshState)
         Text(aiState)
+        if let problem = model.backups.problem {
+            Text("Backup: \(problem)")
+        }
         Divider()
         SettingsLink { Text("Settings…") }
             .keyboardShortcut(",")
