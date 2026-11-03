@@ -252,7 +252,7 @@ enum PageScript {
             if (!o || typeof o !== 'object') return;
             if (Array.isArray(o)) { o.forEach(visit); return; }
             const type = [].concat(o['@type'] || []).join(' ');
-            if (/Article|Posting|Report|BlogPosting/.test(type)) {
+            if (/Article|Posting|Report/.test(type)) {
               ld.title = ld.title || text(o.headline);
               ld.published = ld.published || text(o.datePublished);
               ld.author = ld.author || name([].concat(o.author || [])[0]);

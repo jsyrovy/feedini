@@ -14,14 +14,9 @@ struct PageMetadata: Sendable, Equatable {
     var site: String?
     var author: String?
     var published: Date?
+}
 
-    init(title: String? = nil, site: String? = nil, author: String? = nil, published: Date? = nil) {
-        self.title = title
-        self.site = site
-        self.author = author
-        self.published = published
-    }
-
+extension PageMetadata {
     /// The values as the script returns them.
     private struct Raw: Decodable {
         var title: String?
@@ -37,7 +32,7 @@ struct PageMetadata: Sendable, Equatable {
         site = Self.cleaned(raw.site)
         title = Self.cleaned(raw.title).map { Self.title($0, withoutSite: site) }
         author = Self.cleaned(raw.author).flatMap { $0.contains("://") ? nil : $0 }
-        published = raw.published.flatMap(Self.date)
+        published = raw.published.flatMap(FeedParser.iso8601Date)
     }
 
     private static func cleaned(_ text: String?) -> String? {
@@ -56,20 +51,5 @@ struct PageMetadata: Sendable, Equatable {
             }
         }
         return title
-    }
-
-    /// An ISO 8601 date, with or without fractional seconds, or a day alone.
-    static func date(_ text: String) -> Date? {
-        let text = text.trimmingCharacters(in: .whitespaces)
-        let formatter = ISO8601DateFormatter()
-        for options: ISO8601DateFormatter.Options in [
-            [.withInternetDateTime, .withFractionalSeconds], [.withInternetDateTime], [.withFullDate],
-        ] {
-            formatter.formatOptions = options
-            if let date = formatter.date(from: text) {
-                return date
-            }
-        }
-        return nil
     }
 }

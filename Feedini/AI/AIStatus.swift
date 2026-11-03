@@ -25,6 +25,11 @@ final class AIStatus {
         var phase: Phase
         /// Whether T asked for a summary (P only loads the page).
         var summary: Bool
+
+        /// Loading or summarizing, not failed.
+        var isRunning: Bool {
+            if case .failed = phase { false } else { true }
+        }
     }
 
     struct Call: Equatable, Sendable, Identifiable {

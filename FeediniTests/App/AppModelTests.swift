@@ -202,27 +202,25 @@ struct AppModelTests {
         model.update { $0 = Library(feeds: [feed], articles: [article]) }
 
         #expect(throws: SavedLink.Failure.invalidAddress) { try model.saveLink("no address") }
-        let outcome = try model.saveLink("example.com/essay")
-        guard case .added(let id) = outcome else {
-            Issue.record("Not added: \(outcome)")
-            return
-        }
+        let id = try model.saveLink("example.com/essay").articleID
         await model.pageQueue?.waitUntilIdle()
 
         #expect(extractor.requests == [URL(string: "https://example.com/essay")!])
         #expect(model.library.pageTextIDs == [id])
+        // Without AI only the text, without saying that AI is off.
+        #expect(model.aiStatus.pages.isEmpty)
         #expect(model.savedEntries().map(\.id) == [.savedArticle(id)])
         #expect(model.savedEntries().first?.title == "An Essay")
         #expect(model.unreadCounts.saved == 1)
         #expect(model.unreadCounts.all == 1)
         #expect(try model.saveLink("https://example.com/essay#top") == .alreadySaved(id))
 
-        // The address of a feed's article saves that article, as Shift+S would.
+        // The address of a feed's article saves that article.
         #expect(try model.saveLink(article.link!.absoluteString) == .saved(article.id))
         await model.pageQueue?.waitUntilIdle()
         #expect(model.library.articles.count == 2)
         #expect(model.library.pageTextIDs == [id, article.id])
-        #expect(model.aiStatus.pages[article.id]?.phase == .failed(AIStatus.State.offMessage))
+        #expect(model.aiStatus.pages.isEmpty)
     }
 
     @Test func droppedLinksAreSavedUnlessTheyAreNoWebAddresses() async {
@@ -240,10 +238,7 @@ struct AppModelTests {
         let extractor = FakePageExtractor()
         let model = AppModel.test(extractor: extractor)
         model.preferences.aiEnabled = false
-        guard case .added(let id) = try model.saveLink("example.com/essay") else {
-            Issue.record("Not added")
-            return
-        }
+        let id = try model.saveLink("example.com/essay").articleID
         await model.pageQueue?.waitUntilIdle()
 
         model.pageOpened(id)

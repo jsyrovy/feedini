@@ -14,12 +14,17 @@ enum SavedLink {
     }
 
     enum Outcome: Equatable, Sendable {
-        /// A new saved link.
-        case added(Article.ID)
-        /// An article that was there already – of a feed, or a link removed from Saved – is saved.
+        /// The page is saved now: a new saved link, or an article that was there already – of a feed, or a link
+        /// removed from Saved.
         case saved(Article.ID)
-        /// The article is saved already; nothing changed.
+        /// The page was saved already; nothing changed.
         case alreadySaved(Article.ID)
+
+        var articleID: Article.ID {
+            switch self {
+            case .saved(let id), .alreadySaved(let id): id
+            }
+        }
     }
 
     /// The HTTPS address for what the user typed: a missing scheme and `http://` become `https://`, as for feeds.
@@ -28,8 +33,8 @@ enum SavedLink {
         return url
     }
 
-    /// Text from the clipboard to offer as the address: only an `http(s)://` address – other text wasn't copied as one.
-    static func offeredAddress(_ text: String?) -> String? {
+    /// The text, trimmed, if it is an `http(s)://` address: other text on the clipboard or in a drop isn't meant as one.
+    static func webAddress(_ text: String?) -> String? {
         guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines),
             ["http://", "https://"].contains(where: text.lowercased().hasPrefix), (try? url(from: text)) != nil
         else { return nil }
@@ -88,8 +93,14 @@ extension Library {
     /// one that isn't.
     func article(at url: URL) -> Article? {
         let key = SavedLink.key(of: url)
+        let host = url.host()?.lowercased()
         let matching = articles.values.filter { article in
-            (article.isSavedLink && article.key == key) || article.link.map(SavedLink.key) == key
+            if article.isSavedLink && article.key == key {
+                return true
+            }
+            // The key keeps the host: only links to the same host are worth comparing.
+            guard let link = article.link, link.host()?.lowercased() == host else { return false }
+            return SavedLink.key(of: link) == key
         }
         return matching.min { lhs, rhs in
             let left = (lhs.isSavedLink ? 0 : 1, lhs.isSaved ? 0 : 1, lhs.firstSeen, lhs.id.uuidString)
@@ -110,7 +121,14 @@ extension Library {
             feedID: SavedLink.feedID, key: SavedLink.key(of: url), title: SavedLink.placeholderTitle(of: url),
             link: url, firstSeen: date, savedAt: date, site: SavedLink.site(of: url))
         articles[article.id] = article
-        return .added(article.id)
+        return .saved(article.id)
+    }
+
+    /// Forgets the article's stored page text, so the next P / T loads the page again – unless it is a saved link's,
+    /// which has no other text.
+    mutating func forgetPageText(_ id: Article.ID) {
+        guard articles[id]?.isSavedLink == false else { return }
+        pageTextIDs.remove(id)
     }
 
     /// Fills in what the page says about a saved link: its title, site, author and date. The address stays as the

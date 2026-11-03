@@ -11,8 +11,7 @@ struct BackupCommands: View {
         Button("Back Up Now") { model.backUpNow() }
             .disabled(!model.canBackUpNow)
         Button("Restore from Backup…") {
-            AppDelegate.mainWindowIsOpen(true)
-            openWindow(id: FeediniApp.mainWindowID)
+            openWindow.mainWindow()
             reader.isShowingRestore = true
         }
     }

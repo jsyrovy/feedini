@@ -16,11 +16,11 @@ struct SavedLinkTests {
         #expect(SavedLink.Failure.invalidAddress.message == "This isn't a web address.")
     }
 
-    @Test func onlyWebAddressesOnTheClipboardAreOffered() {
-        #expect(SavedLink.offeredAddress(" https://example.com/a\n") == "https://example.com/a")
-        #expect(SavedLink.offeredAddress("HTTP://example.com/a") == "HTTP://example.com/a")
+    @Test func onlyHTTPAddressesAreWebAddresses() {
+        #expect(SavedLink.webAddress(" https://example.com/a\n") == "https://example.com/a")
+        #expect(SavedLink.webAddress("HTTP://example.com/a") == "HTTP://example.com/a")
         for text in [nil, "", "example.com/a", "Some words", "https://", "https://two words.com"] {
-            #expect(SavedLink.offeredAddress(text) == nil)
+            #expect(SavedLink.webAddress(text) == nil)
         }
     }
 
@@ -49,12 +49,8 @@ struct SavedLinkTests {
         var library = Library(feeds: [feed], articles: [])
         let url = URL(string: "https://www.example.com/essay?utm_source=share")!
 
-        let outcome = library.saveLink(url, at: .hours(1))
+        let id = library.saveLink(url, at: .hours(1)).articleID
 
-        guard case .added(let id) = outcome else {
-            Issue.record("Not added: \(outcome)")
-            return
-        }
         let article = try #require(library.articles[id])
         #expect(article.isSavedLink)
         #expect(article.feedID == SavedLink.feedID)
@@ -71,10 +67,7 @@ struct SavedLinkTests {
 
     @Test func savingALinkAgainChangesNothing() {
         var library = Library(feeds: [feed], articles: [])
-        guard case .added(let id) = library.saveLink(URL(string: "https://example.com/a")!, at: .hours(1)) else {
-            Issue.record("Not added")
-            return
-        }
+        let id = library.saveLink(URL(string: "https://example.com/a")!, at: .hours(1)).articleID
         let before = library
 
         #expect(library.saveLink(URL(string: "http://EXAMPLE.com/a/#top")!, at: .hours(2)) == .alreadySaved(id))
@@ -126,10 +119,7 @@ struct SavedLinkTests {
     @Test func savedLinksAreInSavedOnlyAndCountNowhereElse() {
         let article = Article.stub(feed: feed.id)
         var library = Library(feeds: [feed], articles: [article])
-        guard case .added(let id) = library.saveLink(URL(string: "https://example.com/essay")!, at: .hours(1)) else {
-            Issue.record("Not added")
-            return
-        }
+        let id = library.saveLink(URL(string: "https://example.com/essay")!, at: .hours(1)).articleID
         let all = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
 
         #expect(StoryList.entries(all, matching: .all, folders: [:]).map(\.id) == [.loose(article.id)])

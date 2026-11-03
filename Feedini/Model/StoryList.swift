@@ -59,11 +59,14 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
     /// A saved link (`SavedLink`): shown in Saved only.
     var isSavedLink: Bool { articles.contains(where: \.isSavedLink) }
 
-    /// The feeds of the articles, in the order of the articles, each once.
-    var feedIDs: [Feed.ID] {
+    /// The first article of every feed, in the order of the articles: one per source (`Library.sourceTitle(of:)`).
+    var sourceArticles: [Article] {
         var seen = Set<Feed.ID>()
-        return articles.map(\.feedID).filter { seen.insert($0).inserted }
+        return articles.filter { seen.insert($0.feedID).inserted }
     }
+
+    /// The feeds of the articles, in the order of the articles, each once.
+    var feedIDs: [Feed.ID] { sourceArticles.map(\.feedID) }
 
     func article(_ id: Article.ID) -> Article? {
         articles.first { $0.id == id }

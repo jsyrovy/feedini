@@ -145,11 +145,8 @@ struct RetentionTests {
     }
 
     @Test func keepsSavedLinksOnlyWhileTheyAreSaved() {
-        let saved = Article(
-            feedID: SavedLink.feedID, key: "example.com/a", title: "A", firstSeen: .hours(old), readAt: .hours(old),
-            savedAt: .hours(old))
-        let unsaved = Article(
-            feedID: SavedLink.feedID, key: "example.com/b", title: "B", firstSeen: .hours(-1), savedAt: nil)
+        let saved = Article.stub(feed: SavedLink.feedID, hours: old, read: true, savedAt: .hours(old))
+        let unsaved = Article.stub(feed: SavedLink.feedID, hours: -1)
         var library = Library(feeds: [feed], articles: [saved, unsaved])
         library.pageTextIDs = [saved.id, unsaved.id]
 

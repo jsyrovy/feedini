@@ -14,12 +14,12 @@ import Foundation
 @MainActor
 final class PageSummaryQueue {
     static let maxParallel = 2
-    nonisolated static let notArticleMessage =
+    private nonisolated static let notArticle =
         "The page doesn't show the article (a cookie consent, a subscription or a login?). Open it with V, accept or "
-        + "log in, then press T again."
-    nonisolated static let notArticleLinkMessage =
-        "The page doesn't show the article (a cookie consent, a subscription or a login?). Open it with V, accept or "
-        + "log in, then press P to load it again."
+        + "log in, then press"
+    nonisolated static let notArticleMessage = notArticle + " T again."
+    /// A saved link keeps its text, so T alone would summarize the same text again.
+    nonisolated static let notArticleLinkMessage = notArticle + " P to load it again."
 
     private unowned let host: any LibraryHost
     private let extractor: any PageExtracting
@@ -61,13 +61,8 @@ final class PageSummaryQueue {
     }
 
     /// Shift+S: like T, but also when AI is off – then the page is still loaded and stored for later, and the summary
-    /// fails with the reason (the user isn't looking at the article, the error waits in its row). A saved link
-    /// (Save Link…) only loads its page then: it is its text, and every saved link would warn that AI is off.
+    /// fails with the reason (the user isn't looking at the article, the error waits in its row).
     func prepare(_ id: Article.ID) {
-        if host.library.articles[id]?.isSavedLink == true, !configuration().isEnabled {
-            loadPage(id)
-            return
-        }
         guard canSummarize(id) else { return }
         enqueue(id, summary: true)
     }
@@ -79,17 +74,14 @@ final class PageSummaryQueue {
             !PageSummaryStep.isCurrent(article.pageSummary, language: configuration().languageCode)
         else { return false }
         guard let work = status.pages[id], work.summary else { return true }
-        if case .failed = work.phase { return true }
-        return false
+        return !work.isRunning
     }
 
     /// The user opened the page in the window, where they may accept cookies or log in: the stored text is forgotten,
-    /// so the next P / T loads the page again. A saved link keeps it (it has no other text); P loads it again.
+    /// so the next P / T loads the page again. A saved link keeps it (`Library.forgetPageText`); P loads it again.
     func pageOpened(_ id: Article.ID) {
-        guard host.library.pageTextIDs.contains(id), host.library.articles[id]?.isSavedLink == false,
-            tasks[id] == nil, !waiting.contains(id)
-        else { return }
-        host.update { $0.pageTextIDs.remove(id) }
+        guard host.library.pageTextIDs.contains(id), tasks[id] == nil, !waiting.contains(id) else { return }
+        host.update { $0.forgetPageText(id) }
     }
 
     /// P on a saved link: loads its page again – after the user accepted cookies or logged in with V – and with AI on
@@ -176,9 +168,7 @@ final class PageSummaryQueue {
             Log.store.error("Storing a page text failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
-        if article.isSavedLink {
-            host.update { $0.applyPageMetadata(content.metadata, to: article.id) }
-        }
+        host.update { $0.applyPageMetadata(content.metadata, to: article.id) }
         let duration = String(describing: ContinuousClock.now - started)
         Log.feeds.info("Loaded a page: \(text.count) characters in \(duration, privacy: .public)")
         return text

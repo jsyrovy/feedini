@@ -129,9 +129,7 @@ struct KeyboardNavigationTests {
     }
 
     @Test func previewOnASavedLinkLoadsItsPageAgain() {
-        let link = Article(
-            feedID: SavedLink.feedID, key: "example.com/a", title: "Link", link: URL(string: "https://example.com/a"),
-            firstSeen: referenceDate, savedAt: referenceDate)
+        let link = Article.stub("Link", feed: SavedLink.feedID, savedAt: referenceDate)
         let entry = StoryEntry(id: .savedArticle(link.id), title: "Link", articles: [link], newArticleIDs: [])
         for (key, expected) in [
             (ListKey.preview, KeyboardNavigation.Action.reloadPage(link.id)), (.summarizePage, .summarizePage(link.id)),

@@ -356,9 +356,7 @@ struct PageSummaryQueueTests {
 
     /// A saved link in the host's library, as Save Link… adds it.
     private func savedLink() -> Article.ID {
-        guard case .added(let id) = host.library.saveLink(URL(string: "https://example.com/essay")!, at: referenceDate)
-        else { fatalError("Not added") }
-        return id
+        host.library.saveLink(URL(string: "https://example.com/essay")!, at: referenceDate).articleID
     }
 
     @Test func loadingASavedLinkFillsInWhatThePageSays() async {
@@ -388,27 +386,13 @@ struct PageSummaryQueueTests {
 
     @Test func emptyMetadataKeepsWhatTheLinkHas() async {
         let id = savedLink()
-        let queue = queue(FakeCommandRunner([]), setting: Setting(isEnabled: false))
+        let queue = queue(FakeCommandRunner([]))
 
-        queue.prepare(id)
+        queue.loadPage(id)
         await queue.waitUntilIdle()
 
         #expect(host.library.articles[id]?.title == "example.com/essay")
         #expect(host.library.articles[id]?.site == "example.com")
-    }
-
-    @Test func preparingASavedLinkWithoutAIOnlyLoadsItsText() async {
-        let id = savedLink()
-        let runner = FakeCommandRunner([Self.ok])
-        let queue = queue(runner, setting: Setting(isEnabled: false))
-
-        queue.prepare(id)
-        #expect(status.pages[id] == AIStatus.PageWork(phase: .loading, summary: false))
-        await queue.waitUntilIdle()
-
-        #expect(host.storedText(id) != nil)
-        #expect(status.pages[id] == nil)
-        #expect(runner.calls.isEmpty)
     }
 
     @Test func reloadingASavedLinkReplacesItsTextAndSummary() async {

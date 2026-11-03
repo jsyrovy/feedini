@@ -65,6 +65,15 @@ struct FeediniApp: App {
     }
 }
 
+extension OpenWindowAction {
+    /// Opens the main window, from its menus or the menu bar (where Feedini runs without a Dock icon).
+    @MainActor
+    func mainWindow() {
+        AppDelegate.mainWindowIsOpen(true)
+        self(id: FeediniApp.mainWindowID)
+    }
+}
+
 private struct TestHostApp: App {
     var body: some Scene {
         Settings { EmptyView() }

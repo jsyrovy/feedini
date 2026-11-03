@@ -71,7 +71,7 @@ struct AssignQueueTests {
         let readOld = Article.stub("Read old", feed: feed.id, hours: -100, read: true)
         let assigned = Article.stub("Assigned", feed: feed.id, hours: -1)
         let deferred = Article.stub("Deferred", feed: feed.id, hours: -2)
-        let link = Article(feedID: SavedLink.feedID, key: "example.com/a", title: "Link", firstSeen: .hours(-1))
+        let link = Article.stub("Link", feed: SavedLink.feedID, hours: -1)
         let library = Library(
             feeds: [feed], articles: [unreadOld, readRecent, readOld, assigned, deferred, link],
             stories: [Story(title: "S", articleIDs: [assigned.id])])

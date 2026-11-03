@@ -69,9 +69,7 @@ enum PageSummaryStep {
     ) -> Outcome {
         guard library.articles[articleID] != nil else { return .empty }
         guard output.status == .ok else {
-            if library.articles[articleID]?.isSavedLink == false {
-                library.pageTextIDs.remove(articleID)
-            }
+            library.forgetPageText(articleID)
             return .notArticle
         }
         let tldr = output.tldr.trimmingCharacters(in: .whitespacesAndNewlines)

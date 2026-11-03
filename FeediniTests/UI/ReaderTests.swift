@@ -171,10 +171,7 @@ struct ReaderTests {
 
     @Test func pOnASavedLinkLoadsItsPageAgainAndLeavesTheSourcePage() async throws {
         model.preferences.aiEnabled = false
-        guard case .added(let id) = try model.saveLink("example.com/essay") else {
-            Issue.record("Not added")
-            return
-        }
+        let id = try model.saveLink("example.com/essay").articleID
         await model.pageQueue?.waitUntilIdle()
         reader.selection = .saved
         reader.visit(.story(.savedArticle(id)))

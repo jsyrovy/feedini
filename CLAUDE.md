@@ -522,9 +522,10 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   button) says whether T does anything; `pageOpened` (V in the window) forgets the stored text. AI off: T says so at
   once (`AIStatus.State.problem`: "AI is off (Settings → AI).") and P still works. `prepare` (Shift+S) is T that
   loads the page even with AI off and then fails with that message.
-- A saved link's page text is all it has: `prepare` without AI only loads it (no "AI is off" on every link), loading
-  fills in its title, site, author and date (`Library.applyPageMetadata`), `pageOpened` and a `not_article` answer
-  keep the text (the message points to P), and `reload` (P) loads the page again – the stored text and summary stay
+- A saved link's page text is all it has: Save Link… without AI only loads it (`AppModel.saveLink`: no "AI is off"
+  on every link), loading fills in its title, site, author and date (`Library.applyPageMetadata`), `pageOpened` and
+  a `not_article` answer keep the text (`Library.forgetPageText`; the message points to P), and `reload` (P) loads
+  the page again – the stored text and summary stay
   until the new text is stored, then a new summary is written when AI is on. The row shows ✨ / ⚠︎ for loading it too.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
   errors, the pages being loaded or summarized (`PageWork`: phase, whether T asked for a summary) and their errors,

@@ -25,11 +25,8 @@ struct MenuBarContent: View {
 
     var body: some View {
         Text(unreadStories(model.unreadCounts.all))
-        Button("Open Feedini") {
-            AppDelegate.mainWindowIsOpen(true)
-            openWindow(id: FeediniApp.mainWindowID)
-        }
-        .keyboardShortcut("o")
+        Button("Open Feedini") { openWindow.mainWindow() }
+            .keyboardShortcut("o")
         SaveLinkButton(reader: reader)
         Divider()
         Button("Refresh Now") { model.refreshNow() }

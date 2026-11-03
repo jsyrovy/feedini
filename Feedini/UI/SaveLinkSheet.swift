@@ -37,7 +37,7 @@ struct SaveLinkSheet: View {
         .padding(20)
         .frame(width: 440)
         .onAppear {
-            address = SavedLink.offeredAddress(NSPasteboard.general.string(forType: .string)) ?? ""
+            address = SavedLink.webAddress(NSPasteboard.general.string(forType: .string)) ?? ""
             isFocused = true
         }
     }
@@ -62,8 +62,7 @@ struct SaveLinkButton: View {
 
     var body: some View {
         Button("Save Link…") {
-            AppDelegate.mainWindowIsOpen(true)
-            openWindow(id: FeediniApp.mainWindowID)
+            openWindow.mainWindow()
             reader.isShowingSaveLink = true
         }
         .keyboardShortcut("l")

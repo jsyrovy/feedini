@@ -8,8 +8,7 @@ struct StoryRow: View {
     let toggleExpanded: () -> Void
 
     var body: some View {
-        let sources =
-            entry.isSavedLink ? entry.articles.compactMap(\.site) : entry.feedIDs.compactMap(model.library.sourceTitle)
+        let sources = entry.sourceArticles.compactMap(model.library.sourceTitle(of:))
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             UnreadDot(isUnread: !entry.isRead)
             VStack(alignment: .leading, spacing: 3) {

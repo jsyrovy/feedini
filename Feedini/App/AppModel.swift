@@ -317,14 +317,18 @@ final class AppModel: LibraryHost {
     // MARK: Saved links
 
     /// Save Link…: saves the page at the address (`Library.saveLink`) and loads it with its summary in the background,
-    /// as Shift+S does (a saved link without AI only its text).
+    /// as Shift+S does (without AI only its text).
     @discardableResult
     func saveLink(_ address: String) throws(SavedLink.Failure) -> SavedLink.Outcome {
         let url = try SavedLink.url(from: address)
         let outcome = change { $0.saveLink(url, at: .now) }
-        switch outcome {
-        case .added(let id), .saved(let id): pageQueue?.prepare(id)
-        case .alreadySaved: break
+        if case .saved(let id) = outcome {
+            // Without AI only the text: every saved link would say that AI is off.
+            if preferences.aiEnabled {
+                pageQueue?.prepare(id)
+            } else {
+                pageQueue?.loadPage(id)
+            }
         }
         return outcome
     }
@@ -333,8 +337,8 @@ final class AppModel: LibraryHost {
     @discardableResult
     func saveLinks(_ urls: [URL]) -> Bool {
         var saved = false
-        for url in urls where ["http", "https"].contains(url.scheme?.lowercased()) {
-            if (try? saveLink(url.absoluteString)) != nil {
+        for address in urls.compactMap({ SavedLink.webAddress($0.absoluteString) }) {
+            if (try? saveLink(address)) != nil {
                 saved = true
             }
         }

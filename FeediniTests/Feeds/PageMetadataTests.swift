@@ -24,9 +24,4 @@ struct PageMetadataTests {
         #expect(PageMetadata(json: #"{"title": "A | B", "site": "C"}"#).title == "A | B")
     }
 
-    @Test func readsDatesWithOrWithoutTime() {
-        #expect(PageMetadata.date("2026-10-30T08:15:00+01:00") == Date(timeIntervalSince1970: 1_793_344_500))
-        #expect(PageMetadata.date(" 2026-10-30 ") == Date(timeIntervalSince1970: 1_793_318_400))
-        #expect(PageMetadata.date("30 October 2026") == nil)
-    }
 }

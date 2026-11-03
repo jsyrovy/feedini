@@ -156,17 +156,12 @@ struct PagePreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !isStored {
-                status
+                PageLoadStatus(phase: model.aiStatus.pages[article.id]?.phase)
             } else if let text {
                 Label("Text of the source page · P shows the feed text", systemImage: "doc.plaintext")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Paragraphs(text: text)
-                if PageText.isTruncated(text) {
-                    Text("The text is cut off here. Press V for the whole page.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                PageTextBody(text: text)
             }
         }
         .task(id: isStored) {
@@ -179,10 +174,14 @@ struct PagePreview: View {
             }
         }
     }
+}
 
-    @ViewBuilder
-    private var status: some View {
-        switch model.aiStatus.pages[article.id]?.phase {
+/// Loading a page (also before the work started), or why it failed.
+struct PageLoadStatus: View {
+    let phase: AIStatus.PageWork.Phase?
+
+    var body: some View {
+        switch phase {
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.secondary)
@@ -192,6 +191,20 @@ struct PagePreview: View {
                 Text("Loading page…")
             }
             .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A page's text, with a pointer to V where it was cut.
+struct PageTextBody: View {
+    let text: String
+
+    var body: some View {
+        Paragraphs(text: text)
+        if PageText.isTruncated(text) {
+            Text("The text is cut off here. Press V for the whole page.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -206,7 +219,7 @@ struct PageButtons: View {
         if article.isSavedLink {
             Button("Reload Page", systemImage: "arrow.clockwise") { reader.reloadPage(article.id) }
                 .help("P: load the page again, after accepting cookies or logging in with V")
-                .disabled(isLoading)
+                .disabled(model.aiStatus.pages[article.id]?.isRunning == true)
         } else {
             Toggle(
                 "Preview", systemImage: "doc.plaintext",
@@ -222,9 +235,6 @@ struct PageButtons: View {
             .disabled(!model.canSummarizePage(article.id))
     }
 
-    private var isLoading: Bool {
-        model.aiStatus.pages[article.id].map { if case .failed = $0.phase { false } else { true } } ?? false
-    }
 }
 
 /// The text of a saved link's page: it has no feed text. Its page loading (again) or why that failed shows above it,
@@ -242,25 +252,10 @@ struct LinkText: View {
         let isLoading = work?.phase == .loading
         VStack(alignment: .leading, spacing: 14) {
             if let work, !work.summary {
-                switch work.phase {
-                case .failed(let message):
-                    Label(message, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.secondary)
-                case .loading, .summarizing:
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Loading page…")
-                    }
-                    .foregroundStyle(.secondary)
-                }
+                PageLoadStatus(phase: work.phase)
             }
             if let text, isStored {
-                Paragraphs(text: text)
-                if PageText.isTruncated(text) {
-                    Text("The text is cut off here. Press V for the whole page.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                PageTextBody(text: text)
             } else if !isStored && !isLoading {
                 Text("The text of the page isn't loaded. Press P to load it.")
                     .foregroundStyle(.secondary)
