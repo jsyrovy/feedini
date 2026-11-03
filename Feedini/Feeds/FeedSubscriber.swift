@@ -102,7 +102,32 @@ struct FeedSubscriber: Sendable {
     struct ImportResult: Sendable {
         var added: [Subscription] = []
         /// Entries not added, with the reason.
-        var skipped: [(entry: OPML.Entry, reason: String)] = []
+        var skipped: [(entry: OPML.Entry, failure: Failure)] = []
+
+        /// The entries that failed (not those already followed) as plain text to paste elsewhere – to whoever
+        /// looks into them: each with its feed and site address, folder and error. `nil` when none failed.
+        var errorReport: String? {
+            let failed = skipped.filter { $0.failure != .alreadySubscribed }
+            guard !failed.isEmpty else { return nil }
+            let followed = skipped.count - failed.count
+            var summary = "Feedini OPML import: \(added.count) added, "
+            if followed > 0 {
+                summary += "\(followed) already followed, "
+            }
+            summary += "\(failed.count) failed."
+            let entries = failed.map { entry, failure in
+                var lines = [entry.title, "Feed: \(entry.feedURL)"]
+                if let site = entry.siteURL {
+                    lines.append("Site: \(site)")
+                }
+                if let folder = entry.folder {
+                    lines.append("Folder: \(folder)")
+                }
+                lines.append("Error: \(failure.message)")
+                return lines.joined(separator: "\n")
+            }
+            return ([summary] + entries).joined(separator: "\n\n")
+        }
     }
 
     /// Checks OPML entries `FeedFetcher.maxConcurrentDownloads` at a time; the result keeps the OPML order.
@@ -117,12 +142,12 @@ struct FeedSubscriber: Sendable {
                 subscription.folder = entry.folder
                 // The same feed under two addresses (http and https) is added once.
                 if result.added.contains(where: { Self.isSame($0.url, subscription.url) }) {
-                    result.skipped.append((entry, Failure.alreadySubscribed.message))
+                    result.skipped.append((entry, .alreadySubscribed))
                 } else {
                     result.added.append(subscription)
                 }
             case .failure(let failure):
-                result.skipped.append((entry, failure.message))
+                result.skipped.append((entry, failure))
             }
         }
         return result

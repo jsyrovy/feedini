@@ -202,20 +202,25 @@ private struct ImportReport: Identifiable {
     var added = 0
     var skipped: [(title: String, address: String, reason: String)] = []
     var error: String?
+    /// The errors as text for the clipboard.
+    var errorReport: String?
 
     init(result: FeedSubscriber.ImportResult) {
         added = result.added.count
-        skipped = result.skipped.map { ($0.entry.title, $0.entry.feedURL, $0.reason) }
+        skipped = result.skipped.map { ($0.entry.title, $0.entry.feedURL, $0.failure.message) }
+        errorReport = result.errorReport
     }
 
     init(error: String) {
         self.error = error
+        errorReport = error
     }
 }
 
 private struct ImportReportView: View {
     @Environment(\.dismiss) private var dismiss
     let report: ImportReport
+    @State private var isCopied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -236,6 +241,14 @@ private struct ImportReportView: View {
                 }
             }
             HStack {
+                if let errorReport = report.errorReport {
+                    Button(isCopied ? "Copied" : "Copy Errors") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(errorReport, forType: .string)
+                        isCopied = true
+                    }
+                    .help("Copy the errors with the feed addresses as text, to pass them on")
+                }
                 Spacer()
                 Button("OK") { dismiss() }.keyboardShortcut(.defaultAction)
             }

@@ -117,10 +117,47 @@ struct FeedSubscriberTests {
         #expect(result.added.map(\.url) == [first, second])
         #expect(result.skipped.map(\.entry.title) == ["Broken", "First over HTTP", "Known"])
         #expect(
-            result.skipped.map(\.reason) == [
-                "The server answered with HTTP 500 (internal server error).", "You already follow this feed.",
-                "You already follow this feed.",
+            result.skipped.map(\.failure) == [
+                .unreachable("The server answered with HTTP 500 (internal server error)."), .alreadySubscribed,
+                .alreadySubscribed,
             ])
+        #expect(
+            result.errorReport == """
+                Feedini OPML import: 2 added, 2 already followed, 1 failed.
+
+                Broken
+                Feed: \(broken.absoluteString)
+                Error: The server answered with HTTP 500 (internal server error).
+                """)
+    }
+
+    @Test func reportsTheErrorsOfAnImportWithTheSiteAndFolder() {
+        let entry = { (title: String) in
+            OPML.Entry(
+                title: title, feedURL: "https://\(title).example.com/feed", siteURL: "https://\(title).example.com",
+                folder: "Blogs")
+        }
+        var result = FeedSubscriber.ImportResult()
+        result.skipped = [(entry("known"), .alreadySubscribed)]
+        #expect(result.errorReport == nil)
+
+        result.skipped += [(entry("gone"), .unreachable("Not found.")), (entry("page"), .notAFeed("Not a feed."))]
+        #expect(
+            result.errorReport == """
+                Feedini OPML import: 0 added, 1 already followed, 2 failed.
+
+                gone
+                Feed: https://gone.example.com/feed
+                Site: https://gone.example.com
+                Folder: Blogs
+                Error: Not found.
+
+                page
+                Feed: https://page.example.com/feed
+                Site: https://page.example.com
+                Folder: Blogs
+                Error: Not a feed.
+                """)
     }
 
     @Test func checksMoreEntriesThanRunAtOnceAndKeepsTheirOrder() async throws {

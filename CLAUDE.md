@@ -367,7 +367,9 @@ Implementation:
   variant fails is rejected with "Only HTTPS feeds are supported, …"; the address must give an RSS / Atom feed and
   not be subscribed yet (`isSame` ignores the case of scheme and host and a trailing slash). The first download is
   merged right away (`AppModel.subscribe`), so the articles appear without another download. OPML import checks the
-  entries 6 at a time, adds the good ones in file order and lists the others with the reason.
+  entries 6 at a time, adds the good ones in file order and lists the others with the reason; "Copy Errors" puts
+  the failed ones (not those already followed) on the clipboard as text with their feed and site addresses
+  (`ImportResult.errorReport`), to pass on to whoever looks into them.
 - **General** (`GeneralSettings`, `Preferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15),
   where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), open at login (`LoginItem`, the
   system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
