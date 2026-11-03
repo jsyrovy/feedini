@@ -30,7 +30,7 @@ struct FeedSubscriber: Sendable {
             switch self {
             case .invalidAddress: "This isn't a web address."
             case .notHTTPS(let reason):
-                "Only HTTPS feeds are supported, and this feed doesn't work over HTTPS (\(reason.trimmingSuffix("."))."
+                "Over HTTPS: \(reason) Only HTTPS feeds are supported."
             case .alreadySubscribed: "You already follow this feed."
             case .unreachable(let reason), .notAFeed(let reason): reason
             }
@@ -95,7 +95,9 @@ struct FeedSubscriber: Sendable {
         case .notModified:
             return .failure(.unreachable("The server answered “not modified” to a first download."))
         case .failed(let error):
-            return .failure(wasHTTP ? .notHTTPS(error.message) : .unreachable(error.message))
+            // An insecure redirect's message already says that only HTTPS works.
+            return .failure(
+                wasHTTP && error != .insecureConnection ? .notHTTPS(error.message) : .unreachable(error.message))
         }
     }
 
@@ -151,11 +153,5 @@ struct FeedSubscriber: Sendable {
             }
         }
         return result
-    }
-}
-
-extension String {
-    fileprivate func trimmingSuffix(_ suffix: String) -> String {
-        hasSuffix(suffix) ? String(dropLast(suffix.count)) : self
     }
 }

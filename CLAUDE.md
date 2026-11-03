@@ -364,7 +364,8 @@ Implementation:
   address field, removal (with confirmation; articles go too, saved ones stay and the dialog says how many), OPML
   import and export. Adding goes through
   `FeedSubscriber`: a missing scheme and `http://` / `feed://` become `https://`; an `http://` address whose HTTPS
-  variant fails is rejected with "Only HTTPS feeds are supported, …"; the address must give an RSS / Atom feed and
+  variant fails is rejected with "Over HTTPS: <the reason> Only HTTPS feeds are supported." (the reason first: it
+  is the real cause, HTTP isn't tried); the address must give an RSS / Atom feed and
   not be subscribed yet (`isSame` ignores the case of scheme and host and a trailing slash). The first download is
   merged right away (`AppModel.subscribe`), so the articles appear without another download. OPML import checks the
   entries 6 at a time, adds the good ones in file order and lists the others with the reason; "Copy Errors" puts

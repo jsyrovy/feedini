@@ -6,6 +6,11 @@ import Testing
 struct FeedSubscriberTests {
     private let subscriber = FeedSubscriber(fetcher: FeedFetcher(session: StubURLProtocol.session()))
 
+    /// The `http://` address of an `https://` URL.
+    private func httpVariant(of url: URL) -> String {
+        "http://" + url.absoluteString.dropFirst("https://".count)
+    }
+
     @Test func turnsWhatTheUserTypedIntoAnHTTPSAddress() {
         #expect(
             FeedSubscriber.httpsURL(for: "https://example.com/feed")! == (
@@ -51,24 +56,33 @@ struct FeedSubscriberTests {
     @Test func triesHTTPSForAnHTTPAddress() async throws {
         let url = StubURLProtocol.uniqueURL()
         StubURLProtocol.stub(url, try .feed("atom.xml"))
-        let http = "http://" + url.absoluteString.dropFirst("https://".count)
+        let http = httpVariant(of: url)
 
         #expect(try await subscriber.subscribe(http, existing: []).get().url == url)
     }
 
     @Test func rejectsAnHTTPFeedThatDoesntWorkOverHTTPS() async {
         let url = StubURLProtocol.uniqueURL()
-        StubURLProtocol.stub(url, .failure(.cannotConnectToHost))
-        let http = "http://" + url.absoluteString.dropFirst("https://".count)
+        StubURLProtocol.stub(url, .response(status: 404))
+        let http = httpVariant(of: url)
 
         let result = await subscriber.subscribe(http, existing: [])
 
-        guard case .failure(let failure) = result, case .notHTTPS = failure else {
-            Issue.record("expected notHTTPS, got \(result)")
-            return
-        }
-        #expect(failure.message.hasPrefix("Only HTTPS feeds are supported, and this feed doesn't work over HTTPS ("))
-        #expect(failure.message.hasSuffix(")."))
+        let failure = FeedSubscriber.Failure.notHTTPS("The server answered with HTTP 404 (not found).")
+        #expect(result == .failure(failure))
+        #expect(
+            failure.message
+                == "Over HTTPS: The server answered with HTTP 404 (not found). Only HTTPS feeds are supported.")
+    }
+
+    @Test func doesntRepeatTheHTTPSRuleForAnHTTPFeedRedirectingToHTTP() async {
+        let url = StubURLProtocol.uniqueURL()
+        StubURLProtocol.stub(url, .failure(.appTransportSecurityRequiresSecureConnection))
+        let http = httpVariant(of: url)
+
+        let result = await subscriber.subscribe(http, existing: [])
+
+        #expect(result == .failure(.unreachable(FetchError.insecureConnection.message)))
     }
 
     @Test func rejectsWebPagesUnreachableAddressesAndDuplicates() async throws {
@@ -78,7 +92,7 @@ struct FeedSubscriberTests {
         StubURLProtocol.stub(missing, .response(status: 404))
         let unchanged = StubURLProtocol.uniqueURL()
         StubURLProtocol.stub(unchanged, .response(status: 304))
-        let httpPage = "http://" + page.absoluteString.dropFirst("https://".count)
+        let httpPage = httpVariant(of: page)
 
         #expect(
             await subscriber.subscribe(page.absoluteString, existing: [])
@@ -108,7 +122,7 @@ struct FeedSubscriberTests {
             OPML.Entry(title: "First", feedURL: first.absoluteString),
             OPML.Entry(title: "Broken", feedURL: broken.absoluteString),
             OPML.Entry(title: "Second", feedURL: second.absoluteString),
-            OPML.Entry(title: "First over HTTP", feedURL: "http://" + first.absoluteString.dropFirst("https://".count)),
+            OPML.Entry(title: "First over HTTP", feedURL: httpVariant(of: first)),
             OPML.Entry(title: "Known", feedURL: "https://known.example.com/feed"),
         ]
 
