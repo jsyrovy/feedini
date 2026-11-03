@@ -21,12 +21,15 @@ struct RetentionTests {
         #expect(library.tombstones.isEmpty)
     }
 
-    @Test func removesOldReadArticlesAndLeavesTombstones() {
+    @Test func removesOldReadArticlesWithTheirPageTextsAndLeavesTombstones() {
         let stale = Article.stub(feed: feed.id, key: "stale", hours: old, read: true)
         let recent = Article.stub(feed: feed.id, hours: -71, read: true)
-        let library = pruned(Library(feeds: [feed], articles: [stale, recent]))
+        var library = Library(feeds: [feed], articles: [stale, recent])
+        library.pageTextIDs = [stale.id, recent.id]
+        library = pruned(library)
 
         #expect(Set(library.articles.keys) == [recent.id])
+        #expect(library.pageTextIDs == [recent.id])
         #expect(Array(library.tombstones.values) == [Tombstone(feedID: feed.id, key: "stale", lastSeen: referenceDate)])
     }
 

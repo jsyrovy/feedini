@@ -288,6 +288,23 @@ final class AppModel: LibraryHost {
         pageQueue?.pageOpened(id)
     }
 
+    func pageText(_ id: Article.ID) async -> String? {
+        guard library.pageTextIDs.contains(id) else { return nil }
+        if let text = await store.pageText(for: id) {
+            return text
+        }
+        // The file is gone: the next P / T loads the page again.
+        update { $0.pageTextIDs.remove(id) }
+        return nil
+    }
+
+    func storePageText(_ text: String, for id: Article.ID) async throws {
+        try await store.storePageText(text, for: id)
+        // Unless the article went away meanwhile; the store deletes the file when loading next time.
+        guard library.articles[id] != nil else { return }
+        update { $0.pageTextIDs.insert(id) }
+    }
+
     // MARK: Changes
 
     /// Puts the reading state back (⌘Z); returns the state it replaced, `nil` when none of the items exists anymore.

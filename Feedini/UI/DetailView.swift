@@ -100,7 +100,7 @@ struct ArticleDetail: View {
                 }
                 Divider()
                 if reader.previewArticle == article.id {
-                    PagePreview(article: article)
+                    PagePreview(article: article, isStored: model.library.pageTextIDs.contains(article.id))
                 } else {
                     Paragraphs(text: article.text.isEmpty ? "No text in the feed." : article.text)
                 }
@@ -139,30 +139,50 @@ struct Paragraphs: View {
 struct PagePreview: View {
     @Environment(AppModel.self) private var model
     let article: Article
+    /// Passed in, so the preview isn't drawn again on every change of the library.
+    let isStored: Bool
+    /// Read from its file once the text is stored (`ArticleDetail` gives every article a view of its own).
+    @State private var text: String?
 
     var body: some View {
-        if let text = article.pageText {
-            Label("Text of the source page · P shows the feed text", systemImage: "doc.plaintext")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Paragraphs(text: text)
-            if PageText.isTruncated(text) {
-                Text("The text is cut off here. Press V for the whole page.")
-                    .font(.callout)
+        VStack(alignment: .leading, spacing: 14) {
+            if !isStored {
+                status
+            } else if let text {
+                Label("Text of the source page · P shows the feed text", systemImage: "doc.plaintext")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-        } else {
-            switch model.aiStatus.pages[article.id]?.phase {
-            case .failed(let message):
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.secondary)
-            case .loading, .summarizing, nil:
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Loading page…")
+                Paragraphs(text: text)
+                if PageText.isTruncated(text) {
+                    Text("The text is cut off here. Press V for the whole page.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.secondary)
             }
+        }
+        .task(id: isStored) {
+            if isStored {
+                text = await model.pageText(article.id)
+                if text == nil {
+                    // Its file was gone: load the page again.
+                    model.loadPage(article.id)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch model.aiStatus.pages[article.id]?.phase {
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.secondary)
+        case .loading, .summarizing, nil:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Loading page…")
+            }
+            .foregroundStyle(.secondary)
         }
     }
 }

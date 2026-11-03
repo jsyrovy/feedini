@@ -5,7 +5,7 @@ import Foundation
 /// - Unread articles are kept forever.
 /// - Read articles go once their story (or the article itself, without a story) has had no article younger than
 ///   `attachWindow`: until then a new article about the same event can still join the known story. A removed article
-///   leaves a tombstone, so the next refresh doesn't bring it back.
+///   leaves a tombstone, so the next refresh doesn't bring it back, and its page text goes with it.
 /// - A tombstone goes once its article has been missing from the feed for `tombstoneMargin`, judged by the feed's
 ///   last successful download (a feed that can't be downloaded keeps its tombstones).
 /// - Saved articles and stories are kept forever, and so is a story with a saved article (with all its articles).
@@ -38,14 +38,14 @@ enum Retention {
         }
 
         for id in removed {
-            guard let article = library.articles.removeValue(forKey: id), feedIDs.contains(article.feedID) else {
+            guard let article = library.articles[id], feedIDs.contains(article.feedID) else {
                 continue
             }
             let key = article.tombstoneKey
             let lastSeen = max(library.tombstones[key]?.lastSeen ?? now, now)
             library.tombstones[key] = Tombstone(feedID: article.feedID, key: article.key, lastSeen: lastSeen)
         }
-        library.removeFromStories(removed)
+        library.removeArticles(removed)
         // Stories whose articles are all gone (none of them can be loaded) are removed too.
         let articles = library.articles
         remove(from: &library.stories) { _, story in !story.articleIDs.contains { articles[$0] != nil } }

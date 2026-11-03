@@ -125,7 +125,8 @@ struct ReaderTests {
         reader.handle(.preview)
         #expect(reader.previewArticle == lone.id)
         await model.pageQueue?.waitUntilIdle()
-        #expect(model.library.articles[lone.id]?.pageText != nil)
+        #expect(model.library.pageTextIDs == [lone.id])
+        #expect(await model.pageText(lone.id) == "Text of the page \(lone.link!.lastPathComponent).")
 
         reader.handle(.preview)
         #expect(reader.previewArticle == nil)
@@ -154,7 +155,7 @@ struct ReaderTests {
         reader.handle(.open)
         #expect(reader.pageArticle == lone.id)
         #expect(reader.previewArticle == nil)
-        #expect(model.library.articles[lone.id]?.pageText == nil)
+        #expect(model.library.pageTextIDs.isEmpty)
     }
 
     @Test func tSummarizesThePageAndLeavesTheSourcePage() async {

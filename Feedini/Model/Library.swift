@@ -15,6 +15,9 @@ struct Library: Sendable, Equatable {
     var usage: [AIUsageDay] = []
     /// The names of removed feeds that saved articles still come from (`sourceTitle(of:)`).
     var removedFeeds: [Feed.ID: String] = [:]
+    /// The articles whose source page text (P / T) is stored. The texts themselves are files of `LibraryStore`, read
+    /// only when needed, so they are neither kept in memory nor written again with every change of the library.
+    var pageTextIDs: Set<Article.ID> = []
 
     func feed(_ id: Feed.ID) -> Feed? {
         feeds.first { $0.id == id }
@@ -77,16 +80,17 @@ struct Library: Sendable, Equatable {
         if removed.count < ofFeed.count, let title {
             removedFeeds[id] = title
         }
-        for articleID in removed {
-            articles[articleID] = nil
-        }
-        removeFromStories(removed)
+        removeArticles(removed)
         tombstones = tombstones.filter { $0.key.feedID != id }
     }
 
-    /// Takes the articles out of their stories and removes stories left empty.
-    mutating func removeFromStories(_ articleIDs: Set<Article.ID>) {
+    /// Removes the articles with their page texts, takes them out of their stories and removes stories left empty.
+    mutating func removeArticles(_ articleIDs: Set<Article.ID>) {
         guard !articleIDs.isEmpty else { return }
+        for id in articleIDs {
+            articles[id] = nil
+        }
+        pageTextIDs.subtract(articleIDs)
         for (id, story) in stories where story.articleIDs.contains(where: articleIDs.contains) {
             let remaining = story.articleIDs.filter { !articleIDs.contains($0) }
             if remaining.isEmpty {
@@ -116,7 +120,7 @@ extension Article {
 // that unchanged data gives an unchanged file.
 extension Library: Codable {
     private enum CodingKeys: String, CodingKey {
-        case feeds, folders, articles, stories, topics, tombstones, usage, removedFeeds
+        case feeds, folders, articles, stories, topics, tombstones, usage, removedFeeds, pageTexts
     }
 
     /// A removed feed in the file.
@@ -139,6 +143,8 @@ extension Library: Codable {
         removedFeeds = Dictionary(
             (try container.decodeIfPresent([RemovedFeed].self, forKey: .removedFeeds) ?? []).map { ($0.id, $0.title) },
             uniquingKeysWith: { _, last in last })
+        // Older files kept the texts in the articles (`LibraryStore` moves them out).
+        pageTextIDs = Set(try container.decodeIfPresent([Article.ID].self, forKey: .pageTexts) ?? [])
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -158,6 +164,7 @@ extension Library: Codable {
         try container.encode(
             Self.sorted(removedFeeds.map { RemovedFeed(id: $0.key, title: $0.value) }) { $0.id.uuidString },
             forKey: .removedFeeds)
+        try container.encode(Self.sorted(pageTextIDs) { $0.uuidString }, forKey: .pageTexts)
     }
 
     /// Sorted by a key computed once per value (not twice per comparison).

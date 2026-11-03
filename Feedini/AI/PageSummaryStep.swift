@@ -41,11 +41,10 @@ enum PageSummaryStep {
         var details: [String]?
     }
 
-    /// The request for an article with a stored page text; `nil` without one.
+    /// The request for the article's page text.
     static func request(
-        for article: Article, in library: Library, configuration: AIConfiguration
-    ) -> ClaudeRequest? {
-        guard let pageText = article.pageText else { return nil }
+        for article: Article, pageText: String, in library: Library, configuration: AIConfiguration
+    ) -> ClaudeRequest {
         let input = Input(
             outputLanguage: configuration.language, source: library.sourceTitle(of: article.feedID) ?? "",
             title: article.title, pageText: pageText)
@@ -69,7 +68,7 @@ enum PageSummaryStep {
     ) -> Outcome {
         guard library.articles[articleID] != nil else { return .empty }
         guard output.status == .ok else {
-            library.articles[articleID]?.pageText = nil
+            library.pageTextIDs.remove(articleID)
             return .notArticle
         }
         let tldr = output.tldr.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -3,7 +3,7 @@ import Foundation
 /// Loads source pages (P) and summarizes them (T, Shift+S), only on the user's request, at most `maxParallel` at a
 /// time.
 ///
-/// The page text is stored with the article, so T after P (or a second T after the summary language changed) doesn't
+/// The page text is stored (`LibraryHost.storePageText`), so T after P (or a second T after the summary language changed) doesn't
 /// load the page again. A request for an article already being worked on is ignored, except that T makes a running
 /// P go on to the summary. Nothing is retried by itself: it is the user's action, the error is shown in the detail.
 /// The work and whether T asked for a summary are kept in `AIStatus.pages` only.
@@ -38,7 +38,7 @@ final class PageSummaryQueue {
 
     /// P: loads the page's text unless it is stored.
     func loadPage(_ id: Article.ID) {
-        guard let article = host.library.articles[id], article.pageText == nil else { return }
+        guard host.library.articles[id] != nil, !host.library.pageTextIDs.contains(id) else { return }
         enqueue(id, summary: false)
     }
 
@@ -72,8 +72,8 @@ final class PageSummaryQueue {
     /// The user opened the page in the window, where they may accept cookies or log in: the stored text is forgotten,
     /// so the next P / T loads the page again.
     func pageOpened(_ id: Article.ID) {
-        guard host.library.articles[id]?.pageText != nil, tasks[id] == nil, !waiting.contains(id) else { return }
-        host.update { $0.articles[id]?.pageText = nil }
+        guard host.library.pageTextIDs.contains(id), tasks[id] == nil, !waiting.contains(id) else { return }
+        host.update { $0.pageTextIDs.remove(id) }
     }
 
     var isRunning: Bool { !tasks.isEmpty || !waiting.isEmpty }
@@ -92,7 +92,7 @@ final class PageSummaryQueue {
             }
             return
         }
-        let hasText = host.library.articles[id]?.pageText != nil
+        let hasText = host.library.pageTextIDs.contains(id)
         status.setPage(AIStatus.PageWork(phase: hasText ? .summarizing : .loading, summary: summary), for: id)
         waiting.append(id)
         fill()
@@ -114,48 +114,59 @@ final class PageSummaryQueue {
             status.setPage(nil, for: id)
             return
         }
-        if article.pageText == nil {
-            guard await load(article) else { return }
+        var text = await host.pageText(id)
+        if text == nil {
+            text = await load(article)
         }
+        guard let text else { return }
         guard status.pages[id]?.summary == true else {
             status.setPage(nil, for: id)
             return
         }
-        await writeSummary(article.id)
+        await writeSummary(article.id, text: text)
     }
 
-    /// Stores the page's text; returns whether it could be loaded.
-    private func load(_ article: Article) async -> Bool {
+    /// Loads and stores the page's text; `nil` when it couldn't be loaded.
+    private func load(_ article: Article) async -> String? {
         guard let link = article.link else {
             fail(article.id, "The article has no link to its page.")
-            return false
+            return nil
         }
+        let summary = status.pages[article.id]?.summary ?? false
+        status.setPage(AIStatus.PageWork(phase: .loading, summary: summary), for: article.id)
         let started = ContinuousClock.now
+        let text: String
         do {
-            let text = try await extractor.extract(link)
-            host.update { $0.articles[article.id]?.pageText = text }
-            let duration = String(describing: ContinuousClock.now - started)
-            Log.feeds.info("Loaded a page: \(text.count) characters in \(duration, privacy: .public)")
-            return true
+            text = try await extractor.extract(link)
         } catch {
             fail(article.id, error.message)
             Log.feeds.error("Loading a page failed: \(error.message, privacy: .public)")
-            return false
+            return nil
         }
+        do {
+            try await host.storePageText(text, for: article.id)
+        } catch {
+            fail(article.id, "The page text couldn't be stored: \(error.localizedDescription)")
+            Log.store.error("Storing a page text failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        let duration = String(describing: ContinuousClock.now - started)
+        Log.feeds.info("Loaded a page: \(text.count) characters in \(duration, privacy: .public)")
+        return text
     }
 
-    private func writeSummary(_ id: Article.ID) async {
+    private func writeSummary(_ id: Article.ID, text: String) async {
         let configuration = configuration()
         guard configuration.isEnabled else {
             fail(id, AIStatus.State.offMessage)
             return
         }
-        guard let article = host.library.articles[id],
-            let request = PageSummaryStep.request(for: article, in: host.library, configuration: configuration)
-        else {
+        guard let article = host.library.articles[id] else {
             status.setPage(nil, for: id)
             return
         }
+        let request = PageSummaryStep.request(
+            for: article, pageText: text, in: host.library, configuration: configuration)
         status.setPage(AIStatus.PageWork(phase: .summarizing, summary: true), for: id)
         do {
             var outcome = PageSummaryStep.Outcome.empty

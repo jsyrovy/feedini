@@ -170,4 +170,25 @@ struct AppModelTests {
         model.markRead([])
         #expect(model.library.articles[article.id]?.isRead == false)
     }
+
+    @Test func storesPageTextsAndForgetsOnesWhoseFileIsGone() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let feed = Feed.stub("Tech")
+        let article = Article.stub(feed: feed.id)
+        model.update { $0 = Library(feeds: [feed], articles: [article]) }
+        let entries = model.entries
+
+        try await model.storePageText("The text of the page.", for: article.id)
+        try await model.storePageText("Gone meanwhile.", for: UUID())
+
+        #expect(model.library.pageTextIDs == [article.id])
+        #expect(model.entries == entries)
+        #expect(await model.pageText(article.id) == "The text of the page.")
+        #expect(await model.pageText(UUID()) == nil)
+
+        let store = LibraryStore(fileURL: directory.appending(path: "library.json"))
+        try FileManager.default.removeItem(at: store.pageTextURL(article.id))
+        #expect(await model.pageText(article.id) == nil)
+        #expect(model.library.pageTextIDs.isEmpty)
+    }
 }

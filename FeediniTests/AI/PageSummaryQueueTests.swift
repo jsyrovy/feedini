@@ -34,6 +34,7 @@ struct PageSummaryQueueTests {
     }
 
     private var stored: Article? { host.library.articles[article.id] }
+    private var storedText: String? { host.storedText(article.id) }
 
     @Test func loadingStoresThePageTextOnce() async {
         let runner = FakeCommandRunner([Self.ok])
@@ -43,7 +44,7 @@ struct PageSummaryQueueTests {
         #expect(status.pages[article.id] == AIStatus.PageWork(phase: .loading, summary: false))
         await queue.waitUntilIdle()
 
-        #expect(stored?.pageText == "Text of the page \(article.link!.lastPathComponent).")
+        #expect(storedText == "Text of the page \(article.link!.lastPathComponent).")
         #expect(status.pages[article.id] == nil)
         queue.loadPage(article.id)
         #expect(!queue.isRunning)
@@ -63,7 +64,7 @@ struct PageSummaryQueueTests {
         #expect(status.pages[article.id] == nil)
         #expect(runner.calls.count == 1)
         #expect(runner.calls.first?.value(of: "--system-prompt") == Prompts.pageSummary)
-        #expect(runner.calls.first?.payload["page_text"] as? String == stored?.pageText)
+        #expect(runner.calls.first?.payload["page_text"] as? String == storedText)
         #expect(status.calls.first?.step == "Summarize page")
         #expect(host.library.usage.first?.calls == 1)
 
@@ -95,7 +96,7 @@ struct PageSummaryQueueTests {
         queue.prepare(article.id)
         await queue.waitUntilIdle()
 
-        #expect(stored?.pageText != nil)
+        #expect(storedText != nil)
         #expect(
             status.pages[article.id]
                 == AIStatus.PageWork(phase: .failed(AIStatus.State.offMessage), summary: true))
@@ -160,7 +161,7 @@ struct PageSummaryQueueTests {
 
         #expect(extractor.maxRunning == PageSummaryQueue.maxParallel)
         #expect(extractor.requests.count == 4)
-        #expect(host.library.articles.values.allSatisfy { $0.pageText != nil })
+        #expect(host.library.pageTextIDs == Set(host.library.articles.keys))
     }
 
     @Test func aPageThatDoesNotLoadShowsTheError() async {
@@ -174,7 +175,7 @@ struct PageSummaryQueueTests {
         #expect(
             status.pages[article.id]
                 == AIStatus.PageWork(phase: .failed(PageError.http(status: 404).message), summary: true))
-        #expect(stored?.pageText == nil)
+        #expect(storedText == nil)
         #expect(runner.calls.isEmpty)
     }
 
@@ -189,7 +190,7 @@ struct PageSummaryQueueTests {
         #expect(
             status.pages[article.id]
                 == AIStatus.PageWork(phase: .failed(PageSummaryQueue.notArticleMessage), summary: true))
-        #expect(stored?.pageText == nil)
+        #expect(storedText == nil)
 
         queue.summarize(article.id)
         await queue.waitUntilIdle()
@@ -228,7 +229,7 @@ struct PageSummaryQueueTests {
 
         queue.loadPage(article.id)
         await queue.waitUntilIdle()
-        #expect(stored?.pageText != nil)
+        #expect(storedText != nil)
         #expect(runner.calls.isEmpty)
     }
 
@@ -242,7 +243,7 @@ struct PageSummaryQueueTests {
         await queue.waitUntilIdle()
 
         #expect(status.pages[article.id]?.phase == .failed(AIStatus.State.offMessage))
-        #expect(stored?.pageText != nil)
+        #expect(storedText != nil)
         #expect(runner.calls.isEmpty)
     }
 
@@ -271,10 +272,10 @@ struct PageSummaryQueueTests {
         queue.loadPage(article.id)
         queue.pageOpened(article.id)
         await queue.waitUntilIdle()
-        #expect(stored?.pageText != nil)
+        #expect(storedText != nil)
 
         queue.pageOpened(article.id)
-        #expect(stored?.pageText == nil)
+        #expect(storedText == nil)
     }
 
     @Test func withoutClaudeSummarizingSaysWhy() async {
@@ -285,7 +286,53 @@ struct PageSummaryQueueTests {
         await queue.waitUntilIdle()
 
         #expect(status.pages[article.id]?.phase == .failed("claude not found"))
-        #expect(stored?.pageText != nil)
+        #expect(storedText != nil)
+    }
+
+    @Test func aTextThatCannotBeStoredShowsTheErrorAndIsNotSummarized() async {
+        host.failsStoringPageTexts = true
+        let runner = FakeCommandRunner([Self.ok])
+        let queue = queue(runner)
+
+        queue.summarize(article.id)
+        await queue.waitUntilIdle()
+
+        guard case .failed(let message) = status.pages[article.id]?.phase else {
+            Issue.record("No error shown")
+            return
+        }
+        #expect(message.hasPrefix("The page text couldn't be stored: "))
+        #expect(host.library.pageTextIDs.isEmpty)
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func aStoredTextThatIsGoneIsLoadedAgain() async {
+        let runner = FakeCommandRunner([Self.ok])
+        host.library.pageTextIDs = [article.id]
+        let queue = queue(runner)
+
+        queue.summarize(article.id)
+        #expect(status.pages[article.id] == AIStatus.PageWork(phase: .summarizing, summary: true))
+        await queue.waitUntilIdle()
+
+        #expect(extractor.requests == [article.link!])
+        #expect(runner.calls.first?.payload["page_text"] as? String == storedText)
+        #expect(stored?.pageSummary?.tldr == "The gist.")
+    }
+
+    @Test func aStoredTextIsSummarizedWithoutLoading() async {
+        let runner = FakeCommandRunner([Self.ok])
+        host.library.pageTextIDs = [article.id]
+        host.pageTexts[article.id] = "The stored text."
+        let queue = queue(runner)
+
+        queue.loadPage(article.id)
+        #expect(!queue.isRunning)
+        queue.summarize(article.id)
+        await queue.waitUntilIdle()
+
+        #expect(extractor.requests.isEmpty)
+        #expect(runner.calls.first?.payload["page_text"] as? String == "The stored text.")
     }
 
     @Test func anArticleWithoutALinkOrGoneFails() async {

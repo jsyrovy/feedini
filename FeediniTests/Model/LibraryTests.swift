@@ -54,6 +54,7 @@ struct LibraryTests {
             Tombstone.Key(feedID: feed.id, key: "k"): Tombstone(feedID: feed.id, key: "k", lastSeen: referenceDate),
             kept.id: kept,
         ]
+        library.pageTextIDs = [mine.id, theirs.id]
 
         library.removeFeed(feed.id)
 
@@ -63,6 +64,7 @@ struct LibraryTests {
         #expect(library.stories[shared.id]?.newArticleIDs == [])
         #expect(library.stories[alone.id] == nil)
         #expect(Array(library.tombstones.values) == [kept])
+        #expect(library.pageTextIDs == [theirs.id])
     }
 
     @Test func storyIndexMapsArticlesToTheirStories() {

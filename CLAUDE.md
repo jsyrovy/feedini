@@ -55,7 +55,8 @@ Feedini/
               folders), Saved (SavedItem, Library's saving, names of removed feeds), AIUsage (AI calls per day),
               StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts), ReadRules (pure:
               what visiting a row and M do; ListRow), UndoHistory (pure: ReadingState, the steps of ⌘Z / ⇧⌘Z)
-  Store/      LibraryStore (versioned JSON file, debounced atomic saving), Retention (pure: what is forgotten when)
+  Store/      LibraryStore (versioned JSON file, debounced atomic saving, page texts as files of their own),
+              Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
               NLLanguageRecognizer), OPML (import / export), FeedSubscriber (checks an address or OPML entries before
@@ -479,14 +480,14 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude
   actually ran (`ClaudeError.isTransient`), also when its answer was an error. The queues only add their retry
   policy.
-- `PageSummaryQueue` (main actor) does P and T, only on request: `loadPage` stores the page text unless it is
-  stored; `summarize` loads it if needed and writes the summary unless it is current. Requests are per article; one
-  for an article already being worked on is ignored, except that T makes a running P go on to the summary. At most
-  2 run at once. Nothing is retried by itself (it is the user's action); errors stay in `AIStatus.pages` (the only
-  record of the work) and show in the detail. `canSummarize` (also for the button) says whether T does anything;
-  `pageOpened` (V in the window) forgets the stored text. AI off: T says so at once (`AIStatus.State.problem`: "AI
-  is off (Settings → AI).") and P still works. `prepare` (Shift+S) is T that loads the page even with AI off and
-  then fails with that message.
+- `PageSummaryQueue` (main actor) does P and T, only on request: `loadPage` stores the page text (through
+  `LibraryHost.storePageText`) unless it is stored; `summarize` loads it if needed and writes the summary unless it
+  is current. Requests are per article; one for an article already being worked on is ignored, except that T makes
+  a running P go on to the summary. At most 2 run at once. Nothing is retried by itself (it is the user's action);
+  errors stay in `AIStatus.pages` (the only record of the work) and show in the detail. `canSummarize` (also for the
+  button) says whether T does anything; `pageOpened` (V in the window) forgets the stored text. AI off: T says so at
+  once (`AIStatus.State.problem`: "AI is off (Settings → AI).") and P still works. `prepare` (Shift+S) is T that
+  loads the page even with AI off and then fails with that message.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
   errors, the pages being loaded or summarized (`PageWork`: phase, whether T asked for a summary) and their errors,
   for the status line ("Organizing 12 new articles…", "Summarizing 5 stories…", "Summarizing page…", "AI
@@ -521,16 +522,26 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
   migration in `LibraryStore.load()`. Fields added later are optional when decoding (`usage`, `folders` and
   `removedFeeds` via `decodeIfPresent`; `Feed.folderID`, `Story.summary`, `Story.savedAt`, `Topic.language`,
-  `Article.pageText`, `Article.pageSummary`, `Article.savedAt` as optionals), so older files load without a bump. The
-  version is read before the library, so a file from a newer Feedini isn't decoded for nothing.
+  `Article.pageSummary`, `Article.savedAt` as optionals), so older files load without a bump. The version is read
+  before the library, so a file from a newer Feedini isn't decoded for nothing.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
   newer Feedini – is moved aside as `library.unreadable-<unix time>.json`, never overwritten, and Feedini starts
   empty.
 - An article belongs to a feed and is identified within it by `key` (guid / Atom id, else the link). `Article.date`
   is the published date clamped to the first sighting (future dates), or the first sighting without one.
-- `Article.pageText` (P / T) and `Article.pageSummary` (T: TL;DR, details, language, date) are stored with the
-  article and go with it (`Retention`); a repeated T costs nothing.
+- Page texts (P / T, up to `PageText.maxLength` each) are files of their own, `Feedini/pages/<article id>.txt`, so
+  they are neither held in memory nor written again with every change of the library (J/K): `LibraryStore` writes
+  one at once (`storePageText`) and reads it only when P shows it or T sends it (`pageText(for:)`); both run off the
+  store actor and the main actor, so they don't wait for a library being written. The library only lists them
+  (`Library.pageTextIDs`, `pageTexts` in the file); storing or forgetting one doesn't touch the articles, so the
+  cached entries aren't rebuilt. A text the library no longer lists (V, `not_article`, a removed article –
+  `Library.removeArticles`, used by `Retention` and `removeFeed`) is deleted once that library is written, except one
+  stored meanwhile; loading deletes files the library doesn't list (a crash between the two writes) and forgets
+  listed texts without a file (P loads the page again). A file without `pageTexts` is from before: its articles'
+  `pageText` fields are moved into files when it is loaded, and the library is written without them at once.
+- `Article.pageSummary` (T: TL;DR, details, language, date) is stored with the article and goes with it
+  (`Retention`); a repeated T costs nothing.
 - Measured with 5000 articles (a third read, 30 feeds, 2 KB of text each; `-O`): the file has 14 MB, encoding takes
   0.13 s (in the store actor, off the main actor), decoding 0.06 s; building all list entries 49 ms, filtering
   + rows + counts 2 ms, marking read + comparing the library 1 ms. Enough for "unread forever"; SQLite isn't needed.

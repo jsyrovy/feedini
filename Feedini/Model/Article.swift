@@ -19,8 +19,6 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
     var firstSeen: Date
     /// When the article was read; `nil` while unread.
     var readAt: Date?
-    /// The text of the source page, loaded on the user's request (P / T); `nil` until then.
-    var pageText: String?
     /// The AI summary of the source page (T).
     var pageSummary: PageSummary?
     /// When the article was saved for later (S); `nil` while it isn't saved.
@@ -29,7 +27,7 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
     init(
         id: UUID = UUID(), feedID: Feed.ID, key: String, title: String, link: URL? = nil, published: Date? = nil,
         author: String? = nil, text: String = "", language: String? = nil, firstSeen: Date, readAt: Date? = nil,
-        pageText: String? = nil, pageSummary: PageSummary? = nil, savedAt: Date? = nil
+        pageSummary: PageSummary? = nil, savedAt: Date? = nil
     ) {
         self.id = id
         self.feedID = feedID
@@ -42,7 +40,6 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
         self.language = language
         self.firstSeen = firstSeen
         self.readAt = readAt
-        self.pageText = pageText
         self.pageSummary = pageSummary
         self.savedAt = savedAt
     }

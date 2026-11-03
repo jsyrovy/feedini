@@ -5,7 +5,13 @@ import Foundation
 /// Holds a library for the AI queues, without the rest of the app.
 @MainActor
 final class TestLibraryHost: LibraryHost {
+    struct StoreFailure: Error {}
+
     var library: Library
+    /// The stored page texts (`library.pageTextIDs` lists them).
+    var pageTexts: [Article.ID: String] = [:]
+    /// Storing a page text fails while set.
+    var failsStoringPageTexts = false
 
     init(_ library: Library) {
         self.library = library
@@ -13,6 +19,21 @@ final class TestLibraryHost: LibraryHost {
 
     func update(_ change: (inout Library) -> Void) {
         change(&library)
+    }
+
+    /// The stored page text of the article, as `pageText` gives it.
+    func storedText(_ id: Article.ID) -> String? {
+        library.pageTextIDs.contains(id) ? pageTexts[id] : nil
+    }
+
+    func pageText(_ id: Article.ID) async -> String? {
+        storedText(id)
+    }
+
+    func storePageText(_ text: String, for id: Article.ID) async throws {
+        guard !failsStoringPageTexts else { throw StoreFailure() }
+        pageTexts[id] = text
+        library.pageTextIDs.insert(id)
     }
 }
 

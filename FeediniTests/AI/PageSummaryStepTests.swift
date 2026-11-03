@@ -6,11 +6,10 @@ import Testing
 struct PageSummaryStepTests {
     private let feed = Feed.stub("Tech")
     private let configuration = AIConfiguration(summaryModel: "claude-sonnet-5-5", effort: "medium", languageCode: "cs")
+    private let article: Article
 
-    private func article(pageText: String?) -> Article {
-        var article = Article.stub("Launch", feed: feed.id)
-        article.pageText = pageText
-        return article
+    init() {
+        article = Article.stub("Launch", feed: feed.id)
     }
 
     private func payload(_ request: ClaudeRequest) throws -> [String: Any] {
@@ -30,10 +29,10 @@ struct PageSummaryStepTests {
     }
 
     @Test func requestCarriesTheFeedTitleAndThePageText() throws {
-        let article = article(pageText: "Short page text.")
         let library = Library(feeds: [feed], articles: [article])
 
-        let request = try #require(PageSummaryStep.request(for: article, in: library, configuration: configuration))
+        let request = PageSummaryStep.request(
+            for: article, pageText: "Short page text.", in: library, configuration: configuration)
 
         #expect(request.model == "claude-sonnet-5-5")
         #expect(request.effort == "medium")
@@ -47,20 +46,13 @@ struct PageSummaryStepTests {
     }
 
     @Test func longTextsGetTheSchemaWithDetails() throws {
-        let article = article(pageText: String(repeating: "a", count: 2_000))
         let library = Library(feeds: [feed], articles: [article])
-        let request = try #require(PageSummaryStep.request(for: article, in: library, configuration: configuration))
+        let request = PageSummaryStep.request(
+            for: article, pageText: String(repeating: "a", count: 2_000), in: library, configuration: configuration)
         #expect(request.schema == Prompts.pageSummarySchema)
     }
 
-    @Test func noRequestWithoutPageText() {
-        let article = article(pageText: nil)
-        let library = Library(feeds: [feed], articles: [article])
-        #expect(PageSummaryStep.request(for: article, in: library, configuration: configuration) == nil)
-    }
-
     @Test func storesAnOKAnswerWithDetailsForLongTexts() {
-        let article = article(pageText: String(repeating: "a", count: 2_000))
         var library = Library(feeds: [feed], articles: [article])
         let output = PageSummaryStep.Output(
             status: .ok, tldr: "  The gist. ", details: ["- First", "• Second", "Third", "  "])
@@ -75,19 +67,18 @@ struct PageSummaryStepTests {
     }
 
     @Test func notAnArticleDropsThePageText() {
-        let article = article(pageText: "We value your privacy.")
         var library = Library(feeds: [feed], articles: [article])
+        library.pageTextIDs = [article.id]
         let output = PageSummaryStep.Output(status: .notArticle, tldr: "", details: [])
 
         let outcome = PageSummaryStep.apply(output, to: article.id, language: "cs", date: referenceDate, in: &library)
 
         #expect(outcome == .notArticle)
-        #expect(library.articles[article.id]?.pageText == nil)
+        #expect(library.pageTextIDs.isEmpty)
         #expect(library.articles[article.id]?.pageSummary == nil)
     }
 
     @Test func anEmptyAnswerOrAGoneArticleStoresNothing() {
-        let article = article(pageText: "Text.")
         var library = Library(feeds: [feed], articles: [article])
         let empty = PageSummaryStep.Output(status: .ok, tldr: " ", details: nil)
 
