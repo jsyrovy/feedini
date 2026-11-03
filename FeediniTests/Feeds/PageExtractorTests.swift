@@ -40,6 +40,10 @@ struct PageExtractorTests {
     private let extractor = PageExtractor(dataStore: .nonPersistent(), settleDelay: .zero, timeout: .seconds(20))
 
     private func extract(_ fixture: String) async throws -> String {
+        try await content(fixture).text
+    }
+
+    private func content(_ fixture: String) async throws -> PageContent {
         let html = try #require(String(data: Fixture.data(fixture), encoding: .utf8))
         return try await extractor.extract(html: html, baseURL: URL(string: "https://example.com/article")!)
     }
@@ -102,8 +106,26 @@ struct PageExtractorTests {
     @Test func loadsAPageByItsAddress() async throws {
         let data = try Fixture.data("page-main.html")
         let url = try #require(URL(string: "data:text/html;base64,\(data.base64EncodedString())"))
-        let text = try await extractor.extract(url)
+        let text = try await extractor.extract(url).text
         #expect(text.hasPrefix("Mountain Hut Gets a Solar Roof"))
+    }
+
+    @Test func readsWhatThePageSaysAboutItself() async throws {
+        let content = try await content("page-meta.html")
+        #expect(content.text.hasPrefix("Lighthouse Keeper Retires After Forty Years\n\nThe keeper"))
+        // An empty og:title gives way to <title>, without the site's name; the meta tags win over JSON-LD.
+        #expect(
+            content.metadata
+                == PageMetadata(
+                    title: "Lighthouse Keeper Retires After Forty Years", site: "The Coastal Weekly",
+                    author: "Mara Lindqvist", published: Date(timeIntervalSince1970: 1_793_344_500)))
+    }
+
+    @Test func readsJSONLDWithoutMetaTags() async throws {
+        let metadata = try await content("page-jsonld.html").metadata
+        #expect(metadata.title == "River Ferry Returns")
+        #expect(metadata.site == nil)
+        #expect(metadata.published == nil)
     }
 
     @Test func givesUpAfterTheTimeout() async throws {

@@ -314,6 +314,21 @@ final class AppModel: LibraryHost {
         change { SidebarDrag.drop(item, onto: target, in: &$0) }
     }
 
+    // MARK: Saved links
+
+    /// Save Link…: saves the page at the address (`Library.saveLink`) and loads it with its summary in the background,
+    /// as Shift+S does (a saved link without AI only its text).
+    @discardableResult
+    func saveLink(_ address: String) throws(SavedLink.Failure) -> SavedLink.Outcome {
+        let url = try SavedLink.url(from: address)
+        let outcome = change { $0.saveLink(url, at: .now) }
+        switch outcome {
+        case .added(let id), .saved(let id): pageQueue?.prepare(id)
+        case .alreadySaved: break
+        }
+        return outcome
+    }
+
     // MARK: Source pages
 
     /// P: loads the text of the article's source page unless it is stored.
@@ -330,6 +345,11 @@ final class AppModel: LibraryHost {
     /// (`PageSummaryQueue.prepare`).
     func preparePage(_ id: Article.ID) {
         pageQueue?.prepare(id)
+    }
+
+    /// P on a saved link: loads its page again (`PageSummaryQueue.reload`).
+    func reloadPage(_ id: Article.ID) {
+        pageQueue?.reload(id)
     }
 
     /// Whether T does anything for the article (`PageSummaryQueue.canSummarize`).

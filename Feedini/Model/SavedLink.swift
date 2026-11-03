@@ -104,4 +104,15 @@ extension Library {
         articles[article.id] = article
         return .added(article.id)
     }
+
+    /// Fills in what the page says about a saved link: its title, site, author and date. The address stays as the
+    /// user gave it (a page may redirect to its cookie consent). Articles of feeds keep what their feed says.
+    mutating func applyPageMetadata(_ metadata: PageMetadata, to id: Article.ID) {
+        guard var article = articles[id], article.isSavedLink else { return }
+        article.title = metadata.title ?? article.title
+        article.site = metadata.site ?? article.site
+        article.author = metadata.author ?? article.author
+        article.published = metadata.published ?? article.published
+        articles[id] = article
+    }
 }

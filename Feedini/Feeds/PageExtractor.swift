@@ -20,11 +20,11 @@ enum PageError: Error, Sendable, Equatable {
     }
 }
 
-/// Loads source pages and extracts their text (`PageText.clean`); a protocol so the page queue can be tested without
-/// WebKit.
+/// Loads source pages and extracts their text (`PageText.clean`) and what they say about themselves; a protocol so
+/// the page queue can be tested without WebKit.
 @MainActor
 protocol PageExtracting: AnyObject {
-    func extract(_ url: URL) async throws(PageError) -> String
+    func extract(_ url: URL) async throws(PageError) -> PageContent
 }
 
 /// Cleans the text the extraction script returns (pure).
@@ -87,16 +87,16 @@ final class PageExtractor: PageExtracting {
         self.timeout = timeout
     }
 
-    func extract(_ url: URL) async throws(PageError) -> String {
+    func extract(_ url: URL) async throws(PageError) -> PageContent {
         try await load { $0.load(URLRequest(url: url)) }
     }
 
     /// Extracts the text of an HTML document (tests).
-    func extract(html: String, baseURL: URL) async throws(PageError) -> String {
+    func extract(html: String, baseURL: URL) async throws(PageError) -> PageContent {
         try await load { $0.loadHTMLString(html, baseURL: baseURL) }
     }
 
-    private func load(_ start: (WKWebView) -> Void) async throws(PageError) -> String {
+    private func load(_ start: (WKWebView) -> Void) async throws(PageError) -> PageContent {
         if resourceBlocker == nil {
             // Without it the page only loads more than it needs.
             resourceBlocker = try? await WKContentRuleListStore.default().compileContentRuleList(
@@ -107,12 +107,12 @@ final class PageExtractor: PageExtracting {
     }
 }
 
-/// One page in its own web view, from loading to the extracted text.
+/// One page in its own web view, from loading to the extracted text and metadata.
 @MainActor
 private final class PageLoad: NSObject, WKNavigationDelegate {
     private let webView: WKWebView
     private let settleDelay: Duration
-    private var continuation: CheckedContinuation<Result<String, PageError>, Never>?
+    private var continuation: CheckedContinuation<Result<PageContent, PageError>, Never>?
     private var settling: Task<Void, Never>?
 
     init(dataStore: WKWebsiteDataStore, resourceBlocker: WKContentRuleList?, settleDelay: Duration) {
@@ -129,7 +129,7 @@ private final class PageLoad: NSObject, WKNavigationDelegate {
         webView.navigationDelegate = self
     }
 
-    func run(timeout: Duration, start: (WKWebView) -> Void) async throws(PageError) -> String {
+    func run(timeout: Duration, start: (WKWebView) -> Void) async throws(PageError) -> PageContent {
         let deadline = Task { [weak self] in
             try? await Task.sleep(for: timeout)
             if !Task.isCancelled {
@@ -149,7 +149,7 @@ private final class PageLoad: NSObject, WKNavigationDelegate {
         return try result.get()
     }
 
-    private func finish(_ result: Result<String, PageError>) {
+    private func finish(_ result: Result<PageContent, PageError>) {
         continuation?.resume(returning: result)
         continuation = nil
     }
@@ -198,12 +198,7 @@ private final class PageLoad: NSObject, WKNavigationDelegate {
     }
 
     private func extractText() async {
-        let raw = await withCheckedContinuation { continuation in
-            webView.evaluateJavaScript(PageScript.extract) { result, _ in
-                continuation.resume(returning: result as? String)
-            }
-        }
-        guard let raw else {
+        guard let raw = await evaluate(PageScript.extract) else {
             finish(.failure(.loadFailed("The page's text couldn't be read.")))
             return
         }
@@ -211,7 +206,17 @@ private final class PageLoad: NSObject, WKNavigationDelegate {
             finish(.failure(.noText))
             return
         }
-        finish(.success(text))
+        let metadata = await evaluate(PageScript.metadata).map(PageMetadata.init(json:))
+        finish(.success(PageContent(text: text, metadata: metadata ?? PageMetadata())))
+    }
+
+    /// The string a script returns.
+    private func evaluate(_ script: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript(script) { result, _ in
+                continuation.resume(returning: result as? String)
+            }
+        }
     }
 }
 
@@ -226,6 +231,49 @@ private final class PageLoad: NSObject, WKNavigationDelegate {
 ///    items with "• " on lines of their own, `pre` as it is. Blocks that are mostly links (menus, lists of other articles) are left out.
 /// 4. JSON-LD `articleBody` only when that gives less than 500 characters: it is plain text without paragraphs.
 enum PageScript {
+    /// Returns what the page says about itself as JSON (`PageMetadata`): the title (Open Graph, Twitter, JSON-LD
+    /// `headline`, else `<title>`), the site's name (Open Graph, JSON-LD `publisher`), the author (`<meta
+    /// name=author>`, JSON-LD) and the published date (`article:published_time`, JSON-LD, else the first `<time>`).
+    static let metadata = #"""
+        (() => {
+          const meta = (...names) => {
+            for (const name of names) {
+              for (const e of document.querySelectorAll(`meta[property="${name}"],meta[name="${name}"]`)) {
+                const content = (e.getAttribute('content') || '').trim();
+                if (content) return content;
+              }
+            }
+            return null;
+          };
+          const text = v => (typeof v === 'string' && v.trim()) ? v.trim() : null;
+          const name = v => text(v) || (v && typeof v === 'object' && !Array.isArray(v) ? text(v.name) : null);
+          const ld = {};
+          const visit = o => {
+            if (!o || typeof o !== 'object') return;
+            if (Array.isArray(o)) { o.forEach(visit); return; }
+            const type = [].concat(o['@type'] || []).join(' ');
+            if (/Article|Posting|Report|BlogPosting/.test(type)) {
+              ld.title = ld.title || text(o.headline);
+              ld.published = ld.published || text(o.datePublished);
+              ld.author = ld.author || name([].concat(o.author || [])[0]);
+              ld.site = ld.site || name(o.publisher);
+            }
+            if (o['@graph']) visit(o['@graph']);
+          };
+          for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+            try { visit(JSON.parse(script.textContent)); } catch (e) {}
+          }
+          const time = document.querySelector('article time[datetime]') || document.querySelector('time[datetime]');
+          return JSON.stringify({
+            title: meta('og:title', 'twitter:title') || ld.title || text(document.title),
+            site: meta('og:site_name', 'application-name') || ld.site,
+            author: meta('author') || ld.author,
+            published: meta('article:published_time', 'datePublished', 'date') || ld.published ||
+              (time && time.getAttribute('datetime')),
+          });
+        })()
+        """#
+
     /// Returns the text, at most twice `PageText.maxLength` (cleaning only makes it shorter).
     static let extract = #"""
         (() => {

@@ -56,7 +56,8 @@ enum PageSummaryStep {
 
     enum Outcome: Equatable, Sendable {
         case summarized
-        /// The page doesn't show the article; its stored text is dropped, so the next T loads the page again.
+        /// The page doesn't show the article; its stored text is dropped, so the next T loads the page again – except
+        /// for a saved link, which has no other text (P loads it again).
         case notArticle
         /// An empty TL;DR, or the article is gone.
         case empty
@@ -68,7 +69,9 @@ enum PageSummaryStep {
     ) -> Outcome {
         guard library.articles[articleID] != nil else { return .empty }
         guard output.status == .ok else {
-            library.pageTextIDs.remove(articleID)
+            if library.articles[articleID]?.isSavedLink == false {
+                library.pageTextIDs.remove(articleID)
+            }
             return .notArticle
         }
         let tldr = output.tldr.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -7,12 +7,19 @@ import Foundation
 /// load the page again. A request for an article already being worked on is ignored, except that T makes a running
 /// P go on to the summary. Nothing is retried by itself: it is the user's action, the error is shown in the detail.
 /// The work and whether T asked for a summary are kept in `AIStatus.pages` only.
+///
+/// A saved link (`SavedLink`) has no feed text, so its page text is all it has: P loads it again instead (`reload`),
+/// keeping the stored one until the new one is there, opening the page (V) doesn't forget it, and neither does
+/// `not_article`. Loading it fills in the title, source and date from the page.
 @MainActor
 final class PageSummaryQueue {
     static let maxParallel = 2
     nonisolated static let notArticleMessage =
         "The page doesn't show the article (a cookie consent, a subscription or a login?). Open it with V, accept or "
         + "log in, then press T again."
+    nonisolated static let notArticleLinkMessage =
+        "The page doesn't show the article (a cookie consent, a subscription or a login?). Open it with V, accept or "
+        + "log in, then press P to load it again."
 
     private unowned let host: any LibraryHost
     private let extractor: any PageExtracting
@@ -22,6 +29,8 @@ final class PageSummaryQueue {
     private let now: @Sendable () -> Date
     private var waiting: [Article.ID] = []
     private var tasks: [Article.ID: Task<Void, Never>] = [:]
+    /// Saved links whose page is loaded again even though its text is stored (`reload`).
+    private var reloading: Set<Article.ID> = []
 
     init(
         host: any LibraryHost, extractor: any PageExtracting, runner: any CommandRunning = ProcessRunner(),
@@ -52,8 +61,13 @@ final class PageSummaryQueue {
     }
 
     /// Shift+S: like T, but also when AI is off – then the page is still loaded and stored for later, and the summary
-    /// fails with the reason (the user isn't looking at the article, the error waits in its row).
+    /// fails with the reason (the user isn't looking at the article, the error waits in its row). A saved link
+    /// (Save Link…) only loads its page then: it is its text, and every saved link would warn that AI is off.
     func prepare(_ id: Article.ID) {
+        if host.library.articles[id]?.isSavedLink == true, !configuration().isEnabled {
+            loadPage(id)
+            return
+        }
         guard canSummarize(id) else { return }
         enqueue(id, summary: true)
     }
@@ -70,10 +84,20 @@ final class PageSummaryQueue {
     }
 
     /// The user opened the page in the window, where they may accept cookies or log in: the stored text is forgotten,
-    /// so the next P / T loads the page again.
+    /// so the next P / T loads the page again. A saved link keeps it (it has no other text); P loads it again.
     func pageOpened(_ id: Article.ID) {
-        guard host.library.pageTextIDs.contains(id), tasks[id] == nil, !waiting.contains(id) else { return }
+        guard host.library.pageTextIDs.contains(id), host.library.articles[id]?.isSavedLink == false,
+            tasks[id] == nil, !waiting.contains(id)
+        else { return }
         host.update { $0.pageTextIDs.remove(id) }
+    }
+
+    /// P on a saved link: loads its page again – after the user accepted cookies or logged in with V – and with AI on
+    /// writes a new summary of it. The stored text stays until the new one is stored, also when loading fails.
+    func reload(_ id: Article.ID) {
+        guard host.library.articles[id] != nil, tasks[id] == nil, !waiting.contains(id) else { return }
+        reloading.insert(id)
+        enqueue(id, summary: configuration().isEnabled)
     }
 
     var isRunning: Bool { !tasks.isEmpty || !waiting.isEmpty }
@@ -92,8 +116,8 @@ final class PageSummaryQueue {
             }
             return
         }
-        let hasText = host.library.pageTextIDs.contains(id)
-        status.setPage(AIStatus.PageWork(phase: hasText ? .summarizing : .loading, summary: summary), for: id)
+        let loads = reloading.contains(id) || !host.library.pageTextIDs.contains(id)
+        status.setPage(AIStatus.PageWork(phase: loads ? .loading : .summarizing, summary: summary), for: id)
         waiting.append(id)
         fill()
     }
@@ -110,11 +134,12 @@ final class PageSummaryQueue {
     }
 
     private func process(_ id: Article.ID) async {
+        let reloads = reloading.remove(id) != nil
         guard let article = host.library.articles[id] else {
             status.setPage(nil, for: id)
             return
         }
-        var text = await host.pageText(id)
+        var text = reloads ? nil : await host.pageText(id)
         if text == nil {
             text = await load(article)
         }
@@ -135,20 +160,24 @@ final class PageSummaryQueue {
         let summary = status.pages[article.id]?.summary ?? false
         status.setPage(AIStatus.PageWork(phase: .loading, summary: summary), for: article.id)
         let started = ContinuousClock.now
-        let text: String
+        let content: PageContent
         do {
-            text = try await extractor.extract(link)
+            content = try await extractor.extract(link)
         } catch {
             fail(article.id, error.message)
             Log.feeds.error("Loading a page failed: \(error.message, privacy: .public)")
             return nil
         }
+        let text = content.text
         do {
             try await host.storePageText(text, for: article.id)
         } catch {
             fail(article.id, "The page text couldn't be stored: \(error.localizedDescription)")
             Log.store.error("Storing a page text failed: \(error.localizedDescription, privacy: .public)")
             return nil
+        }
+        if article.isSavedLink {
+            host.update { $0.applyPageMetadata(content.metadata, to: article.id) }
         }
         let duration = String(describing: ContinuousClock.now - started)
         Log.feeds.info("Loaded a page: \(text.count) characters in \(duration, privacy: .public)")
@@ -180,7 +209,7 @@ final class PageSummaryQueue {
             Log.ai.info("Summarized a page in \(stats.durationMs) ms: \(String(describing: outcome), privacy: .public)")
             switch outcome {
             case .summarized: status.setPage(nil, for: id)
-            case .notArticle: fail(id, Self.notArticleMessage)
+            case .notArticle: fail(id, article.isSavedLink ? Self.notArticleLinkMessage : Self.notArticleMessage)
             case .empty: fail(id, "claude gave an empty summary")
             }
         } catch {

@@ -29,8 +29,12 @@ struct PageSummaryQueueTests {
 
     /// AI settings changed by a test.
     final class Setting {
-        var isEnabled = true
+        var isEnabled: Bool
         var language = "cs"
+
+        init(isEnabled: Bool = true) {
+            self.isEnabled = isEnabled
+        }
     }
 
     private var stored: Article? { host.library.articles[article.id] }
@@ -346,5 +350,129 @@ struct PageSummaryQueueTests {
         queue.loadPage(UUID())
         queue.summarize(UUID())
         #expect(!queue.isRunning)
+    }
+
+    // MARK: Saved links
+
+    /// A saved link in the host's library, as Save Link… adds it.
+    private func savedLink() -> Article.ID {
+        guard case .added(let id) = host.library.saveLink(URL(string: "https://example.com/essay")!, at: referenceDate)
+        else { fatalError("Not added") }
+        return id
+    }
+
+    @Test func loadingASavedLinkFillsInWhatThePageSays() async {
+        extractor.metadata = { _ in
+            PageMetadata(title: "An Essay", site: "Example Magazine", author: "A. Writer", published: .hours(-5))
+        }
+        let id = savedLink()
+        let queue = queue(FakeCommandRunner([Self.ok]))
+
+        queue.prepare(id)
+        await queue.waitUntilIdle()
+
+        let link = host.library.articles[id]
+        #expect(link?.title == "An Essay")
+        #expect(link?.site == "Example Magazine")
+        #expect(link?.author == "A. Writer")
+        #expect(link?.published == .hours(-5))
+        #expect(link?.link == URL(string: "https://example.com/essay"))
+        #expect(link?.pageSummary?.tldr == "The gist.")
+        #expect(host.storedText(id) == "Text of the page essay.")
+        // A feed's article keeps what its feed says.
+        queue.loadPage(article.id)
+        await queue.waitUntilIdle()
+        #expect(stored?.title == "Launch")
+        #expect(stored?.author == nil)
+    }
+
+    @Test func emptyMetadataKeepsWhatTheLinkHas() async {
+        let id = savedLink()
+        let queue = queue(FakeCommandRunner([]), setting: Setting(isEnabled: false))
+
+        queue.prepare(id)
+        await queue.waitUntilIdle()
+
+        #expect(host.library.articles[id]?.title == "example.com/essay")
+        #expect(host.library.articles[id]?.site == "example.com")
+    }
+
+    @Test func preparingASavedLinkWithoutAIOnlyLoadsItsText() async {
+        let id = savedLink()
+        let runner = FakeCommandRunner([Self.ok])
+        let queue = queue(runner, setting: Setting(isEnabled: false))
+
+        queue.prepare(id)
+        #expect(status.pages[id] == AIStatus.PageWork(phase: .loading, summary: false))
+        await queue.waitUntilIdle()
+
+        #expect(host.storedText(id) != nil)
+        #expect(status.pages[id] == nil)
+        #expect(runner.calls.isEmpty)
+    }
+
+    @Test func reloadingASavedLinkReplacesItsTextAndSummary() async {
+        let id = savedLink()
+        let runner = FakeCommandRunner([
+            Self.ok, .structured(#"{"status":"ok","tldr":"The new gist."}"#),
+        ])
+        let queue = queue(runner)
+        queue.prepare(id)
+        await queue.waitUntilIdle()
+        extractor.result = { _ in .success("The page after logging in.") }
+
+        queue.reload(id)
+        #expect(status.pages[id] == AIStatus.PageWork(phase: .loading, summary: true))
+        queue.reload(id)
+        await queue.waitUntilIdle()
+
+        #expect(extractor.requests.count == 2)
+        #expect(host.storedText(id) == "The page after logging in.")
+        #expect(host.library.articles[id]?.pageSummary?.tldr == "The new gist.")
+        #expect(runner.calls.last?.payload["page_text"] as? String == "The page after logging in.")
+        #expect(status.pages[id] == nil)
+    }
+
+    @Test func reloadingWithoutAIOnlyLoadsTheText() async {
+        let id = savedLink()
+        let runner = FakeCommandRunner([])
+        let queue = queue(runner, setting: Setting(isEnabled: false))
+
+        queue.reload(id)
+        await queue.waitUntilIdle()
+
+        #expect(host.storedText(id) == "Text of the page essay.")
+        #expect(runner.calls.isEmpty)
+        queue.reload(UUID())
+        #expect(!queue.isRunning)
+    }
+
+    @Test func aFailedReloadKeepsTheStoredText() async {
+        let id = savedLink()
+        let queue = queue(FakeCommandRunner([Self.ok]))
+        queue.prepare(id)
+        await queue.waitUntilIdle()
+        extractor.result = { _ in .failure(.timedOut) }
+
+        queue.reload(id)
+        await queue.waitUntilIdle()
+
+        #expect(host.storedText(id) == "Text of the page essay.")
+        #expect(host.library.articles[id]?.pageSummary?.tldr == "The gist.")
+        #expect(status.pages[id] == AIStatus.PageWork(phase: .failed(PageError.timedOut.message), summary: true))
+    }
+
+    @Test func aSavedLinkKeepsItsTextWhenOpenedOrNotAnArticle() async {
+        let id = savedLink()
+        let queue = queue(FakeCommandRunner([.structured(#"{"status":"not_article","tldr":""}"#)]))
+
+        queue.prepare(id)
+        await queue.waitUntilIdle()
+        queue.pageOpened(id)
+
+        #expect(host.storedText(id) == "Text of the page essay.")
+        #expect(
+            status.pages[id] == AIStatus.PageWork(phase: .failed(PageSummaryQueue.notArticleLinkMessage), summary: true)
+        )
     }
 }
