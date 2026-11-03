@@ -173,8 +173,8 @@ struct AssignQueueTests {
         #expect(status.calls.first?.error == "24")
         #expect(AIStatus().message == nil)
         status.set(.organizing(1))
-        #expect(status.message == "Organizing 1 new article…")
+        #expect(status.message == "Organizing 1 article…")
         status.set(.organizing(12))
-        #expect(status.message == "Organizing 12 new articles…")
+        #expect(status.message == "Organizing 12 articles…")
     }
 }

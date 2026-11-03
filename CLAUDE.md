@@ -263,7 +263,7 @@ Implementation:
   become bullet points. Without a summary yet: "Summarizing…" (or the error after repeated failures); an out-of-date
   one stays with "Updating summary…" while the AI works.
 - AI in the list: a loose article shows ✨ while the AI organizes (`AIStatus.organizing`); the status bar shows
-  "Organizing N new articles…", "Summarizing N stories…", "Summarizing page…" or "AI unavailable: …" next to the
+  "Organizing N articles…", "Summarizing N stories…", "Summarizing page…" or "AI unavailable: …" next to the
   refresh state. Stories
   from several feeds have an accent bar and source labels; "+N new" marks articles that joined a read story.
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
@@ -497,7 +497,7 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   loads the page even with AI off and then fails with that message.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
   errors, the pages being loaded or summarized (`PageWork`: phase, whether T asked for a summary) and their errors,
-  for the status line ("Organizing 12 new articles…", "Summarizing 5 stories…", "Summarizing page…", "AI
+  for the status line ("Organizing 12 articles…", "Summarizing 5 stories…", "Summarizing page…", "AI
   unavailable: …"), and the last 20 calls (time, cost or error) for Settings → AI.
 - AI settings (`Preferences`): `aiEnabled` (on by default), `claudePath` (empty = look it up), `assignModel` and
   `summaryModel` (free text, default `claude-haiku-5-5`), `aiEffort` (`low` / `medium` / `high`, default `low`); a

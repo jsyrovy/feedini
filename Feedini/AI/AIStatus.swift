@@ -8,7 +8,7 @@ final class AIStatus {
     enum State: Equatable, Sendable {
         case idle
         case off
-        /// Organizing this many new articles.
+        /// Organizing this many articles (unread ones, and read ones still in the attach window).
         case organizing(Int)
         /// AI can't run until something changes (no claude, a failing CLI).
         case unavailable(String)
@@ -85,7 +85,7 @@ final class AIStatus {
     /// For the status line under the story list; `nil` when there is nothing to say.
     var message: String? {
         switch state {
-        case .organizing(let count): count == 1 ? "Organizing 1 new article…" : "Organizing \(count) new articles…"
+        case .organizing(let count): count == 1 ? "Organizing 1 article…" : "Organizing \(count) articles…"
         case .unavailable: state.problem
         case .idle, .off:
             switch summarizing.count {
