@@ -28,6 +28,14 @@ enum SavedLink {
         return url
     }
 
+    /// Text from the clipboard to offer as the address: only an `http(s)://` address – other text wasn't copied as one.
+    static func offeredAddress(_ text: String?) -> String? {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+            ["http://", "https://"].contains(where: text.lowercased().hasPrefix), (try? url(from: text)) != nil
+        else { return nil }
+        return text
+    }
+
     /// Query parameters that only track where a link was shared, besides `utm_…`.
     private static let trackingParameters: Set<String> = [
         "fbclid", "gclid", "dclid", "msclkid", "yclid", "igshid", "mc_cid", "mc_eid", "_ga",

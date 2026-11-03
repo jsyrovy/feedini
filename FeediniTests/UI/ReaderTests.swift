@@ -169,6 +169,26 @@ struct ReaderTests {
         #expect(extractor.requests == [lone.link!])
     }
 
+    @Test func pOnASavedLinkLoadsItsPageAgainAndLeavesTheSourcePage() async throws {
+        model.preferences.aiEnabled = false
+        guard case .added(let id) = try model.saveLink("example.com/essay") else {
+            Issue.record("Not added")
+            return
+        }
+        await model.pageQueue?.waitUntilIdle()
+        reader.selection = .saved
+        reader.visit(.story(.savedArticle(id)))
+        reader.handle(.open)
+        #expect(reader.pageArticle == id)
+        #expect(model.library.pageTextIDs == [id])
+
+        reader.handle(.preview)
+        #expect(reader.pageArticle == nil)
+        #expect(reader.previewArticle == nil)
+        await model.pageQueue?.waitUntilIdle()
+        #expect(extractor.requests.count == 2)
+    }
+
     @Test func questionMarkShowsAndHidesTheShortcuts() {
         reader.handle(.shortcuts)
         #expect(reader.isShowingShortcuts)

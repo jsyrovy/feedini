@@ -46,7 +46,7 @@ struct StoryDetail: View {
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             UnreadDot(isUnread: !article.isRead)
-                            if let source = model.library.sourceTitle(of: article.feedID) {
+                            if let source = model.library.sourceTitle(of: article) {
                                 SourceLabel(title: source).font(.caption)
                             }
                             Text(article.title)
@@ -66,7 +66,7 @@ struct StoryDetail: View {
     }
 }
 
-/// An article with the text from its feed.
+/// An article with the text from its feed, or a saved link with the text of its page.
 struct ArticleDetail: View {
     @Environment(AppModel.self) private var model
     @Environment(Reader.self) private var reader
@@ -86,6 +86,13 @@ struct ArticleDetail: View {
                     Text("Part of: \(partOf)")
                         .foregroundStyle(.secondary)
                 }
+                if article.isSavedLink {
+                    Label(
+                        "Saved link, added \(article.firstSeen.formatted(date: .abbreviated, time: .shortened))",
+                        systemImage: "link"
+                    )
+                    .foregroundStyle(.secondary)
+                }
                 if let link = article.link {
                     HStack {
                         OpenButtons(url: link)
@@ -99,7 +106,9 @@ struct ArticleDetail: View {
                     SummaryView(entry: story)
                 }
                 Divider()
-                if reader.previewArticle == article.id {
+                if article.isSavedLink {
+                    LinkText(article: article, isStored: model.library.pageTextIDs.contains(article.id))
+                } else if reader.previewArticle == article.id {
                     PagePreview(article: article, isStored: model.library.pageTextIDs.contains(article.id))
                 } else {
                     Paragraphs(text: article.text.isEmpty ? "No text in the feed." : article.text)
@@ -113,7 +122,7 @@ struct ArticleDetail: View {
     }
 
     private var meta: String {
-        let feed = model.library.sourceTitle(of: article.feedID)
+        let feed = model.library.sourceTitle(of: article)
         let date = article.published.map { $0.formatted(date: .abbreviated, time: .shortened) }
         return [feed, article.author, date].compactMap { $0 }.joined(separator: " · ")
     }
@@ -187,24 +196,81 @@ struct PagePreview: View {
     }
 }
 
-/// "Preview" (P) and "Summarize Page" (T).
+/// "Preview" (P) – "Reload Page" on a saved link – and "Summarize Page" (T).
 struct PageButtons: View {
     @Environment(AppModel.self) private var model
     @Environment(Reader.self) private var reader
     let article: Article
 
     var body: some View {
-        Toggle(
-            "Preview", systemImage: "doc.plaintext",
-            isOn: Binding(
-                get: { reader.previewArticle == article.id },
-                set: { _ in reader.togglePreview(article.id) })
-        )
-        .toggleStyle(.button)
-        .help("P")
+        if article.isSavedLink {
+            Button("Reload Page", systemImage: "arrow.clockwise") { reader.reloadPage(article.id) }
+                .help("P: load the page again, after accepting cookies or logging in with V")
+                .disabled(isLoading)
+        } else {
+            Toggle(
+                "Preview", systemImage: "doc.plaintext",
+                isOn: Binding(
+                    get: { reader.previewArticle == article.id },
+                    set: { _ in reader.togglePreview(article.id) })
+            )
+            .toggleStyle(.button)
+            .help("P")
+        }
         Button("Summarize Page", systemImage: "sparkles") { reader.summarizePage(article.id) }
             .help("T")
             .disabled(!model.canSummarizePage(article.id))
+    }
+
+    private var isLoading: Bool {
+        model.aiStatus.pages[article.id].map { if case .failed = $0.phase { false } else { true } } ?? false
+    }
+}
+
+/// The text of a saved link's page: it has no feed text. Its page loading (again) or why that failed shows above it,
+/// unless the page summary shows it (T, or Save Link… with AI).
+struct LinkText: View {
+    @Environment(AppModel.self) private var model
+    let article: Article
+    /// Passed in, so the text isn't drawn again on every change of the library.
+    let isStored: Bool
+    /// Read from its file when stored, and again once the page was loaded again (P).
+    @State private var text: String?
+
+    var body: some View {
+        let work = model.aiStatus.pages[article.id]
+        let isLoading = work?.phase == .loading
+        VStack(alignment: .leading, spacing: 14) {
+            if let work, !work.summary {
+                switch work.phase {
+                case .failed(let message):
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                case .loading, .summarizing:
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading page…")
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+            if let text, isStored {
+                Paragraphs(text: text)
+                if PageText.isTruncated(text) {
+                    Text("The text is cut off here. Press V for the whole page.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !isStored && !isLoading {
+                Text("The text of the page isn't loaded. Press P to load it.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task(id: [isStored, isLoading]) {
+            if isStored && !isLoading {
+                text = await model.pageText(article.id)
+            }
+        }
     }
 }
 

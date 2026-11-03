@@ -28,11 +28,19 @@ struct MainWindow: View {
             RestoreSheet()
                 .environment(model)
         }
+        .sheet(isPresented: $reader.isShowingSaveLink) {
+            SaveLinkSheet()
+                .environment(model)
+        }
         .toolbar {
             ToolbarItem {
                 Button("Refresh", systemImage: "arrow.clockwise") { model.refreshNow() }
                     .help("Refresh Now (R)")
                     .disabled(model.isRefreshing || model.library.feeds.isEmpty)
+            }
+            ToolbarItem {
+                Button("Save Link", systemImage: "plus") { reader.isShowingSaveLink = true }
+                    .help("Save Link… (⌘L)")
             }
         }
     }

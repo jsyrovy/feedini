@@ -42,7 +42,12 @@ enum ShortcutHelp {
         case .openOther:
             (.pageAndAI, Item(keys: "Shift+V / Shift+Enter", description: opensInWindow ? inBrowser : inWindow))
         case .preview:
-            (.pageAndAI, Item(keys: "P", description: "Full text of the source page instead of the feed text"))
+            (
+                .pageAndAI,
+                Item(
+                    keys: "P",
+                    description: "Full text of the source page instead of the feed text (a saved link: load it again)")
+            )
         case .summarizePage:
             (.pageAndAI, Item(keys: "T", description: "Summarize the source page (TL;DR)", unavailable: aiProblem))
         case .saveWithSummary:

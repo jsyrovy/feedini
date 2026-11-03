@@ -21,6 +21,9 @@ struct Sidebar: View {
             Label("Saved", systemImage: "bookmark")
                 .badge(counts.saved)
                 .tag(SidebarSelection.saved)
+                .dropDestination(for: URL.self) { urls, _ in
+                    model.saveLinks(urls)
+                }
             if !topics.isEmpty {
                 Section("Topics") {
                     ForEach(topics) { topic in

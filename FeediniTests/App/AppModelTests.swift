@@ -225,6 +225,17 @@ struct AppModelTests {
         #expect(model.aiStatus.pages[article.id]?.phase == .failed(AIStatus.State.offMessage))
     }
 
+    @Test func droppedLinksAreSavedUnlessTheyAreNoWebAddresses() async {
+        let model = AppModel.test()
+        model.preferences.aiEnabled = false
+
+        #expect(!model.saveLinks([URL(filePath: "/tmp/page.html"), URL(string: "mailto:someone@example.com")!]))
+        #expect(model.saveLinks([URL(string: "https://example.com/a")!, URL(string: "http://example.com/b")!]))
+        await model.pageQueue?.waitUntilIdle()
+
+        #expect(Set(model.library.articles.values.map(\.key)) == ["example.com/a", "example.com/b"])
+    }
+
     @Test func reloadingASavedLinkLoadsItsPageAgain() async throws {
         let extractor = FakePageExtractor()
         let model = AppModel.test(extractor: extractor)

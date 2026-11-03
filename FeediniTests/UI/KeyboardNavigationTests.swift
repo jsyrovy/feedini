@@ -128,6 +128,21 @@ struct KeyboardNavigationTests {
         #expect(action(.summarizePage, at: .story(single.id), page: lone.id) == .summarizePage(lone.id))
     }
 
+    @Test func previewOnASavedLinkLoadsItsPageAgain() {
+        let link = Article(
+            feedID: SavedLink.feedID, key: "example.com/a", title: "Link", link: URL(string: "https://example.com/a"),
+            firstSeen: referenceDate, savedAt: referenceDate)
+        let entry = StoryEntry(id: .savedArticle(link.id), title: "Link", articles: [link], newArticleIDs: [])
+        for (key, expected) in [
+            (ListKey.preview, KeyboardNavigation.Action.reloadPage(link.id)), (.summarizePage, .summarizePage(link.id)),
+        ] {
+            let result = KeyboardNavigation.action(
+                for: key, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
+                opensInWindow: true, pageArticle: link.id)
+            #expect(result == expected)
+        }
+    }
+
     @Test func previewAndSummarizeDoNothingOnAStoryWithSeveralArticles() {
         #expect(action(.preview, at: .story(multi.id)) == .none)
         #expect(action(.summarizePage, at: .story(multi.id), expanded: [multi.id]) == .none)

@@ -8,7 +8,8 @@ struct StoryRow: View {
     let toggleExpanded: () -> Void
 
     var body: some View {
-        let sources = entry.feedIDs.compactMap(model.library.sourceTitle)
+        let sources =
+            entry.isSavedLink ? entry.articles.compactMap(\.site) : entry.feedIDs.compactMap(model.library.sourceTitle)
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             UnreadDot(isUnread: !entry.isRead)
             VStack(alignment: .leading, spacing: 3) {
@@ -41,6 +42,10 @@ struct StoryRow: View {
                     }
                     if !entry.isMultiArticle, let article = entry.articles.first {
                         PageSummaryMark(article: article.id)
+                    }
+                    if entry.isSavedLink {
+                        Image(systemName: "link")
+                            .help("A link you saved")
                     }
                     Text(meta(sources: sources))
                         .lineLimit(1)
@@ -118,7 +123,7 @@ struct ArticleRow: View {
                         SavedMark()
                     }
                     PageSummaryMark(article: article.id)
-                    if let source = model.library.sourceTitle(of: article.feedID) {
+                    if let source = model.library.sourceTitle(of: article) {
                         SourceLabel(title: source)
                     }
                     Text(RelativeTime.short(article.date, now: .now))
@@ -155,18 +160,21 @@ struct SavedMark: View {
     }
 }
 
-/// A TL;DR of the source page being written (Shift+S, T), or why it failed – the user may be elsewhere by then.
+/// A TL;DR of the source page being written (Shift+S, T), or why it failed – the user may be elsewhere by then. For
+/// a saved link also its page being loaded, which gives it its title and text.
 struct PageSummaryMark: View {
     @Environment(AppModel.self) private var model
     let article: Article.ID
 
     var body: some View {
-        if let work = model.aiStatus.pages[article], work.summary {
+        if let work = model.aiStatus.pages[article],
+            work.summary || model.library.articles[article]?.isSavedLink == true
+        {
             switch work.phase {
             case .loading, .summarizing:
                 Image(systemName: "sparkles")
                     .foregroundStyle(.tertiary)
-                    .help("Summarizing the page…")
+                    .help(work.summary ? "Summarizing the page…" : "Loading the page…")
             case .failed(let message):
                 Image(systemName: "exclamationmark.triangle")
                     .foregroundStyle(.orange)

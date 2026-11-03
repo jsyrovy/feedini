@@ -27,6 +27,9 @@ struct FeediniApp: App {
                 .environment(appDelegate.reader)
         }
         .commands {
+            CommandGroup(after: .newItem) {
+                SaveLinkButton(reader: appDelegate.reader)
+            }
             CommandGroup(after: .importExport) {
                 BackupCommands(model: appDelegate.model, reader: appDelegate.reader)
             }
@@ -55,6 +58,7 @@ struct FeediniApp: App {
         MenuBarExtra {
             MenuBarContent()
                 .environment(appDelegate.model)
+                .environment(appDelegate.reader)
         } label: {
             MenuBarLabel(model: appDelegate.model)
         }

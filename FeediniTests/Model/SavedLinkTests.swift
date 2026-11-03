@@ -16,6 +16,14 @@ struct SavedLinkTests {
         #expect(SavedLink.Failure.invalidAddress.message == "This isn't a web address.")
     }
 
+    @Test func onlyWebAddressesOnTheClipboardAreOffered() {
+        #expect(SavedLink.offeredAddress(" https://example.com/a\n") == "https://example.com/a")
+        #expect(SavedLink.offeredAddress("HTTP://example.com/a") == "HTTP://example.com/a")
+        for text in [nil, "", "example.com/a", "Some words", "https://", "https://two words.com"] {
+            #expect(SavedLink.offeredAddress(text) == nil)
+        }
+    }
+
     @Test func keysLeaveOutWhatDoesNotChangeThePage() {
         let key = { (address: String) in SavedLink.key(of: URL(string: address)!) }
         #expect(key("https://Example.COM/News/A/") == "example.com/News/A")

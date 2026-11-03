@@ -3,7 +3,7 @@ import Foundation
 /// What a loaded page gives: its text, and what it says about itself.
 struct PageContent: Sendable, Equatable {
     var text: String
-    var metadata = PageMetadata()
+    var metadata: PageMetadata
 }
 
 /// What a page says about itself (`PageScript.metadata`: Open Graph and other meta tags, JSON-LD, `<title>`); saved

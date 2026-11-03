@@ -42,6 +42,8 @@ final class Reader {
     var isShowingShortcuts = false
     /// The sheet for restoring a backup (File → Restore from Backup…).
     var isShowingRestore = false
+    /// The sheet for saving a link (+, File → Save Link…).
+    var isShowingSaveLink = false
     /// Increased when the story list should take the keyboard focus (after the page had it).
     private(set) var listFocusRequests = 0
     /// Reading and saving for ⌘Z / ⇧⌘Z; it lives as long as the app, not the window.
@@ -117,6 +119,8 @@ final class Reader {
             closePage()
         case .previewPage(let id):
             togglePreview(id)
+        case .reloadPage(let id):
+            reloadPage(id)
         case .summarizePage(let id):
             summarizePage(id)
         case .showShortcuts:
@@ -269,6 +273,15 @@ final class Reader {
         }
         shown = .preview(id)
         model.loadPage(id)
+    }
+
+    /// P on a saved link: loads its page again. From the source page in the window (where the user may have logged in)
+    /// it goes back to the text.
+    func reloadPage(_ id: Article.ID) {
+        if pageArticle != nil {
+            closePage()
+        }
+        model.reloadPage(id)
     }
 
     /// T: from the source page in the window it goes back to the text, where the summary shows.

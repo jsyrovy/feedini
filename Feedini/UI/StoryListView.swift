@@ -42,13 +42,16 @@ struct StoryListView: View {
             .onChange(of: reader.listFocusRequests) {
                 isFocused = true
             }
+            .dropDestination(for: URL.self) { urls, _ in
+                model.saveLinks(urls)
+            }
             .onAppear { isFocused = true }
         }
         .overlay {
             if rows.isEmpty && model.isLoaded && reader.selection == .saved {
                 ContentUnavailableView(
-                    "Nothing Saved", systemImage: "bookmark", description: Text("Press S to save an article for later.")
-                )
+                    "Nothing Saved", systemImage: "bookmark",
+                    description: Text("Press S to save an article for later, or + to save a link."))
             } else if rows.isEmpty && model.isLoaded && !model.library.feeds.isEmpty {
                 ContentUnavailableView(
                     "All Read", systemImage: "checkmark.circle", description: Text("No unread articles."))

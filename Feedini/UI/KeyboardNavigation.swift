@@ -16,7 +16,7 @@ enum ListKey: CaseIterable, Sendable {
     case open
     /// Shift+V / Shift+Enter
     case openOther
-    /// P: the text of the source page instead of the feed text
+    /// P: the text of the source page instead of the feed text; on a saved link: load its page again
     case preview
     /// T: a TL;DR of the source page
     case summarizePage
@@ -46,6 +46,8 @@ enum KeyboardNavigation {
         case closePage
         /// Shows the text of the source page instead of the feed text, or the feed text again.
         case previewPage(Article.ID)
+        /// Loads the page of a saved link again (its text is all it has, so it is always shown).
+        case reloadPage(Article.ID)
         case summarizePage(Article.ID)
         case toggleRead(ListRow)
         case toggleSaved(ListRow)
@@ -105,7 +107,8 @@ enum KeyboardNavigation {
             return .none
         case (.preview, _), (.summarizePage, _):
             guard let article = entry.singleArticle(at: cursor), article.link != nil else { return .none }
-            return key == .preview ? .previewPage(article.id) : .summarizePage(article.id)
+            guard key == .preview else { return .summarizePage(article.id) }
+            return article.isSavedLink ? .reloadPage(article.id) : .previewPage(article.id)
         case (.open, _), (.openOther, _):
             guard let article = entry.article(at: cursor) else { return .none }
             let inWindow = (key == .open) == opensInWindow

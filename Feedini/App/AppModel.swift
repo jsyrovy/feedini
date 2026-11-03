@@ -329,6 +329,18 @@ final class AppModel: LibraryHost {
         return outcome
     }
 
+    /// Links dropped on the window: saves every web address among them; returns whether any was saved.
+    @discardableResult
+    func saveLinks(_ urls: [URL]) -> Bool {
+        var saved = false
+        for url in urls where ["http", "https"].contains(url.scheme?.lowercased()) {
+            if (try? saveLink(url.absoluteString)) != nil {
+                saved = true
+            }
+        }
+        return saved
+    }
+
     // MARK: Source pages
 
     /// P: loads the text of the article's source page unless it is stored.

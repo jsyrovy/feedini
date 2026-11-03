@@ -52,7 +52,8 @@ Feedini/
               Preferences (UserDefaults), LoginItem (SMAppService), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
-              folders), Saved (SavedItem, Library's saving, names of removed feeds), AIUsage (AI calls per day),
+              folders), Saved (SavedItem, Library's saving, names of removed feeds), SavedLink (pages saved by
+              their address: comparing addresses, Library.saveLink), AIUsage (AI calls per day),
               StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts), ReadRules (pure:
               what visiting a row and M do; ListRow), UndoHistory (pure: ReadingState, the steps of ⌘Z / ⇧⌘Z)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving, page texts as files of their own),
@@ -61,7 +62,8 @@ Feedini/
               0.9x / 1.0 / 2.0, Atom), HTMLText (HTML → plain text, excerpts), FeedLanguage (<language> or
               NLLanguageRecognizer), OPML (import / export), FeedSubscriber (checks an address or OPML entries before
               adding: HTTPS only, a real feed, not subscribed yet), PageExtractor (a source page's text in a hidden
-              WKWebView: PageScript, PageText, PageExtracting)
+              WKWebView: PageScript, PageText, PageExtracting), PageMetadata (+ PageContent: what a page says about
+              itself)
   Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
@@ -88,17 +90,18 @@ Feedini/
               kept entries, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
               Undo / Redo), KeyboardNavigation (pure: what a key does), ShortcutHelp (pure: the shortcuts by group)
               + ShortcutsView (the ? sheet), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings +
-              AISettings + BackupSettings, RestoreSheet, BackupCommands (File menu), MenuBarContent (+ MenuBarLabel)
+              AISettings + BackupSettings, RestoreSheet, BackupCommands (File menu), SaveLinkSheet (+
+              SaveLinkButton), MenuBarContent (+ MenuBarLabel)
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML
               file, article pages with made-up text for the extraction (`page-*.html`: a cookie consent overlay, an
-              article in divs, `main` with a menu and navigation, JSON-LD only, no article)
+              article in divs, `main` with a menu and navigation, JSON-LD only, no article, meta tags)
   Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), FakeCommandRunner
-              (canned CLI replies, recorded calls), FakePageExtractor (canned page texts, recorded requests),
-              TestLibraryHost + `ClaudeLocator.stub` + `AppModel.test()` (fake claude and pages), model stubs
-              (`referenceDate`, `Article.stub`, …)
+              (canned CLI replies, recorded calls), FakePageExtractor (canned page texts and metadata, recorded
+              requests), TestLibraryHost + `ClaudeLocator.stub` + `AppModel.test()` (fake claude and pages), model
+              stubs (`referenceDate`, `Article.stub`, …)
 ```
 
 ## Conventions
@@ -112,7 +115,8 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
 - Logic lives in pure types with ~100 % meaningful test coverage; `App/` and `UI/` are wiring and layout, checked by
   running the app (see "Testing").
 - Data comes from the feeds. A web page is loaded only on the user's explicit request, never automatically: the
-  source page opened with V, its text for P (preview) and T (summary). Only T sends a page's text to the AI.
+  source page opened with V, its text for P (preview) and T (summary), a page saved with Save Link…. Only T (and
+  Shift+S / Save Link… with AI, which prepare it) sends a page's text to the AI.
 - Privacy: the page loads with the user's cookies and logins (the default website data store), so its text may
   include what the site shows about the user ("Logged in as …"). Choosing the article container (`article`, `main`)
   leaves most of that out, but not reliably.
@@ -173,12 +177,22 @@ list (newest first), detail.
   the AI puts a saved loose article into a story). An item removed from Saved stays in its place until the selection
   changes or a refresh; Shift+A does nothing there. Saved items are never forgotten, a saved story keeps its summary
   up to date even when read, and removing a feed keeps its saved articles.
+- Save Link… (the + next to Refresh in the toolbar, File → Save Link… ⌘L, the menu bar menu, or a link dropped on the
+  list or on Saved) saves a web page by its address, like Pocket: `SaveLinkSheet` offers an `http(s)://` address from
+  the clipboard, closes at once, and says so when the page is in Saved already (it doesn't move the cursor there:
+  that would read it). The page is loaded in the background like Shift+S: its text, and with AI a TL;DR. A saved
+  link is an article of no feed (`SavedLink`), only in Saved – not in All, the unread counts or the AI's stories –,
+  unread until moved onto. Its row has a link icon and the site's name, its detail "Saved link, added …", a
+  "Reload Page" button and the page's text instead of the feed text (P loads the page again; V doesn't forget the
+  text). The address of an article that is there already (from a feed, `SavedLink.key`) saves that article instead.
+  S removes it from Saved, and it goes at the next refresh (⌘Z brings it back until then). Adding isn't a ⌘Z step.
 - The detail shows the text from the feed. V / Enter opens the source page the default way, Shift+V / Shift+Enter
   the other way (Settings → General: "Feedini window" (default) or "Default browser"). On a collapsed story with
   several articles V / Enter expands it (there is no single source page) and Shift+V / Shift+Enter does nothing.
 - In the window the page replaces the feed text in the detail; V / Enter again or Esc returns to the feed text.
 - P (preview) shows the text of the source page instead of the feed text (loaded the first time, then stored); P
-  again returns to the feed text. A text cut at `PageText.maxLength` ends with a pointer to V. Works without AI.
+  again returns to the feed text. A text cut at `PageText.maxLength` ends with a pointer to V. Works without AI. On a
+  saved link (no feed text) P loads the page again instead, also from the source page in the window.
 - T (TL;DR) summarizes the source page with AI: a box above the text with the TL;DR and, for longer texts, details
   as bullet points. It replaces the AI gist of the feed text of a one-article story (it is more complete). T on a
   current summary does nothing; after a change of the summary language it writes a new one from the stored text.
@@ -211,7 +225,7 @@ list (newest first), detail.
 | H / ← / Esc | collapse the story (from an article: jump to its story) |
 | V / Enter | open the source page the default way |
 | Shift+V / Shift+Enter | open the source page the other way |
-| P | the text of the source page instead of the feed text, again: back |
+| P | the text of the source page instead of the feed text, again: back (a saved link: load it again) |
 | T | TL;DR of the source page (AI) |
 | Shift+S | save for later and prepare the TL;DR of the source page |
 | M | toggle read / unread |
@@ -324,6 +338,11 @@ Implementation:
 - `PageText.clean` (pure) collapses whitespace, drops empty lines and cuts at `maxLength` (100 000 characters, a
   safeguard against a failed extraction, not a model limit; the longest article in the lab had 37 000); less than
   `minLength` (100) is `PageError.noText`.
+- `PageScript.metadata` reads what the page says about itself (`PageMetadata`): the title (`og:title`,
+  `twitter:title`, JSON-LD `headline`, else `<title>` without the site's name at its end), the site (`og:site_name`,
+  JSON-LD `publisher`), the author (`<meta name=author>`, JSON-LD; not a profile link) and the published date
+  (`article:published_time`, JSON-LD `datePublished`, else the first `<time datetime>`; ISO 8601). Only saved links
+  use it; their address stays as given (a page may redirect to its consent page).
 - Measured on nine Czech and English feeds: 1.8–2.5 s per page; menus that the container's `innerText` kept are
   gone. A site that redirects to its consent page on the server (iDNES) gives the consent text until the user
   accepts it in the window (V); the AI then answers `not_article`.
@@ -335,7 +354,7 @@ Implementation:
   regular app (Dock icon, menus); when it closes it switches to `.accessory` and only the menu bar item stays
   (`AppDelegate.mainWindowIsOpen`, called from `MainWindow` appearing and disappearing).
 - Menu bar item (`MenuBarExtra`, menu style): the hat with the number of unread stories (optional), and a menu with
-  the count, "Open Feedini" (⌘O), "Refresh Now" (⌘R), the time of the last refresh, the AI status (always shown:
+  the count, "Open Feedini" (⌘O), "Save Link…" (⌘L, opens the window with the sheet), "Refresh Now" (⌘R), the time of the last refresh, the AI status (always shown:
   "AI: ready", "AI: off", or what it is doing / why it can't run), a backup problem if there is one, Settings and
   Quit.
 - After the Mac wakes from sleep (`NSWorkspace.didWakeNotification`) the feeds are refreshed right away.
@@ -503,6 +522,10 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   button) says whether T does anything; `pageOpened` (V in the window) forgets the stored text. AI off: T says so at
   once (`AIStatus.State.problem`: "AI is off (Settings → AI).") and P still works. `prepare` (Shift+S) is T that
   loads the page even with AI off and then fails with that message.
+- A saved link's page text is all it has: `prepare` without AI only loads it (no "AI is off" on every link), loading
+  fills in its title, site, author and date (`Library.applyPageMetadata`), `pageOpened` and a `not_article` answer
+  keep the text (the message points to P), and `reload` (P) loads the page again – the stored text and summary stay
+  until the new text is stored, then a new summary is written when AI is on. The row shows ✨ / ⚠︎ for loading it too.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
   errors, the pages being loaded or summarized (`PageWork`: phase, whether T asked for a summary) and their errors,
   for the status line ("Organizing 12 articles…", "Summarizing 5 stories…", "Summarizing page…", "AI
@@ -570,7 +593,7 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   migration in decoding `LibraryStore.File` (shared by loading and restoring a backup; only work on files, like
   moving the old page texts out, stays in `LibraryStore.load()`). Fields added later are optional when decoding (`usage`, `folders` and
   `removedFeeds` via `decodeIfPresent`; `Feed.folderID`, `Story.summary`, `Story.savedAt`, `Topic.language`,
-  `Article.pageSummary`, `Article.savedAt` as optionals), so older files load without a bump. The version is read
+  `Article.pageSummary`, `Article.savedAt`, `Article.site` as optionals), so older files load without a bump. The version is read
   before the library, so a file from a newer Feedini isn't decoded for nothing.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
@@ -603,6 +626,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   feed's name in `Library.removedFeeds` for their source labels (`sourceTitle(of:)`, also in the AI payloads).
   Articles of removed feeds that nothing saved keeps go at the next prune, without a tombstone, and so do the names
   of removed feeds no article comes from.
+- Saved links (`SavedLink.feedID`, a feed ID no feed has; `key` is the compared address, `site` the site's name) are
+  articles of no feed, so the same rule keeps them only while they are saved. No schema bump was needed.
 
 ## Testing
 

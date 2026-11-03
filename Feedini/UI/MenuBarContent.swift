@@ -20,6 +20,7 @@ struct MenuBarLabel: View {
 /// The menu of the menu bar item.
 struct MenuBarContent: View {
     @Environment(AppModel.self) private var model
+    @Environment(Reader.self) private var reader
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -29,6 +30,7 @@ struct MenuBarContent: View {
             openWindow(id: FeediniApp.mainWindowID)
         }
         .keyboardShortcut("o")
+        SaveLinkButton(reader: reader)
         Divider()
         Button("Refresh Now") { model.refreshNow() }
             .keyboardShortcut("r")
