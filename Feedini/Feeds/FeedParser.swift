@@ -68,11 +68,24 @@ enum FeedParser {
         let succeeded = parser.parse()
         let invalid = FeedParserError.invalid(parser.parserError?.localizedDescription ?? "Unknown XML error")
         guard delegate.kind != nil else {
-            return (.failure(delegate.sawRoot || succeeded ? .notAFeed : invalid), succeeded)
+            let isPage = delegate.sawRoot || succeeded || startsLikeHTML(data)
+            return (.failure(isPage ? .notAFeed : invalid), succeeded)
         }
         // A feed broken in the middle still gives the articles read up to there.
         guard succeeded || !delegate.items.isEmpty else { return (.failure(invalid), false) }
         return (.success(delegate.feed), succeeded)
+    }
+
+    /// Whether the document starts like a web page (`<!doctype html`, `<html`) after whitespace and comments. An
+    /// HTML page often isn't XML (a lowercase `<!doctype html>`), so the parser fails before its root element.
+    private static func startsLikeHTML(_ data: Data) -> Bool {
+        let isBlank = { (character: Character) in character.isWhitespace || character == "\u{FEFF}" }
+        var text = Substring(String(decoding: data.prefix(4096), as: UTF8.self)).drop(while: isBlank)
+        while text.hasPrefix("<!--"), let end = text.range(of: "-->") {
+            text = text[end.upperBound...].drop(while: isBlank)
+        }
+        let start = text.prefix(20).lowercased()
+        return start.hasPrefix("<!doctype html") || start.hasPrefix("<html")
     }
 
     /// Makes common breakage well-formed: whitespace before the XML declaration, HTML named entities (replaced by

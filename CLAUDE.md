@@ -280,8 +280,9 @@ Implementation:
   `FetchError`s with a message for the user – an ATS block (a redirect from HTTPS to HTTP) says so instead of a
   generic network error.
 - `FeedParser` reads RSS 0.9x / 2.0 (no namespace), RSS 1.0 (RDF) and Atom with `XMLParser` and namespace
-  processing; the root element decides the format, anything else (a web page) is `FeedParserError.notAFeed`. The
-  encoding comes from the XML declaration (libxml2), never from the HTTP header.
+  processing; the root element decides the format, anything else (a web page) is `FeedParserError.notAFeed`, also
+  an HTML page that breaks the parser before its root element (a lowercase `<!doctype html>`). The encoding comes
+  from the XML declaration (libxml2), never from the HTTP header.
 - A feed that doesn't parse completely is repaired on the byte level and parsed again (`FeedParser.repairXML`):
   whitespace before the declaration, HTML named entities (`&nbsp;` → `&#160;`) and bare `&`. The repaired parse
   wins unless it gives fewer items; a feed that stays broken in the middle keeps the items read up to there.

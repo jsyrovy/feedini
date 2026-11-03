@@ -140,6 +140,14 @@ struct FeedParserTests {
         #expect(throws: FeedParserError.notAFeed) { try parse("not-a-feed.html") }
     }
 
+    @Test(arguments: [
+        "\n\n<!doctype html>\n<html lang=\"en\"><head><title>Home</title></head><body><p>A page</p></body></html>",
+        "\u{FEFF}<!-- a comment -->\n<!doctype html><html><body><br></body></html>",
+    ])
+    func rejectsAWebPageThatIsNotXML(html: String) {
+        #expect(throws: FeedParserError.notAFeed) { try FeedParser.parse(Data(html.utf8)) }
+    }
+
     @Test func rejectsOtherXML() {
         #expect(throws: FeedParserError.notAFeed) {
             try FeedParser.parse(Data("<?xml version=\"1.0\"?><svg><g/></svg>".utf8))
