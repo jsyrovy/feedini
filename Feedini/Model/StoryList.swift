@@ -56,6 +56,8 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
     var unreadCount: Int { articles.count { !$0.isRead } }
     /// A story with several articles; it can be expanded and has no single source page.
     var isMultiArticle: Bool { articles.count > 1 }
+    /// A saved link (`SavedLink`): shown in Saved only.
+    var isSavedLink: Bool { articles.contains(where: \.isSavedLink) }
 
     /// The feeds of the articles, in the order of the articles, each once.
     var feedIDs: [Feed.ID] {
@@ -255,7 +257,8 @@ enum StoryList {
         _ entry: StoryEntry, _ selection: SidebarSelection, folders: [Feed.ID: Folder.ID]
     ) -> Bool {
         switch selection {
-        case .all: true
+        // Saved links are in Saved only.
+        case .all: !entry.isSavedLink
         // Saved has its own entries (`savedEntries`).
         case .saved: false
         case .topic(let id): entry.topicID == id
@@ -284,10 +287,11 @@ enum StoryList {
     }
 
     /// Unread entries per sidebar item, matching what `entries` shows: a story counts once in every feed it has an
-    /// article of, and once in every folder of those feeds (not once per feed). Saved is left to the caller.
+    /// article of, and once in every folder of those feeds (not once per feed). Saved is left to the caller; saved
+    /// links count nowhere else.
     static func unreadCounts(_ all: [StoryEntry], folders: [Feed.ID: Folder.ID]) -> Counts {
         var counts = Counts()
-        for entry in all where !entry.isRead {
+        for entry in all where !entry.isRead && !entry.isSavedLink {
             counts.all += 1
             if let topic = entry.topicID {
                 counts.topics[topic, default: 0] += 1

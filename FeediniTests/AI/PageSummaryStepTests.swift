@@ -45,6 +45,15 @@ struct PageSummaryStepTests {
         #expect(payload["page_text"] as? String == "Short page text.")
     }
 
+    @Test func aSavedLinkSendsItsSiteAsTheSource() throws {
+        let link = Article(
+            feedID: SavedLink.feedID, key: "example.com/a", title: "Essay", firstSeen: referenceDate,
+            site: "Example Magazine")
+        let request = PageSummaryStep.request(
+            for: link, pageText: "Text.", in: Library(feeds: [feed], articles: [link]), configuration: configuration)
+        #expect(try payload(request)["source"] as? String == "Example Magazine")
+    }
+
     @Test func longTextsGetTheSchemaWithDetails() throws {
         let library = Library(feeds: [feed], articles: [article])
         let request = PageSummaryStep.request(

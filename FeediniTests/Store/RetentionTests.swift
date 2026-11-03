@@ -143,4 +143,21 @@ struct RetentionTests {
         #expect(library.tombstones.isEmpty)
         #expect(library.removedFeeds == [removed.id: "Removed"])
     }
+
+    @Test func keepsSavedLinksOnlyWhileTheyAreSaved() {
+        let saved = Article(
+            feedID: SavedLink.feedID, key: "example.com/a", title: "A", firstSeen: .hours(old), readAt: .hours(old),
+            savedAt: .hours(old))
+        let unsaved = Article(
+            feedID: SavedLink.feedID, key: "example.com/b", title: "B", firstSeen: .hours(-1), savedAt: nil)
+        var library = Library(feeds: [feed], articles: [saved, unsaved])
+        library.pageTextIDs = [saved.id, unsaved.id]
+
+        library = pruned(library)
+
+        #expect(Set(library.articles.keys) == [saved.id])
+        #expect(library.pageTextIDs == [saved.id])
+        #expect(library.tombstones.isEmpty)
+        #expect(library.removedFeeds.isEmpty)
+    }
 }

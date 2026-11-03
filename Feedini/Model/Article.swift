@@ -23,11 +23,13 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
     var pageSummary: PageSummary?
     /// When the article was saved for later (S); `nil` while it isn't saved.
     var savedAt: Date?
+    /// The name of the web site of a saved link (`SavedLink`); articles of feeds show the feed's name.
+    var site: String?
 
     init(
         id: UUID = UUID(), feedID: Feed.ID, key: String, title: String, link: URL? = nil, published: Date? = nil,
         author: String? = nil, text: String = "", language: String? = nil, firstSeen: Date, readAt: Date? = nil,
-        pageSummary: PageSummary? = nil, savedAt: Date? = nil
+        pageSummary: PageSummary? = nil, savedAt: Date? = nil, site: String? = nil
     ) {
         self.id = id
         self.feedID = feedID
@@ -42,6 +44,7 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
         self.readAt = readAt
         self.pageSummary = pageSummary
         self.savedAt = savedAt
+        self.site = site
     }
 
     var isRead: Bool { readAt != nil }

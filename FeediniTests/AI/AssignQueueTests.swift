@@ -65,14 +65,15 @@ struct AssignQueueTests {
         #expect(!queue.isRunning)
     }
 
-    @Test func pendingArticlesAreUnreadOnesAndRecentReadOnesWithoutAStory() {
+    @Test func pendingArticlesAreUnreadOnesAndRecentReadOnesWithoutAStoryButNoSavedLinks() {
         let unreadOld = Article.stub("Unread old", feed: feed.id, hours: -500)
         let readRecent = Article.stub("Read recent", feed: feed.id, hours: -5, read: true)
         let readOld = Article.stub("Read old", feed: feed.id, hours: -100, read: true)
         let assigned = Article.stub("Assigned", feed: feed.id, hours: -1)
         let deferred = Article.stub("Deferred", feed: feed.id, hours: -2)
+        let link = Article(feedID: SavedLink.feedID, key: "example.com/a", title: "Link", firstSeen: .hours(-1))
         let library = Library(
-            feeds: [feed], articles: [unreadOld, readRecent, readOld, assigned, deferred],
+            feeds: [feed], articles: [unreadOld, readRecent, readOld, assigned, deferred, link],
             stories: [Story(title: "S", articleIDs: [assigned.id])])
 
         #expect(

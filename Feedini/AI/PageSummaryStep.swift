@@ -16,7 +16,7 @@ enum PageSummaryStep {
 
     struct Input: Encodable, Equatable {
         var outputLanguage: String
-        /// The feed's title.
+        /// The feed's title, or a saved link's site.
         var source: String
         /// The title from the feed, so the AI can tell whether the page shows the article.
         var title: String
@@ -46,7 +46,7 @@ enum PageSummaryStep {
         for article: Article, pageText: String, in library: Library, configuration: AIConfiguration
     ) -> ClaudeRequest {
         let input = Input(
-            outputLanguage: configuration.language, source: library.sourceTitle(of: article.feedID) ?? "",
+            outputLanguage: configuration.language, source: library.sourceTitle(of: article) ?? "",
             title: article.title, pageText: pageText)
         return ClaudeRequest(
             model: configuration.summaryModel, effort: configuration.effort, systemPrompt: Prompts.pageSummary,

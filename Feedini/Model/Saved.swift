@@ -44,6 +44,11 @@ extension Library {
         feed(feedID)?.title ?? removedFeeds[feedID]
     }
 
+    /// The name of the article's source: its feed's (`sourceTitle(of:)` of its feed ID), or a saved link's site.
+    func sourceTitle(of article: Article) -> String? {
+        article.isSavedLink ? article.site : sourceTitle(of: article.feedID)
+    }
+
     /// The name of every feed articles can come from (`sourceTitle(of:)`).
     func sourceTitles() -> [Feed.ID: String] {
         removedFeeds.merging(feeds.map { ($0.id, $0.title) }) { _, current in current }

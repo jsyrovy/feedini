@@ -119,7 +119,10 @@ final class AssignQueue {
         let assigned = library.storyIDsByArticle()
         let cutoff = now.addingTimeInterval(-Retention.attachWindow)
         return library.articles.values
-            .filter { assigned[$0.id] == nil && !deferred.contains($0.id) && (!$0.isRead || $0.date >= cutoff) }
+            .filter { article in
+                assigned[article.id] == nil && !article.isSavedLink && !deferred.contains(article.id)
+                    && (!article.isRead || article.date >= cutoff)
+            }
             .sorted { $0.date != $1.date ? $0.date > $1.date : $0.id.uuidString < $1.id.uuidString }
             .map(\.id)
     }
