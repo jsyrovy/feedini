@@ -1,11 +1,13 @@
 import SwiftUI
 
 /// All, Saved, the topics (most unread first), the folders (in their order) with their feeds, and the feeds in no folder,
-/// with unread counts. Feeds and folders are moved by dragging (`SidebarDrag`) or from the context menu.
+/// with unread counts. Feeds and folders are moved by dragging (`SidebarDrag`) or from the context menu, and removed
+/// from it or with Delete (confirmed first).
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
     @Environment(Reader.self) private var reader
     @State private var naming: FolderNaming?
+    @State private var removal: Removal?
 
     var body: some View {
         let counts = model.unreadCounts
@@ -51,9 +53,17 @@ struct Sidebar: View {
         .contextMenu(forSelectionType: SidebarSelection.self) { items in
             menu(for: items)
         }
+        .onDeleteCommand {
+            switch reader.selection {
+            case .feed(let id): removal = .feeds([id])
+            case .folder(let id): removal = .folder(id)
+            default: break
+            }
+        }
         .sheet(item: $naming) { naming in
             FolderNameSheet(naming: naming)
         }
+        .removalConfirmation($removal, model: model)
         .overlay {
             if model.isLoaded && library.feeds.isEmpty && library.folders.isEmpty {
                 ContentUnavailableView {
@@ -94,11 +104,13 @@ struct Sidebar: View {
             Button("Move Down") { model.moveFolder(id, by: 1) }
                 .disabled(folders.last?.id == id)
             Divider()
-            Button("Delete Folder") { model.removeFolder(id) }
+            Button("Delete Folder…") { removal = .folder(id) }
             Divider()
             Button("New Folder…") { naming = FolderNaming() }
         case .feed(let id):
             MoveToFolderMenu(model: model, feeds: [id]) { naming = $0 }
+            Divider()
+            Button("Remove Feed…") { removal = .feeds([id]) }
         default:
             Button("New Folder…") { naming = FolderNaming() }
         }

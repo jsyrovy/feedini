@@ -77,7 +77,8 @@ Feedini/
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
   UI/         MainWindow (NavigationSplitView), Sidebar (+ folders, dragging), FolderViews (FolderNameSheet,
-              MoveToFolderMenu), StoryListView (keys, status bar), StoryRow / ArticleRow,
+              MoveToFolderMenu), Removal (confirming the removal of feeds or a folder), StoryListView (keys, status
+              bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
               PageSummaryView), WebPageView (WKWebView), Reader (window state: selection, cursor, expanded stories,
               kept entries, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
@@ -341,7 +342,7 @@ Implementation:
 
 - `Library.folders` (in the sidebar's order) and `Feed.folderID`, which is `nil` or an existing folder: removing a
   folder clears it, `moveFeeds` ignores unknown folders and loading drops them (`repairFolders`). Removing a folder
-  keeps its feeds, in no folder (no confirmation).
+  keeps its feeds, in no folder (after a confirmation that says how many).
 - Names are one line (runs of whitespace and line breaks become one space, trimmed), not empty, at most
   `Folder.maxNameLength` (40) characters – the sidebar shows about 30, and menus and pickers grow with the longest
   name – and unique ignoring case (`FolderNameError`). A name typed by the user that breaks a rule is refused, never
@@ -353,7 +354,9 @@ Implementation:
 - Moving: dragging (`SidebarDrag`, carried as text `feedini-feed:<id>` / `feedini-folder:<id>`) puts the dragged
   item where the target is – a feed into the target folder, the target feed's folder or no folder; a folder to the
   target folder's place (after it when moving down), or to the end onto a feed in no folder. The context menu has
-  New Folder…, Rename…, Move Up / Down, Delete Folder (folders) and Move to Folder ▸ (feeds). There are no keys.
+  New Folder…, Rename…, Move Up / Down, Delete Folder… (folders), Move to Folder ▸ and Remove Feed… (feeds); Delete
+  removes the selected feed or folder. Both ask first (`Removal`, the same dialog as Settings → Feeds). There are no
+  other keys.
 - Settings → Feeds: the folder for a new feed next to the address, a Folder column, Move to Folder ▸ for the
   selected feeds, New Folder….
 - `AppModel` caches the folder of every feed with the entries; moving feeds only recounts (`EntriesCache.setFolders`).
