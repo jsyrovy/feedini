@@ -68,7 +68,7 @@ extension View {
 
 extension Binding {
     /// Whether an optional value is set; setting `false` clears it.
-    func isPresent<Wrapped>() -> Binding<Bool> where Value == Wrapped? {
+    func isPresent<Wrapped: Sendable>() -> Binding<Bool> where Value == Wrapped? {
         Binding<Bool>(get: { wrappedValue != nil }, set: { if !$0 { wrappedValue = nil } })
     }
 }
