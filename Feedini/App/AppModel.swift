@@ -33,6 +33,7 @@ final class AppModel: LibraryHost {
     @ObservationIgnored var onRestore: (@MainActor () -> Void)?
 
     @ObservationIgnored private let store: LibraryStore
+    @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private let coordinator: RefreshCoordinator
     @ObservationIgnored private let subscriber: FeedSubscriber
     @ObservationIgnored private(set) var assignQueue: AssignQueue?
@@ -47,10 +48,12 @@ final class AppModel: LibraryHost {
         preferences: Preferences = Preferences(), store: LibraryStore = LibraryStore(),
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
         claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator(),
-        pageExtractor: (any PageExtracting)? = nil, backupStore: BackupStore = BackupStore()
+        pageExtractor: (any PageExtracting)? = nil, backupStore: BackupStore = BackupStore(),
+        now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.preferences = preferences
-        backups = Backups(store: backupStore, preferences: preferences)
+        self.now = now
+        backups = Backups(store: backupStore, preferences: preferences, now: now)
         self.store = store
         self.coordinator = coordinator
         self.subscriber = subscriber
@@ -163,7 +166,7 @@ final class AppModel: LibraryHost {
         isRefreshing = true
         await refresh(library.feeds)
         isRefreshing = false
-        lastRefresh = .now
+        lastRefresh = now()
         onRefresh?()
         organize(retryingFailed: true)
         backUpIfDue()
@@ -173,8 +176,8 @@ final class AppModel: LibraryHost {
     func refresh(_ feeds: [Feed]) async {
         let refreshes = await coordinator.refresh(feeds)
         update { library in
-            let added = FeedMerge.merge(refreshes, into: &library, now: .now)
-            Retention.prune(&library, now: .now)
+            let added = FeedMerge.merge(refreshes, into: &library, now: now())
+            Retention.prune(&library, now: now())
             Log.refresh.info("\(added.count) new articles")
         }
     }
@@ -272,7 +275,7 @@ final class AppModel: LibraryHost {
                     [
                         feed.id: .updated(
                             subscription.parsed, etag: subscription.etag, lastModified: subscription.lastModified)
-                    ], into: &library, now: .now)
+                    ], into: &library, now: now())
             }
         }
     }
@@ -321,7 +324,7 @@ final class AppModel: LibraryHost {
     @discardableResult
     func saveLink(_ address: String) throws(SavedLink.Failure) -> SavedLink.Outcome {
         let url = try SavedLink.url(from: address)
-        let outcome = change { $0.saveLink(url, at: .now) }
+        let outcome = change { $0.saveLink(url, at: now()) }
         if case .saved(let id) = outcome {
             // Without AI only the text: every saved link would say that AI is off.
             if preferences.aiEnabled {
@@ -415,7 +418,7 @@ final class AppModel: LibraryHost {
     }
 
     func markRead(_ ids: [Article.ID]) {
-        changeReadingState(of: ids) { $0.markRead(ids, at: .now) }
+        changeReadingState(of: ids) { $0.markRead(ids, at: now()) }
     }
 
     func markUnread(_ ids: [Article.ID]) {

@@ -14,16 +14,15 @@ struct AppModelTests {
             preferences: Preferences.test(),
             store: LibraryStore(fileURL: directory.appending(path: "library.json")),
             coordinator: RefreshCoordinator(fetcher: FeedFetcher(session: session)),
-            subscriber: FeedSubscriber(fetcher: FeedFetcher(session: session)), backupStore: .temporary())
+            subscriber: FeedSubscriber(fetcher: FeedFetcher(session: session)), backupStore: .temporary(),
+            // The day of the fixtures: the first download keeps only items younger than `firstDownloadMaxAge`.
+            now: { referenceDate })
     }
 
     @Test func subscribingAddsTheFeedWithItsArticles() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = StubURLProtocol.uniqueURL()
-        // Without their dates, so the first download keeps the items whatever the day (`firstDownloadMaxAge`).
-        let undated = String(decoding: try Fixture.data("rss2.xml"), as: UTF8.self).replacing(
-            #/<(pubDate|dc:date)>[^<]*</(pubDate|dc:date)>/#, with: "")
-        StubURLProtocol.stub(url, .response(status: 200, body: Data(undated.utf8)))
+        StubURLProtocol.stub(url, try .feed("rss2.xml"))
 
         #expect(await model.subscribe(to: url.absoluteString) == nil)
 
@@ -49,6 +48,7 @@ struct AppModelTests {
         StubURLProtocol.stub(url, try .feed("atom.xml"))
         _ = await model.subscribe(to: url.absoluteString)
         let known = model.library.articles.count
+        #expect(known > 0)
         StubURLProtocol.stub(url, try .feed("rss2.xml"))
 
         await model.refresh(model.library.feeds)
@@ -69,6 +69,7 @@ struct AppModelTests {
         #expect(try OPML.parse(model.exportOPML()).map(\.feedURL) == [url.absoluteString])
         await #expect(throws: OPML.ParseError.notOPML) { try await model.importOPML(Fixture.data("rss2.xml")) }
 
+        #expect(!model.library.articles.isEmpty)
         model.removeFeeds([model.library.feeds[0].id])
         #expect(model.library.feeds.isEmpty)
         #expect(model.library.articles.isEmpty)
