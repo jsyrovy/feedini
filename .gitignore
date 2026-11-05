@@ -28,5 +28,10 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+# Signing keys (they live in the keychain, never in the repo)
+*.p8
+*.p12
+AuthKey_*
+
 # Swift Package Manager
 .swiftpm/

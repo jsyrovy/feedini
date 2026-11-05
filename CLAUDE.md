@@ -11,6 +11,8 @@ make test     # Swift Testing unit tests (hosted by the app)
 make coverage # tests + line coverage report of the app target (result bundle build/Test.xcresult)
 make run      # build, kill a running instance, open the app
 make install  # Release build into ~/Applications (INSTALL_DIR=…), restart it; make uninstall removes it
+make release  # signed, notarized zip in build/release from a commit tagged v<version> (see "Releasing")
+make publish  # that zip as a draft GitHub release of the pushed tag
 make format   # xcrun swift-format, in place
 make lint     # xcrun swift-format lint --strict
 make clean    # rm -rf build
@@ -32,8 +34,11 @@ Xcode 26).
 - Shared scheme `Feedini` (`xcshareddata/xcschemes/Feedini.xcscheme`) so `xcodebuild -scheme Feedini` works; it
   collects coverage for the app target only.
 - Bundle ID `cz.jsyrovy.feedini`, a regular app (`LSUIElement = NO`), generated Info.plist, App Sandbox off (the app
-  runs the `claude` CLI, which a sandboxed app can't), no hardened runtime yet, ad-hoc signing ("Sign to Run Locally",
-  no team). App Transport Security keeps its defaults (no exceptions): only HTTPS feeds work.
+  runs the `claude` CLI, which a sandboxed app can't), ad-hoc signing ("Sign to Run Locally", no team) for everything
+  but `make release`, which signs with Developer ID. Hardened runtime is on in Release only (see "Releasing"). App
+  Transport Security keeps its defaults (no exceptions): only HTTPS feeds work.
+- Version: `MARKETING_VERSION` (`major.minor`) of the app target, the same in Debug and Release; the test target has
+  none. `CURRENT_PROJECT_VERSION` stays 1; a release sets the build number.
 - The app icon (`Feedini/AppIcon.icon`, Icon Composer format) is a pixel-art top hat (32 × 32 grid) with the RSS
   symbol cut out of its crown: a black hat on cream in the light appearance, a cream hat on charcoal in the dark one
   (`fill-specializations`, `image-name-specializations`). Layers: outline, brim, band, crown, without glass (it
@@ -102,6 +107,8 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
               (canned CLI replies, recorded calls), FakePageExtractor (canned page texts and metadata, recorded
               requests), TestLibraryHost + `ClaudeLocator.stub` + `AppModel.test()` (fake claude and pages), model
               stubs (`referenceDate`, `Article.stub`, …)
+scripts/      release.sh (`make release`) and publish.sh (`make publish`), see "Releasing"
+CHANGELOG.md  one section per released version
 ```
 
 ## Conventions
@@ -669,6 +676,42 @@ moves into a testable type. Do not add abstractions to production code just to c
 
 Tests that wait for real time are slow and flaky; timer-driven code takes an injected `sleep` instead. The queues
 hold their `LibraryHost` unowned (the app's `AppModel` outlives them) – keep the test host in a local.
+
+## Releasing
+
+Releases are distributed outside the Mac App Store (it only takes sandboxed apps, see README): signed with Developer
+ID, hardened runtime, notarized by Apple and stapled, so Gatekeeper opens a downloaded copy without warnings. The
+format is a zip of `Feedini.app`, published as a GitHub release of the version's tag.
+
+- A release is made only by hand, never by a push. Between releases the version stays the last released one.
+- Steps: set `MARKETING_VERSION` to the new `major.minor` (Xcode: target → General → Version, or both configurations in
+  the pbxproj), add a section `## <version> – <YYYY-MM-DD>` to `CHANGELOG.md` (a few lines for users, drafted from
+  `git log v<previous>..HEAD`), commit ("Release 0.2"), `git tag v0.2`, `make release`, `git push origin main v0.2`,
+  `make publish`, then check the draft on GitHub and publish it. The tag is pushed only after a successful release; if
+  it fails, fix, commit and move the unpushed tag (`git tag -f`).
+- `scripts/release.sh` changes nothing in git. It checks the preconditions first (clean tree, tag, dated changelog
+  section, identity, notary profile), then archives (signed with Developer ID right away, so there is no export step;
+  build number = `git rev-list --count HEAD`), checks the signature, notarizes, staples, zips and checks the zip as a
+  download with `syspolicy_check distribution`. A run takes a few minutes, most of it notarization.
+- Output: `build/release/Feedini-<version>.zip`, its `.sha256`, `Feedini-<version>-dSYMs.zip` (for symbolicating
+  crash reports) and the archive.
+- `scripts/publish.sh` (needs `gh`, logged in) uploads the zip, its checksum and the dSYMs as a *draft* release of the
+  tag, with the tag's `CHANGELOG.md` section as the notes; publishing stays a step on GitHub. It refuses when the zip
+  doesn't match its checksum or wasn't built from the tag (build number), the tag isn't on GitHub as it is locally, or
+  the release exists already.
+- Credentials live in the login keychain only, never in the repo: the identity "Developer ID Application: Jiri Syrovy
+  (DZ7S6R9RRN)" (expires 2027-12-05; renew it before, already shipped versions keep working thanks to the timestamp)
+  and the `notarytool` keychain profile `notary` (an App Store Connect API team key with the Developer role;
+  `NOTARY_PROFILE` overrides the name). Both belong to the team, not to Feedini; the owner keeps backups outside the
+  repo.
+- Hardened runtime: ad-hoc Release builds (`make install`, CI) have it too, so everyday use runs like a release. It
+  stays off in Debug: Xcode leaves it out of the ad-hoc Debug signature, and forced on, library validation rejects
+  the ad-hoc `Feedini.debug.dylib` and test bundle. No entitlements are needed: WebKit runs its content in its own
+  processes, and `claude` is a process of its own with its own signature.
+- A Developer ID build is a different code identity than an ad-hoc one: macOS may ask again for access to iCloud
+  Drive, and a login item registered by another build may need turning off and on.
+- Pitfall: `syspolicy_check notary-submission` includes a Gatekeeper assessment and rejects every app that is not
+  notarized yet, so it can't serve as a check before notarization.
 
 ## Logs
 

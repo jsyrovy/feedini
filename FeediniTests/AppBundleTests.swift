@@ -10,7 +10,7 @@ struct AppBundleTests {
 
     @Test func hostAppHasAVersion() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        #expect(version == "0.1.0")
+        #expect(version?.wholeMatch(of: #/[0-9]+\.[0-9]+/#) != nil)
     }
 
     @Test func hostAppKnowsItIsRunningTests() {

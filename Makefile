@@ -12,7 +12,7 @@ RESULT_BUNDLE := build/Test.xcresult
 XCODEBUILD    := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIG) \
 	-destination 'platform=macOS,arch=$(ARCH)' -derivedDataPath $(DERIVED_DATA) -quiet
 
-.PHONY: build test coverage run install uninstall format lint clean
+.PHONY: build test coverage run install uninstall release publish format lint clean
 
 build:
 	$(XCODEBUILD) build
@@ -44,6 +44,13 @@ uninstall:
 	pkill -x Feedini || true
 	rm -rf "$(INSTALL_DIR)/Feedini.app"
 
+# Signed and notarized zip of a tagged commit in build/release (scripts/release.sh).
+release:
+	scripts/release.sh
+
+# The release in build/release as a draft GitHub release of its pushed tag (scripts/publish.sh).
+publish:
+	scripts/publish.sh
 
 format:
 	xcrun swift-format format --in-place --recursive --parallel $(SOURCES)

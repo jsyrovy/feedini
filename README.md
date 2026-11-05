@@ -47,6 +47,12 @@ New articles show up right away; grouping and summaries arrive in the background
   `/opt/homebrew/bin`, `/usr/local/bin` and your `PATH`; the path can be set in Settings.
 - Feeds must be served over HTTPS.
 
+## Download
+
+Download `Feedini-<version>.zip` from [Releases](https://github.com/jsyrovy/feedini/releases/latest), unpack it and
+move `Feedini.app` to Applications. Releases are signed with Developer ID and notarized by Apple, so macOS opens them
+without warnings. Changes are in [CHANGELOG.md](CHANGELOG.md).
+
 ## Building from source
 
 Xcode 27 is required; there are no other dependencies.
