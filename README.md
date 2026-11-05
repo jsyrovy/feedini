@@ -47,11 +47,30 @@ New articles show up right away; grouping and summaries arrive in the background
   `/opt/homebrew/bin`, `/usr/local/bin` and your `PATH`; the path can be set in Settings.
 - Feeds must be served over HTTPS.
 
-## Download
+## Install
 
-Download `Feedini-<version>.zip` from [Releases](https://github.com/jsyrovy/feedini/releases/latest), unpack it and
-move `Feedini.app` to Applications. Releases are signed with Developer ID and notarized by Apple, so macOS opens them
-without warnings. Changes are in [CHANGELOG.md](CHANGELOG.md).
+Feedini runs on Apple Silicon and Intel Macs. Releases are signed with Developer ID and notarized by Apple, so macOS
+opens them without warnings.
+
+With [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask jsyrovy/tap/feedini
+open -a Feedini
+```
+
+The full name trusts only this cask of the [tap](https://github.com/jsyrovy/homebrew-tap). To use the short name
+(`brew upgrade --cask feedini`), trust it first: `brew trust --cask jsyrovy/tap/feedini`.
+
+Or by hand: download `Feedini-<version>.zip` from [Releases](https://github.com/jsyrovy/feedini/releases/latest),
+unpack it and move `Feedini.app` to Applications.
+
+To uninstall, quit Feedini (in the menu bar menu) and delete the app. Your feeds and articles stay in
+`~/Library/Application Support/Feedini`; delete that folder to remove them too. With Homebrew,
+`brew uninstall --cask jsyrovy/tap/feedini` quits and removes the app (`--zap` removes the data and settings as well;
+backups in iCloud Drive stay).
+
+Changes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Building from source
 

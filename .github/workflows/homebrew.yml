@@ -1,0 +1,72 @@
+name: Homebrew
+
+# Points the Feedini cask in jsyrovy/homebrew-tap at a release once it is published on GitHub (make publish leaves a
+# draft, so the cask never points at an unchecked one): its version and the checksum of its zip. It pushes with a
+# deploy key of the tap (secret HOMEBREW_TAP_DEPLOY_KEY). Run it by hand to retry a release.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of a published release (v<version>)
+        required: true
+
+concurrency: homebrew
+
+permissions:
+  contents: read
+
+jobs:
+  cask:
+    # A published prerelease skips the run; the first step refuses one given by hand.
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Read the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+$ ]] || { echo "::error::$TAG is not a version tag (v<major.minor>)"; exit 1; }
+          version=${TAG#v}
+          state=$(gh release view "$TAG" --json isDraft,isPrerelease \
+              --jq 'if .isDraft then "draft" elif .isPrerelease then "prerelease" else "published" end')
+          [[ $state == published ]] || { echo "::error::$TAG is a $state"; exit 1; }
+          mkdir release
+          gh release download "$TAG" --dir release \
+              --pattern "Feedini-$version.zip" --pattern "Feedini-$version.zip.sha256"
+          (cd release && sha256sum --check --strict "Feedini-$version.zip.sha256")
+          sha256=$(cut -d ' ' -f 1 "release/Feedini-$version.zip.sha256")
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "SHA256=$sha256" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: jsyrovy/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+
+      - name: Update the cask
+        working-directory: tap
+        run: |
+          cask=Casks/feedini.rb
+          current=$(sed -n -E 's/^  version "(.*)"$/\1/p' "$cask")
+          printf '%s\n' "$current" "$VERSION" | sort -C -V \
+              || { echo "::error::The cask has $current, newer than $VERSION"; exit 1; }
+          sed -i -E -e "s/^  version \"[^\"]*\"$/  version \"$VERSION\"/" \
+              -e "s/^  sha256 \"[0-9a-f]{64}\"$/  sha256 \"$SHA256\"/" "$cask"
+          grep -qx "  version \"$VERSION\"" "$cask" && grep -qx "  sha256 \"$SHA256\"" "$cask" \
+              || { echo "::error::$cask has no version and sha256 lines to update"; exit 1; }
+          if git diff --quiet; then
+              echo "The cask is at $VERSION already"
+              exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -am "Update Feedini to $VERSION"
+          git push origin HEAD
+          echo "The cask is at $VERSION now"

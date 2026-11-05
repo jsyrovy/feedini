@@ -23,7 +23,7 @@ Run `make lint test` after every change. `CONFIG=Release make build` builds Rele
 CI (`.github/workflows/ci.yml`, GitHub Actions on pushes to `main` and pull requests) runs `make lint`,
 `make coverage` and `CONFIG=Release make build` in one job; the steps run even after an earlier one fails, and the
 result bundle is uploaded when something fails. It uses the `xcode-27` runner image (a preview; `macos-26` only has
-Xcode 26).
+Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a release is published (see "Releasing").
 
 ## Toolchain and project
 
@@ -681,7 +681,10 @@ hold their `LibraryHost` unowned (the app's `AppModel` outlives them) – keep t
 
 Releases are distributed outside the Mac App Store (it only takes sandboxed apps, see README): signed with Developer
 ID, hardened runtime, notarized by Apple and stapled, so Gatekeeper opens a downloaded copy without warnings. The
-format is a zip of `Feedini.app`, published as a GitHub release of the version's tag.
+format is a zip of `Feedini.app`, published as a GitHub release of the version's tag, and the Homebrew cask `feedini`
+in the tap [`jsyrovy/homebrew-tap`](https://github.com/jsyrovy/homebrew-tap)
+(`brew install --cask jsyrovy/tap/feedini`). Not in `homebrew/cask`: a self-submitted cask needs 90 forks, 90
+watchers or 225 stars on GitHub.
 
 - A release is made only by hand, never by a push. Between releases the version stays the last released one.
 - Steps: set `MARKETING_VERSION` to the new `major.minor` (Xcode: target → General → Version, or both configurations in
@@ -699,6 +702,11 @@ format is a zip of `Feedini.app`, published as a GitHub release of the version's
   tag, with the tag's `CHANGELOG.md` section as the notes; publishing stays a step on GitHub. It refuses when the zip
   doesn't match its checksum or wasn't built from the tag (build number), the tag isn't on GitHub as it is locally, or
   the release exists already.
+- The cask (`Casks/feedini.rb` in the tap) is updated by `.github/workflows/homebrew.yml` when a release is published
+  (never for a draft or a prerelease): it checks the zip of the release against its `.sha256`, sets `version` and
+  `sha256` and pushes to the tap with a deploy key with write access (secret `HOMEBREW_TAP_DEPLOY_KEY` of this
+  repository). It refuses a version older than the cask's and changes nothing when the cask has it already; run it by
+  hand (`gh workflow run homebrew.yml -f tag=v0.2`) to retry. Checking a change of the cask itself: the tap's README.
 - Credentials live in the login keychain only, never in the repo: the identity "Developer ID Application: Jiri Syrovy
   (DZ7S6R9RRN)" (expires 2027-12-05; renew it before, already shipped versions keep working thanks to the timestamp)
   and the `notarytool` keychain profile `notary` (an App Store Connect API team key with the Developer role;
