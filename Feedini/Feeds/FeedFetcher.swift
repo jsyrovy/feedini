@@ -69,7 +69,10 @@ enum FetchError: Error, Sendable, Equatable {
 /// Downloads feeds over HTTPS with conditional GET (ETag / Last-Modified), a timeout and no cache of its own.
 /// Redirects are followed by `URLSession`; App Transport Security blocks any to plain HTTP.
 struct FeedFetcher: Sendable {
-    static let userAgent = "Feedini/1.0 (+https://github.com/jsyrovy/feedini)"
+    /// Says which reader asks, like other feed readers do: sites block unknown bots, and a browser's name could get a
+    /// web page or a script challenge instead of the feed.
+    static let userAgent = "Feedini/\(appVersion) (+https://github.com/jsyrovy/feedini)"
+    private static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     static let maxFeedSize = 20_000_000
     /// Downloads running at once in `fetchAll`.
     static let maxConcurrentDownloads = 6

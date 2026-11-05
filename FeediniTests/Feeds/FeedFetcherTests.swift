@@ -31,6 +31,7 @@ struct FeedFetcherTests {
         let sent = try #require(StubURLProtocol.requests(to: url.host()!).first)
         #expect(sent.value(forHTTPHeaderField: "If-None-Match") == nil)
         #expect(sent.value(forHTTPHeaderField: "If-Modified-Since") == nil)
+        #expect(sent.value(forHTTPHeaderField: "User-Agent") == FeedFetcher.userAgent)
     }
 
     @Test func sendsTheValidatorsAndUnderstandsNotModified() async throws {
@@ -79,6 +80,11 @@ struct FeedFetcherTests {
         StubURLProtocol.stub(url, .failure(code))
 
         #expect(await fetcher.fetch(request(url)) == .failed(expected))
+    }
+
+    @Test func userAgentNamesTheAppAndItsVersion() throws {
+        let version = try #require(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
+        #expect(FeedFetcher.userAgent == "Feedini/\(version) (+https://github.com/jsyrovy/feedini)")
     }
 
     @Test func explainsEveryError() {
