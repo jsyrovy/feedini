@@ -7,4 +7,7 @@ enum RuntimeEnvironment {
         return environment["XCTestConfigurationFilePath"] != nil || environment["XCTestBundlePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
     }()
+
+    /// The app's version (`MARKETING_VERSION`).
+    static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
 }

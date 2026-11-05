@@ -71,8 +71,7 @@ enum FetchError: Error, Sendable, Equatable {
 struct FeedFetcher: Sendable {
     /// Says which reader asks, like other feed readers do: sites block unknown bots, and a browser's name could get a
     /// web page or a script challenge instead of the feed.
-    static let userAgent = "Feedini/\(appVersion) (+https://github.com/jsyrovy/feedini)"
-    private static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+    static let userAgent = "Feedini/\(RuntimeEnvironment.appVersion) (+https://github.com/jsyrovy/feedini)"
     static let maxFeedSize = 20_000_000
     /// Downloads running at once in `fetchAll`.
     static let maxConcurrentDownloads = 6

@@ -28,7 +28,7 @@ final class Backups {
 
     init(
         store: BackupStore, preferences: Preferences,
-        appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
+        appVersion: String = RuntimeEnvironment.appVersion,
         now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.store = store

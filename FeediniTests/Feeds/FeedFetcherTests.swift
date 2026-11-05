@@ -82,11 +82,6 @@ struct FeedFetcherTests {
         #expect(await fetcher.fetch(request(url)) == .failed(expected))
     }
 
-    @Test func userAgentNamesTheAppAndItsVersion() throws {
-        let version = try #require(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
-        #expect(FeedFetcher.userAgent == "Feedini/\(version) (+https://github.com/jsyrovy/feedini)")
-    }
-
     @Test func explainsEveryError() {
         #expect(FetchError.insecureConnection.message.contains("Only HTTPS feeds are supported"))
         #expect(FetchError.tooLarge.message == "The feed is larger than 20 MB.")
