@@ -20,7 +20,10 @@ struct AppModelTests {
     @Test func subscribingAddsTheFeedWithItsArticles() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = StubURLProtocol.uniqueURL()
-        StubURLProtocol.stub(url, try .feed("rss2.xml"))
+        // Without their dates, so the first download keeps the items whatever the day (`firstDownloadMaxAge`).
+        let undated = String(decoding: try Fixture.data("rss2.xml"), as: UTF8.self).replacing(
+            #/<(pubDate|dc:date)>[^<]*</(pubDate|dc:date)>/#, with: "")
+        StubURLProtocol.stub(url, .response(status: 200, body: Data(undated.utf8)))
 
         #expect(await model.subscribe(to: url.absoluteString) == nil)
 
