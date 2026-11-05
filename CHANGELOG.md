@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1 – unreleased
+## 0.1 – 2026-11-05
 
 The first release.
 
