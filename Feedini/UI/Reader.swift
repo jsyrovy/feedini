@@ -61,10 +61,13 @@ final class Reader {
         model.onRestore = { [weak self] in self?.startOver() }
     }
 
-    /// The entries of the list for the current selection.
+    /// The entries of the list for the current selection, in the chosen order.
     var entries: [StoryEntry] {
-        guard selection != .saved else { return model.savedEntries(keeping: unsaved) }
-        return StoryList.entries(model.entries, matching: selection, folders: model.folderIDsByFeed, keeping: kept)
+        let entries =
+            selection == .saved
+            ? model.savedEntries(keeping: unsaved)
+            : StoryList.entries(model.entries, matching: selection, folders: model.folderIDsByFeed, keeping: kept)
+        return StoryList.ordered(entries, model.preferences.listOrder)
     }
 
     var rows: [ListRow] {

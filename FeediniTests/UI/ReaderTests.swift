@@ -61,6 +61,20 @@ struct ReaderTests {
         #expect(reader.expanded.isEmpty)
     }
 
+    @Test func oldestFirstListsAndWalksTheEntriesTheOtherWay() {
+        model.preferences.listOrder = .oldestFirst
+
+        #expect(reader.entries.map(\.title) == ["Story", "Lone"])
+        reader.handle(.next)
+        #expect(reader.cursor == .story(.story(story.id)))
+        reader.handle(.next)
+        #expect(reader.cursor == .story(.loose(lone.id)))
+
+        model.preferences.listOrder = .newestFirst
+        #expect(reader.entries.map(\.title) == ["Lone", "Story"])
+        #expect(reader.cursor == .story(.loose(lone.id)))
+    }
+
     @Test func clickingAnArticleOfAStoryExpandsIt() {
         reader.visit(.article(.story(story.id), second.id))
         #expect(reader.expanded == [.story(story.id)])

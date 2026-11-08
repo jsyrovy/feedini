@@ -34,8 +34,9 @@ struct StoryListView: View {
                     reader.handle(.open)
                 }
             }
-            .onChange(of: reader.cursor) { _, cursor in
-                if let cursor {
+            // A new order keeps the cursor on its row, which moves to the other end of the list.
+            .onChange(of: ScrollTarget(cursor: reader.cursor, order: model.preferences.listOrder)) { _, target in
+                if let cursor = target.cursor {
                     proxy.scrollTo(cursor)
                 }
             }
@@ -74,6 +75,12 @@ struct StoryListView: View {
                 ArticleRow(article: article, isNew: entry.newArticleIDs.contains(articleID))
             }
         }
+    }
+
+    /// What the list scrolls to the cursor after.
+    private struct ScrollTarget: Equatable {
+        var cursor: ListRow?
+        var order: ListOrder
     }
 
     private var cursor: Binding<ListRow?> {

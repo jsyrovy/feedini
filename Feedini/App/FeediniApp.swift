@@ -39,6 +39,7 @@ struct FeediniApp: App {
             CommandGroup(after: .toolbar) {
                 Button("Refresh Now") { appDelegate.model.refreshNow() }
                     .keyboardShortcut("r")
+                ListOrderPicker(preferences: appDelegate.model.preferences)
             }
             // The default Help item has nothing to show. No key equivalent: a plain ? would fire in text fields too, and
             // ⌘? searches the Help menu.

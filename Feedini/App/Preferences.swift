@@ -16,6 +16,7 @@ final class Preferences {
     private static let summaryLanguageKey = "summaryLanguage"
     private static let singleArticleSummariesKey = "singleArticleSummaries"
     private static let collapsedFoldersKey = "collapsedFolders"
+    private static let listOrderKey = "listOrder"
     private static let backsUpKey = "backsUp"
     private static let backupFrequencyKey = "backupFrequency"
 
@@ -55,6 +56,13 @@ final class Preferences {
     var collapsedFolders: Set<Folder.ID> {
         didSet {
             defaults.set(collapsedFolders.map(\.uuidString).sorted(), forKey: Self.collapsedFoldersKey)
+        }
+    }
+
+    /// The order of the story list, newest first by default (a window state, not in backups).
+    var listOrder: ListOrder {
+        didSet {
+            defaults.set(listOrder.rawValue, forKey: Self.listOrderKey)
         }
     }
 
@@ -166,6 +174,7 @@ final class Preferences {
         showsUnreadCount = defaults.object(forKey: Self.showsUnreadCountKey) as? Bool ?? true
         collapsedFolders = Set(
             (defaults.stringArray(forKey: Self.collapsedFoldersKey) ?? []).compactMap(UUID.init(uuidString:)))
+        listOrder = defaults.string(forKey: Self.listOrderKey).flatMap(ListOrder.init(rawValue:)) ?? .newestFirst
         aiEnabled = defaults.object(forKey: Self.aiEnabledKey) as? Bool ?? true
         claudePath = defaults.string(forKey: Self.claudePathKey) ?? ""
         assignModel = Self.model(defaults.string(forKey: Self.assignModelKey)) ?? Self.defaultModel

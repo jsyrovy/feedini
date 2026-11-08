@@ -35,6 +35,20 @@ struct StoryListTests {
         #expect(!entries[3].isMultiArticle)
     }
 
+    @Test func oldestFirstReversesTheEntriesButNotTheArticlesOfAStory() {
+        let older = Article.stub("Older", feed: tech.id, hours: -5)
+        let part1 = Article.stub("Part 1", feed: tech.id, hours: -3)
+        let part2 = Article.stub("Part 2", feed: news.id, hours: -1)
+        let story = Story(title: "Story", articleIDs: [part1.id, part2.id])
+        let library = Library(feeds: [tech, news], articles: [older, part1, part2], stories: [story])
+        let entries = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
+
+        #expect(StoryList.ordered(entries, .newestFirst) == entries)
+        let oldestFirst = StoryList.ordered(entries, .oldestFirst)
+        #expect(oldestFirst.map(\.id) == [.loose(older.id), .story(story.id)])
+        #expect(oldestFirst[1].articles.map(\.id) == [part2.id, part1.id])
+    }
+
     @Test func aStoryWithOneArticleUsesTheArticleTitleAndEmptyStoriesAreSkipped() {
         let article = Article.stub("Article title", feed: tech.id)
         let single = Story(title: "AI title", articleIDs: [article.id])

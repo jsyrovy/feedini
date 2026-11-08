@@ -20,6 +20,17 @@ extension ReaderTests {
         #expect(model.savedEntries().map(\.id) == [.savedArticle(lone.id)])
     }
 
+    @Test func oldestFirstListsSavedFromTheFirstSaved() {
+        model.setSaved(.article(lone.id), at: .hours(-2))
+        model.setSaved(.story(story.id), at: .hours(-1))
+        reader.selection = .saved
+        #expect(reader.entries.map(\.id) == [.story(story.id), .savedArticle(lone.id)])
+
+        model.preferences.listOrder = .oldestFirst
+
+        #expect(reader.entries.map(\.id) == [.savedArticle(lone.id), .story(story.id)])
+    }
+
     @Test func sOnAnArticleOfAnExpandedStorySavesTheArticle() {
         reader.visit(.article(.story(story.id), second.id))
         reader.handle(.save)

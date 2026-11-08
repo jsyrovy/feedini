@@ -22,6 +22,13 @@ extension Library {
     }
 }
 
+/// The order of the story list (and Saved), remembered in `Preferences`.
+enum ListOrder: String, CaseIterable, Sendable {
+    /// By the newest article (Saved: the save date), newest first.
+    case newestFirst
+    case oldestFirst
+}
+
 /// One item of the story list: a story, or an article no story holds yet (shown like a story with one article).
 struct StoryEntry: Identifiable, Equatable, Sendable {
     enum ID: Hashable, Sendable {
@@ -241,6 +248,15 @@ enum StoryList {
             }
         }
         return savingChanged
+    }
+
+    /// The entries, built newest first, in the order. Oldest first is the same list read from the other end; the
+    /// articles inside a story stay newest first.
+    static func ordered(_ entries: [StoryEntry], _ order: ListOrder) -> [StoryEntry] {
+        switch order {
+        case .newestFirst: entries
+        case .oldestFirst: entries.reversed()
+        }
     }
 
     /// The entries shown for a sidebar selection: unread ones, plus those in `keeping` (read while the list was

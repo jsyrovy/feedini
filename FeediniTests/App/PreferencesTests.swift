@@ -31,6 +31,14 @@ struct PreferencesTests {
         #expect(Preferences(defaults: defaults).collapsedFolders == [folder])
     }
 
+    @Test func savesTheListOrder() {
+        #expect(Preferences(defaults: defaults).listOrder == .newestFirst)
+
+        Preferences(defaults: defaults).listOrder = .oldestFirst
+
+        #expect(Preferences(defaults: defaults).listOrder == .oldestFirst)
+    }
+
     @Test func savesWhetherTheMenuBarShowsTheCount() {
         Preferences(defaults: defaults).showsUnreadCount = false
         #expect(!Preferences(defaults: defaults).showsUnreadCount)
@@ -53,9 +61,11 @@ struct PreferencesTests {
     @Test func ignoresValuesThatArentOffered() {
         defaults.set(7, forKey: "refreshMinutes")
         defaults.set("tab", forKey: "pageOpening")
+        defaults.set("random", forKey: "listOrder")
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.refreshMinutes == 15)
         #expect(preferences.pageOpening == .window)
+        #expect(preferences.listOrder == .newestFirst)
     }
 
     @Test func aiDefaultsToHaikuWithLowEffort() {

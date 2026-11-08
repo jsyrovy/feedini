@@ -39,6 +39,13 @@ struct MainWindow: View {
                     .disabled(model.isRefreshing || model.library.feeds.isEmpty)
             }
             ToolbarItem {
+                Menu("Sort", systemImage: "arrow.up.arrow.down") {
+                    ListOrderPicker(preferences: model.preferences)
+                        .pickerStyle(.inline)
+                }
+                .help("Sort: \(model.preferences.listOrder.title)")
+            }
+            ToolbarItem {
                 Button("Save Link", systemImage: "plus") { reader.isShowingSaveLink = true }
                     .help("Save Link… (⌘L)")
             }

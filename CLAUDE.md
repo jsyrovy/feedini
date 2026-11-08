@@ -59,8 +59,9 @@ Feedini/
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
               folders), Saved (SavedItem, Library's saving, names of removed feeds), SavedLink (pages saved by
               their address: comparing addresses, Library.saveLink), AIUsage (AI calls per day),
-              StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts), ReadRules (pure:
-              what visiting a row and M do; ListRow), UndoHistory (pure: ReadingState, the steps of ⌘Z / ⇧⌘Z)
+              StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts, ListOrder),
+              ReadRules (pure: what visiting a row and M do; ListRow), UndoHistory (pure: ReadingState, the steps of
+              ⌘Z / ⇧⌘Z)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving, page texts as files of their own),
               Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
@@ -93,10 +94,10 @@ Feedini/
               DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
               PageSummaryView), WebPageView (WKWebView), Reader (window state: selection, cursor, expanded stories,
               kept entries, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
-              Undo / Redo), KeyboardNavigation (pure: what a key does), ShortcutHelp (pure: the shortcuts by group)
-              + ShortcutsView (the ? sheet), RelativeTime, SettingsView (tabs) + FeedsSettings + GeneralSettings +
-              AISettings + BackupSettings, RestoreSheet, BackupCommands (File menu), SaveLinkSheet (+
-              SaveLinkButton), MenuBarContent (+ MenuBarLabel)
+              Undo / Redo), ListOrderPicker (newest / oldest first), KeyboardNavigation (pure: what a key does),
+              ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime, SettingsView
+              (tabs) + FeedsSettings + GeneralSettings + AISettings + BackupSettings, RestoreSheet, BackupCommands
+              (File menu), SaveLinkSheet (+ SaveLinkButton), MenuBarContent (+ MenuBarLabel)
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
@@ -173,6 +174,9 @@ list (newest first), detail.
 - Moving onto an item (click, arrows, J/K) marks it read. A collapsed story is marked read as a whole (the summary
   covered all its articles); in an expanded story articles are marked one by one, and the story is read when all
   its articles are. M toggles read / unread (on a collapsed story: all its articles).
+- The list is newest first; View → Sort or the toolbar's sort menu turns it to oldest first (`Preferences.listOrder`,
+  remembered across launches, not in backups). It reverses the whole list, Saved (by save date) too; the articles
+  inside a story stay newest first. The cursor stays on its row.
 - A read item doesn't vanish from the current list (no jumping under the cursor); it goes away when the sidebar
   selection changes or on refresh.
 - S saves the item under the cursor for later, S again removes it from Saved. On an article row, a story with one
@@ -251,8 +255,8 @@ Implementation:
   (`.loose`, shown like a one-article story), newest first by their newest article. A one-article story uses the
   article's title. `entries(_:matching:folders:keeping:)` filters by the sidebar selection (a feed shows every story
   with an article of it, a folder every story with an article of one of its feeds) and hides read entries unless
-  they are in `keeping`. Counts match what is shown: a story counts once in a folder, even with articles of several
-  of its feeds.
+  they are in `keeping`; `ordered(_:_:)` puts them in the chosen `ListOrder` (`Reader.entries`). Counts match what
+  is shown: a story counts once in a folder, even with articles of several of its feeds.
 - `StoryList.savedEntries` builds Saved from the entries: saved stories as their entry, saved articles as
   `.savedArticle` entries (`partOf` for a story with several articles; a one-article story lends its title and
   summary). `StoryEntry.savedItem(at:)` says what S saves on a row. `AppModel` caches them with the other entries;
