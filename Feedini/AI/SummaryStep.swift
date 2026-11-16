@@ -12,8 +12,9 @@ enum SingleArticleSummaries: String, CaseIterable, Sendable {
 
 /// The summary step: a title and a summary for stories where they add something (pure parts).
 ///
-/// A story needs a summary when it has several articles; a story with a single article only as `singleArticles`
-/// says. Without one, a single article shows its own text.
+/// A summary is written from the unread articles of a story only: it is needed when there are several, for a single
+/// one only as `singleArticles` says (without one, a single article shows its own text). Reading some of them doesn't
+/// make it out of date; an unread article it doesn't cover does.
 enum SummaryStep {
     static let batchSize = 10
     static let excerptLength = 1000
@@ -31,26 +32,26 @@ enum SummaryStep {
         }
     }
 
-    /// Written in the language and for exactly the story's articles.
-    static func isCurrent(_ summary: Summary?, of story: Story, language: String) -> Bool {
-        guard let summary, summary.language == language, summary.articleIDs.count == story.articleIDs.count else {
-            return false
-        }
-        return Set(summary.articleIDs) == Set(story.articleIDs)
+    /// Written in the language and covering every unread article (`articles` may hold read ones too, they don't
+    /// count).
+    static func isCurrent(_ summary: Summary?, of articles: [Article], language: String) -> Bool {
+        guard let summary, summary.language == language else { return false }
+        let covered = Set(summary.articleIDs)
+        return articles.allSatisfy { $0.isRead || covered.contains($0.id) }
     }
 
-    /// Unread stories whose summary is missing or out of date, in the order they should be written: stories from
-    /// several feeds first, then the others, newer before older. Read stories wait until they are unread again.
+    /// Unread stories whose unread articles need a summary that is missing or out of date, in the order they should
+    /// be written: stories from several feeds first, then the others, newer before older. Read stories wait until
+    /// they are unread again.
     static func pending(
         in library: Library, language: String, singleArticles: SingleArticleSummaries,
         excluding: Set<Story.ID> = []
     ) -> [Story.ID] {
         library.stories.values.compactMap { story -> (Story.ID, Bool, Date)? in
             guard !excluding.contains(story.id) else { return nil }
-            let articles = library.articles(of: story)
-            guard articles.contains(where: { !$0.isRead }),
-                needsSummary(articles, language: language, singleArticles: singleArticles),
-                !isCurrent(story.summary, of: story, language: language)
+            let articles = library.articles(of: story).filter { !$0.isRead }
+            guard needsSummary(articles, language: language, singleArticles: singleArticles),
+                !isCurrent(story.summary, of: articles, language: language)
             else { return nil }
             let feeds = Set(articles.map(\.feedID))
             return (story.id, feeds.count > 1, articles.map(\.date).max() ?? .distantPast)
@@ -100,12 +101,13 @@ enum SummaryStep {
     /// What each short story ID stood for: the story and the articles sent with it.
     typealias IDMap = [String: (story: Story.ID, articles: [Article.ID])]
 
+    /// The unread articles of the stories (stories without any are left out).
     static func payload(for storyIDs: [Story.ID], in library: Library, languageName: String) -> (Input, IDMap) {
         let sources = library.sourceTitles()
         var map: IDMap = [:]
         var items: [Input.StoryItem] = []
         for story in storyIDs.compactMap({ library.stories[$0] }) {
-            let articles = library.articles(of: story).sorted { $0.date < $1.date }
+            let articles = library.articles(of: story).filter { !$0.isRead }.sorted { $0.date < $1.date }
             guard !articles.isEmpty else { continue }
             let id = "s\(items.count + 1)"
             map[id] = (story.id, articles.map(\.id))

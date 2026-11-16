@@ -6,7 +6,7 @@ import Foundation
 /// - New articles the answer left out get a story of their own (title of the article, no topic).
 /// - A story's topic is the given topic id, a new topic's key, or – since models sometimes write the name instead –
 ///   an existing or new topic with that name (ignoring case); anything else becomes a new topic with that name.
-/// - An article that joins a read story is marked new there ("+1 new"); the story comes back as unread.
+/// - An article that joins a read story makes it come back as unread, with only that article to show.
 enum AssignValidation {
     struct Metrics: Equatable, Sendable {
         var attached = 0
@@ -41,17 +41,13 @@ enum AssignValidation {
         }
 
         for attachment in output.attach {
-            guard let storyID = map.stories[attachment.storyID], let story = library.stories[storyID] else {
+            guard let storyID = map.stories[attachment.storyID], library.stories[storyID] != nil else {
                 metrics.unknownIDs += attachment.articleIDs.count
                 continue
             }
             let ids = take(attachment.articleIDs)
             guard !ids.isEmpty else { continue }
-            let wasRead = story.articleIDs.allSatisfy { library.articles[$0]?.isRead ?? true }
             library.stories[storyID]?.articleIDs += ids
-            if wasRead || !story.newArticleIDs.isEmpty {
-                library.stories[storyID]?.newArticleIDs.formUnion(ids)
-            }
             metrics.attached += ids.count
         }
 

@@ -15,8 +15,8 @@ struct KeyboardNavigationTests {
         lone = Article.stub("Lone", feed: feed.id, hours: -1)
         first = Article.stub("First", feed: feed.id, hours: -2)
         second = Article.stub("Second", feed: feed.id, hours: -3)
-        single = StoryEntry(id: .loose(lone.id), title: "Lone", articles: [lone], newArticleIDs: [])
-        multi = StoryEntry(id: .story(.init()), title: "Multi", articles: [first, second], newArticleIDs: [])
+        single = StoryEntry(id: .loose(lone.id), title: "Lone", articles: [lone])
+        multi = StoryEntry(id: .story(.init()), title: "Multi", articles: [first, second])
     }
 
     private var entries: [StoryEntry.ID: StoryEntry] {
@@ -108,7 +108,7 @@ struct KeyboardNavigationTests {
     @Test func openWithoutALinkDoesNothing() {
         var article = lone
         article.link = nil
-        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article], newArticleIDs: [])
+        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article])
         let result = KeyboardNavigation.action(
             for: .open, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
             opensInWindow: true, pageArticle: nil)
@@ -130,7 +130,7 @@ struct KeyboardNavigationTests {
 
     @Test func previewOnASavedLinkLoadsItsPageAgain() {
         let link = Article.stub("Link", feed: SavedLink.feedID, savedAt: referenceDate)
-        let entry = StoryEntry(id: .savedArticle(link.id), title: "Link", articles: [link], newArticleIDs: [])
+        let entry = StoryEntry(id: .savedArticle(link.id), title: "Link", articles: [link])
         for (key, expected) in [
             (ListKey.preview, KeyboardNavigation.Action.reloadPage(link.id)), (.summarizePage, .summarizePage(link.id)),
         ] {
@@ -150,7 +150,7 @@ struct KeyboardNavigationTests {
     @Test func previewAndSummarizeNeedALink() {
         var article = lone
         article.link = nil
-        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article], newArticleIDs: [])
+        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article])
         for key in [ListKey.preview, .summarizePage] {
             let result = KeyboardNavigation.action(
                 for: key, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
@@ -169,7 +169,7 @@ struct KeyboardNavigationTests {
         #expect(action(.saveWithSummary, at: .story(multi.id), expanded: [multi.id]) == .none)
         var article = lone
         article.link = nil
-        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article], newArticleIDs: [])
+        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article])
         let result = KeyboardNavigation.action(
             for: .saveWithSummary, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
             opensInWindow: true, pageArticle: nil)

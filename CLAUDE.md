@@ -93,7 +93,7 @@ Feedini/
               bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
               PageSummaryView), WebPageView (WKWebView), Reader (window state: selection, cursor, expanded stories,
-              kept entries, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
+              articles read while the list is shown, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
               Undo / Redo), ListOrderPicker (newest / oldest first), KeyboardNavigation (pure: what a key does),
               ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime, SettingsView
               (tabs) + FeedsSettings + GeneralSettings + AISettings + BackupSettings, RestoreSheet, BackupCommands
@@ -141,7 +141,10 @@ CHANGELOG.md  one section per released version
 - Unread articles are kept forever; they only go away when read or marked as read.
 - Read articles are remembered as tombstones (feed + guid / link) while they are still in the feed plus a margin, so
   a refresh doesn't bring them back. Read stories stay (hidden) for `attachWindow` (72 h) so that a new article
-  about the same event joins the known story, which comes back as unread with "+1 new".
+  about the same event joins the known story, which comes back as unread showing only the new article.
+- A story card shows only what is new: its unread articles, plus those read while the list is shown. Its title,
+  summary, sources and article count follow them, and with one article left it behaves like an article. The
+  summary is written from the unread articles only.
 - Storage: one versioned JSON file in `~/Library/Application Support/Feedini/` (Codable, atomic writes, debounced
   saving). No SwiftData (testability, migrations, friction with strict concurrency). If the data outgrows it, only
   the store moves to SQLite (system C API).
@@ -168,17 +171,23 @@ CHANGELOG.md  one section per released version
 Three columns: sidebar (All, Saved, topics by unread count, folders with their feeds, feeds in no folder), story
 list (newest first), detail.
 
-- A story with one article behaves like an article. A story with several articles has an AI title, a summary and
-  source labels; its articles are collapsed in the list. An expanded story shows them indented below it, and J/K
-  walks through them.
+- A story shows only its visible articles: the unread ones and those read while the list is shown (until the sidebar
+  selection changes or a refresh ends). Read articles show neither in the list nor in the detail. Everything on the
+  card and in the detail comes from the visible articles: the title, the number of articles, the sources, the
+  accent bar, expanding, the keys. A story with one visible article behaves like an article (V, P, T, S, no
+  expanding). A story with several has an AI title, a summary and source labels; its articles are collapsed in the
+  list. An expanded story shows them indented below it, and J/K walks through them.
 - Moving onto an item (click, arrows, J/K) marks it read. A collapsed story is marked read as a whole (the summary
-  covered all its articles); in an expanded story articles are marked one by one, and the story is read when all
-  its articles are. M toggles read / unread (on a collapsed story: all its articles).
+  covered all its visible articles); in an expanded story articles are marked one by one, and the story is read when
+  all its articles are. M toggles read / unread (on a collapsed story: all its visible articles).
 - The list is newest first; View → Sort or the toolbar's sort menu turns it to oldest first (`Preferences.listOrder`,
   remembered across launches, not in backups). It reverses the whole list, Saved (by save date) too; the articles
   inside a story stay newest first. The cursor stays on its row.
 - A read item doesn't vanish from the current list (no jumping under the cursor); it goes away when the sidebar
-  selection changes or on refresh.
+  selection changes or on refresh. So does a read article from its story card, except in the entry under the
+  cursor, where nothing changes.
+- A story is in a feed (or folder) only with a visible article of it; the unread counts count stories with unread
+  articles, in the feeds and folders of those articles.
 - S saves the article under the cursor for later, S again removes it from Saved. Only articles are saved: an
   article row, a story with one article or a loose article; on the row of a story with several articles S does
   nothing (like P, T and Shift+V). Saved articles have a bookmark in every list, and so does the row of a story with
@@ -216,8 +225,8 @@ list (newest first), detail.
   tries again.
 - ⌘Z takes back reading and saving in the main window, one step at a time, ⇧⌘Z does it again (a new step clears
   that). A step is every change of reading or saving: moving onto an unread item, M, Shift+A (all of it at once), S,
-  Shift+S (the saving; the page work goes on). It puts back exactly the state before (also the "+1 new" marks), shows
-  the item's row without reading it, keeps it in the list and doesn't change the sidebar selection. The menu names
+  Shift+S (the saving; the page work goes on). It puts back exactly the state before, shows the item's row without
+  reading it, keeps it in the list (an article made unread again shows in its story again) and doesn't change the sidebar selection. The menu names
   the step ("Undo Mark as Read"). The history lives as long as the app (also with the window closed), at most
   `UndoHistory.limit` (100) steps; a step whose items are gone (a removed feed, retention) is skipped. Steps that
   change nothing (moving onto a read item) aren't recorded. Elsewhere – Settings, sheets, text fields – ⌘Z is the
@@ -252,28 +261,33 @@ Keys work in the list. While the web page has focus, only Esc works (it returns 
 
 Implementation:
 
-- `StoryList.allEntries` turns the library into `StoryEntry`s: every story, plus every article no story holds yet
-  (`.loose`, shown like a one-article story), newest first by their newest article. A one-article story uses the
-  article's title. `entries(_:matching:folders:keeping:)` filters by the sidebar selection (a feed shows every story
-  with an article of it, a folder every story with an article of one of its feeds) and hides read entries unless
-  they are in `keeping`; `ordered(_:_:)` puts them in the chosen `ListOrder` (`Reader.entries`). Counts match what
-  is shown: a story counts once in a folder, even with articles of several of its feeds.
+- `StoryList.allEntries` turns the library into `StoryEntry`s: every story with all its articles, plus every article
+  no story holds yet (`.loose`, shown like a one-article story), newest first by their newest article (also when
+  that one is read and hidden). A story's entry keeps what it is built from (`StoryEntry.StoryInfo`: the story's
+  title and stored summary, the summary language and choice), and `StoryEntry.show(_:)` derives the title, whether
+  it needs a summary, the summary and whether it is current from the articles it shows: a one-article story uses
+  the article's title. `StoryEntry.visible(keeping:)` narrows an entry to its unread articles and those in
+  `keeping` (`nil` when none is left). `entries(_:matching:folders:keeping:)` narrows every entry, then filters by
+  the sidebar selection (a feed shows every story with a visible article of it, a folder every story with a visible
+  article of one of its feeds); `ordered(_:_:)` puts them in the chosen `ListOrder` (`Reader.entries`). Counts
+  match what is shown: a story counts once in a folder, even with unread articles of several of its feeds.
 - `StoryList.savedEntries` builds Saved from the saved articles, each a `.savedArticle` entry of its own
   (`savedEntry(for:)`). `StoryEntry.singleArticle(at:)` says what S (and P, T, Shift+S) works on on a row,
   `containsSaved` whether the row has a bookmark. `AppModel` caches Saved with the other entries; reading and saving
   patch the entries (`StoryList.updateReadingState`) and saving rebuilds only Saved. `Reader.unsaved` remembers the
   save dates of articles removed while Saved is shown, so they keep their place (`AppModel.savedEntries(keeping:)`;
   `entry(_:)` builds a `.savedArticle` entry on demand, saved or not).
-- `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story). Moving
-  onto a row (`visit`) applies `ReadRules` and adds the entry to `kept`, so it stays until the sidebar selection
-  changes or a refresh ends (then only the entry under the cursor stays). Shift+A doesn't keep anything: the list
-  empties. M keeps the entry too.
+- `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story) and
+  narrows every entry it gives out (`Reader.entry`, `entries`; Saved shows its articles read or not). Moving onto a
+  row (`visit`) applies `ReadRules` and adds the articles it read to `keptArticles`, so they stay until the sidebar
+  selection changes or a refresh ends (then only the visible articles of the entry under the cursor stay). M keeps
+  the articles it reads too, and so does showing the row of an undone step. Shift+A doesn't keep anything: the list
+  empties.
 - `KeyboardNavigation.action` decides what a key does from the cursor, the rows, the expanded stories, the default
   way of opening pages and the shown page; `Reader.handle` carries it out. The story list's `onKeyPress` maps keys
   (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
   any keyboard layout. A double click opens like V / Enter.
-- `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles, "new" marks of their
-  stories) before a change and records it in `UndoHistory` (its callers only make changes that change
+- `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles) before a change and records it in `UndoHistory` (its callers only make changes that change
   something); undo and redo are `Library.restore`, which returns the replaced state for the other stack
   (`AppModel.restore` patches the cached entries like reading and saving). `UndoCommands` replaces Edit → Undo / Redo: while the main
   window is key (`Reader.isMainWindowKey`, set by `AppDelegate` from the key window notifications) they go to the
@@ -286,16 +300,16 @@ Implementation:
   work), JavaScript on, no script message handlers. Link clicks and new windows open in the default browser. Esc in
   the page (`EscapableWebView`) returns to the feed text and focuses the list (`Reader.listFocusRequests`).
 - When the AI puts a loose article into a story, the entry's ID changes (`.loose` → `.story`). `Reader` follows it
-  on every library change (`AppModel.onLibraryChange`): the cursor moves to the article inside the (expanded) story,
-  or to its one-article story, and kept entries stay kept – nothing is marked read by that.
+  on every library change (`AppModel.onLibraryChange`): the cursor moves to the article inside the (expanded) story
+  when the story shows several articles, else onto the story's row – nothing is marked read by that. Kept articles
+  keep their IDs.
 - Summaries in the detail (`SummaryView`): a story with several articles shows its summary between the title and
   the articles; a one-article story that needs one shows it above the feed text. Lines starting with "- "
   become bullet points. Without a summary yet: "Summarizing…" (or the error after repeated failures); an out-of-date
-  one stays with "Updating summary…" while the AI works.
+  one (an unread article it doesn't cover, another language) stays with "Updating summary…" while the AI works.
 - AI in the list: a loose article shows ✨ while the AI organizes (`AIStatus.organizing`); the status bar shows
   "Organizing N articles…", "Summarizing N stories…", "Summarizing page…" or "AI unavailable: …" next to the
-  refresh state. Stories
-  from several feeds have an accent bar and source labels; "+N new" marks articles that joined a read story.
+  refresh state. Stories showing articles of several feeds have an accent bar and source labels.
 - `AppModel` holds the `Library`; every change goes through `update(_:)`, which hands a copy to `LibraryStore.save`
   in order. The entries are cached with an index by ID (`AppModel.entry(_:)`) and the unread counts
   (`unreadCounts`, used by the sidebar and the menu bar) for one summary language and choice of single-article
@@ -483,22 +497,25 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - `AssignValidation.apply` (pure) never trusts the answer: unknown IDs are dropped and an article used twice stays
   where it was first; left-out articles get a story of their own (title of the article, no topic); a topic is
   resolved by id, then new key, then – models sometimes write names – by name ignoring case, else it becomes a new
-  topic with that name. An article joining a read story is put into its `newArticleIDs` ("+1 new"), which makes the
-  story unread again. It returns metrics, which are logged.
+  topic with that name. An article joining a read story makes the story unread again, showing only the new
+  article. It returns metrics, which are logged.
 - An article is "processed" once it belongs to a story; articles without one are shown on their own (`.loose`).
 
 ### Summary step
 
-- A story needs a summary when it has several articles. A story with a single article needs one as
-  `SingleArticleSummaries` says (`SummaryStep.needsSummary`): `never`, `otherLanguages` (the article's language
-  isn't the summary language; the summary is a translated gist; an unknown language counts as the same) or
+- A summary is written from a story's unread articles only. They need one when there are several; a single one
+  needs one as `SingleArticleSummaries` says (`SummaryStep.needsSummary`): `never`, `otherLanguages` (the article's
+  language isn't the summary language; the summary is a translated gist; an unknown language counts as the same) or
   `always`. Otherwise it shows its own title and text. Summaries that aren't needed stay in the library, just not
-  shown, so switching back shows them again.
+  shown, so switching back shows them again. In the list the articles a story shows decide (`StoryEntry.show(_:)`).
 - `Story.summary` (`Summary`: title, text, language, the article IDs it covered) is current when it is in the
-  summary language and covers exactly the story's articles (`isCurrent`). A new article in the story or a change of
-  the summary language makes it out of date; it stays shown until the new one arrives. Stories that need a summary
-  take their list title from it (`StoryList.allEntries(in:summaryLanguage:singleArticles:)`).
-- Payload: `output_language`, `stories` (short id, articles oldest first: source, title, 1000-character excerpt);
+  summary language and covers every unread article of the story (`isCurrent`; it may cover more). Reading some of
+  them doesn't make it out of date; a new unread article it doesn't cover or a change of the summary language does,
+  and it stays shown until the new one arrives. A partly read story whose one remaining article needs a summary of
+  its own (another language) therefore shows the older summary of several articles. Stories that need a summary
+  take their list title from it.
+- Payload: `output_language`, `stories` (short id, unread articles oldest first: source, title, 1000-character
+  excerpt);
   answer: `summaries` (story id, title, summary). 1–3 sentences, or 3–5 lines starting with "- " for stories with
   more than three articles. `SummaryStep.apply` stores answers for stories that still exist, ignores unknown IDs and
   empty answers.
@@ -518,9 +535,10 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   false`, e.g. no claude) stops the run and shows "AI unavailable: …"; the next trigger looks for claude again.
 - `SummaryQueue` (main actor) also derives its work from the library: unread stories needing a summary that isn't
   current (`SummaryStep.pending`: stories from several feeds first, then newer first). Up to 3 calls run at once,
-  10 stories each, plus one topic translation when needed. Read stories wait until they are unread again ("+1
-  new"), saved articles or not. Triggered with the assign queue and after every assign batch. A failing batch is retried after 30 s; a story whose summary failed 3 times (or was left out of 3 answers)
-  waits for the next refresh and shows the error.
+  10 stories each, plus one topic translation when needed. Read stories wait until they are unread again (a new
+  article joins them), saved articles or not. Triggered with the assign queue and after every assign batch. A
+  failing batch is retried after 30 s; a story whose summary failed 3 times (or was left out of 3 answers) waits for
+  the next refresh and shows the error.
 - `AICaller` makes every AI call of the queues: it finds claude (the path from the settings), runs the call, applies
   the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude
   actually ran (`ClaudeError.isTransient`), also when its answer was an error. The queues only add their retry
@@ -608,8 +626,9 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   `Article.savedAt`, `Article.site` as optionals), so older files load without a bump. The version is read before
   the library, so a file from a newer Feedini isn't decoded for nothing.
 - Schema versions: 2 saves only articles – a story saved as a whole in a version 1 file (or backup) has its articles
-  saved instead, at the story's save date (an article saved already keeps its own date). Feedini 0.1 refuses a
-  version 2 backup as one from a newer version.
+  saved instead, at the story's save date (an article saved already keeps its own date) – and drops the "+1 new"
+  marks of stories (`newArticleIDs`, ignored when reading version 1). Feedini 0.1 refuses a version 2 backup as one
+  from a newer version.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
   newer Feedini – is moved aside as `library.unreadable-<unix time>.json`, never overwritten, and Feedini starts

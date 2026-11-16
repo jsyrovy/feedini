@@ -6,7 +6,7 @@ struct ReadRulesTests {
     private let feed = Feed.stub()
 
     private func story(_ articles: [Article]) -> StoryEntry {
-        StoryEntry(id: .story(.init()), title: "Story", articles: articles, newArticleIDs: [])
+        StoryEntry(id: .story(.init()), title: "Story", articles: articles)
     }
 
     @Test func visitingACollapsedStoryReadsAllItsUnreadArticles() {

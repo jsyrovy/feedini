@@ -1,60 +1,35 @@
 import Foundation
 
-/// What reading and saving change on some articles and stories: the state ⌘Z puts back.
+/// What reading and saving change on some articles: the state ⌘Z puts back.
 struct ReadingState: Equatable, Sendable {
     struct ArticleState: Equatable, Sendable {
         var readAt: Date?
         var savedAt: Date?
     }
 
-    struct StoryState: Equatable, Sendable {
-        /// Reading a story clears its "+1 new" marks.
-        var newArticleIDs: Set<Article.ID>
-    }
-
     var articles: [Article.ID: ArticleState] = [:]
-    var stories: [Story.ID: StoryState] = [:]
 
-    var isEmpty: Bool { articles.isEmpty && stories.isEmpty }
+    var isEmpty: Bool { articles.isEmpty }
 }
 
 extension Library {
-    /// The state of the articles and stories as it is now, with every story holding one of the articles (reading
-    /// changes their "new" marks). Items that don't exist are left out.
-    func readingState(
-        articles articleIDs: some Sequence<Article.ID>, stories storyIDs: some Sequence<Story.ID> = []
-    )
-        -> ReadingState
-    {
+    /// The state of the articles as it is now; articles that don't exist are left out.
+    func readingState(articles articleIDs: some Sequence<Article.ID>) -> ReadingState {
         var state = ReadingState()
         for id in articleIDs {
             if let article = articles[id] {
                 state.articles[id] = ReadingState.ArticleState(readAt: article.readAt, savedAt: article.savedAt)
             }
         }
-        var wanted = Set(storyIDs)
-        for story in stories.values where story.articleIDs.contains(where: { state.articles[$0] != nil }) {
-            wanted.insert(story.id)
-        }
-        for id in wanted {
-            if let story = stories[id] {
-                state.stories[id] = ReadingState.StoryState(newArticleIDs: story.newArticleIDs)
-            }
-        }
         return state
     }
 
-    /// Puts the state back on the items that still exist; returns the state it replaced (empty when none exists).
+    /// Puts the state back on the articles that still exist; returns the state it replaced (empty when none exists).
     mutating func restore(_ state: ReadingState) -> ReadingState {
-        let replaced = readingState(articles: state.articles.keys, stories: state.stories.keys)
+        let replaced = readingState(articles: state.articles.keys)
         for (id, article) in state.articles where articles[id] != nil {
             articles[id]?.readAt = article.readAt
             articles[id]?.savedAt = article.savedAt
-        }
-        for (id, saved) in state.stories {
-            guard let articleIDs = stories[id]?.articleIDs else { continue }
-            // Articles that left the story since can't be new in it.
-            stories[id]?.newArticleIDs = saved.newArticleIDs.intersection(articleIDs)
         }
         return replaced
     }

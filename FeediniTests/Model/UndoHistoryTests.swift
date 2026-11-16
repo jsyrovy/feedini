@@ -63,45 +63,33 @@ struct UndoHistoryTests {
         #expect(history.undoSteps.first?.name == "5")
     }
 
-    @Test func readingStateCoversTheStoriesOfTheArticlesAndRestoresTheirNewMarks() {
+    @Test func readingStateCoversTheArticlesAndRestoresThem() {
         let first = Article.stub(feed: feed.id, read: true)
         let second = Article.stub(feed: feed.id)
-        let other = Article.stub(feed: feed.id)
-        let story = Story(title: "Story", articleIDs: [first.id, second.id], newArticleIDs: [second.id])
-        let unrelated = Story(title: "Other", articleIDs: [other.id], newArticleIDs: [other.id])
-        var library = Library(feeds: [feed], articles: [first, second, other], stories: [story, unrelated])
+        var library = Library(feeds: [feed], articles: [first, second])
 
-        let before = library.readingState(articles: [second.id, UUID()], stories: [unrelated.id, UUID()])
+        let before = library.readingState(articles: [second.id, UUID()])
         #expect(Set(before.articles.keys) == [second.id])
-        #expect(Set(before.stories.keys) == [story.id, unrelated.id])
 
         library.markRead([second.id], at: .hours(1))
         library.setSaved(second.id, at: .hours(1))
-        library.markRead([other.id], at: .hours(1))
-        #expect(library.stories[story.id]?.newArticleIDs == [])
 
         let replaced = library.restore(before)
 
         #expect(library.articles[second.id]?.readAt == nil)
         #expect(library.articles[second.id]?.savedAt == nil)
-        #expect(library.stories[story.id]?.newArticleIDs == [second.id])
-        #expect(library.stories[unrelated.id]?.newArticleIDs == [other.id])
+        #expect(library.articles[first.id]?.isRead == true)
         #expect(replaced.articles[second.id] == .init(readAt: .hours(1), savedAt: .hours(1)))
-        #expect(replaced.stories[unrelated.id]?.newArticleIDs == [])
     }
 
-    @Test func restoringSkipsMissingItemsAndNewMarksOfArticlesThatLeft() {
+    @Test func restoringSkipsMissingArticles() {
         let article = Article.stub(feed: feed.id)
-        let story = Story(title: "Story", articleIDs: [article.id])
-        var library = Library(feeds: [feed], articles: [article], stories: [story])
-        let state = ReadingState(
-            articles: [UUID(): .init(readAt: .hours(1))],
-            stories: [story.id: .init(newArticleIDs: [article.id, UUID()]), UUID(): .init(newArticleIDs: [])])
+        var library = Library(feeds: [feed], articles: [article])
 
-        _ = library.restore(state)
+        let replaced = library.restore(ReadingState(articles: [UUID(): .init(readAt: .hours(1))]))
 
-        #expect(library.stories[story.id]?.newArticleIDs == [article.id])
-        #expect(library.articles.count == 1)
+        #expect(replaced.isEmpty)
+        #expect(library.articles == [article.id: article])
         #expect(library.readingState(articles: [UUID()]).isEmpty)
     }
 }

@@ -74,7 +74,7 @@ struct StoryListView: View {
             }
         case .article(_, let articleID):
             if let article = entry.article(articleID) {
-                ArticleRow(article: article, isNew: entry.newArticleIDs.contains(articleID))
+                ArticleRow(article: article)
             }
         }
     }

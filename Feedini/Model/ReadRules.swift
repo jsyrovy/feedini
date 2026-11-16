@@ -17,8 +17,8 @@ enum ReadRules {
         case markUnread([Article.ID])
     }
 
-    /// Moving onto a row reads it. A collapsed story is read as a whole (its summary covered all its articles); the
-    /// heading of an expanded story reads nothing, its articles are read one by one.
+    /// Moving onto a row reads it. A collapsed story is read as a whole (its summary covered all the articles it
+    /// shows); the heading of an expanded story reads nothing, its articles are read one by one.
     static func articlesRead(byVisiting row: ListRow, of entry: StoryEntry, isExpanded: Bool) -> [Article.ID] {
         switch row {
         case .story:
@@ -29,7 +29,8 @@ enum ReadRules {
         }
     }
 
-    /// M: an article toggles itself; a story becomes unread with all its articles when it is read, otherwise read.
+    /// M: an article toggles itself; a story becomes unread with all the articles it shows when they are read,
+    /// otherwise read.
     static func toggle(_ row: ListRow, of entry: StoryEntry) -> Change {
         switch row {
         case .story:

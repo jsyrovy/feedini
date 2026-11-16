@@ -50,7 +50,6 @@ struct ValidationTests {
                 ]), map: map, language: "en", to: &library)
 
         #expect(library.stories[story.id]?.articleIDs == [existing.id, new[0].id])
-        #expect(library.stories[story.id]?.newArticleIDs == [])
         let games = try #require(library.topics.values.first { $0.name == "Games" })
         #expect(games.description == "Video games.")
         let launch = try #require(storyOf(new[1], in: library))
@@ -138,19 +137,21 @@ struct ValidationTests {
         #expect(storyOf(new[0], in: library)?.topicID == apple.id)
     }
 
-    @Test func anArticleJoiningAReadStoryIsMarkedNew() {
+    @Test func anArticleJoiningAReadStoryMakesItUnreadWithOnlyTheNewArticles() {
         var library = library
         library.markRead([existing.id], at: .hours(0))
 
         AssignValidation.apply(
             output(attach: [.init(storyID: "s1", articleIDs: ["a1", "a2"])]), map: map, language: "en", to: &library)
 
-        #expect(library.stories[story.id]?.newArticleIDs == [new[0].id, new[1].id])
-        // The story is unread again.
+        #expect(library.stories[story.id]?.articleIDs == [existing.id, new[0].id, new[1].id])
+        // The story is unread again and shows only the new articles.
         let entry = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never).first {
             $0.id == .story(story.id)
         }
         #expect(entry?.isRead == false)
+        let shown = Set(entry?.visible(keeping: [])?.articles.map(\.id) ?? [])
+        #expect(shown == [new[0].id, new[1].id])
     }
 
     @Test func anUntitledStoryUsesItsFirstArticle() {

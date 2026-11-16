@@ -45,17 +45,18 @@ struct SummaryStepTests {
         #expect(!SummaryStep.needsSummary([english], language: "en", singleArticles: .otherLanguages))
     }
 
-    @Test func aSummaryIsCurrentForTheSameArticlesAndLanguage() {
-        let a = UUID()
-        let b = UUID()
-        let story = Story(title: "S", articleIDs: [a, b])
-        let summary = Summary(title: "T", text: "X", language: "cs", articleIDs: [b, a])
-        #expect(SummaryStep.isCurrent(summary, of: story, language: "cs"))
-        #expect(!SummaryStep.isCurrent(summary, of: story, language: "en"))
-        #expect(!SummaryStep.isCurrent(nil, of: story, language: "cs"))
-        var grown = story
-        grown.articleIDs.append(UUID())
-        #expect(!SummaryStep.isCurrent(summary, of: grown, language: "cs"))
+    @Test func aSummaryIsCurrentInTheLanguageWhenItCoversEveryUnreadArticle() {
+        let a = article("A", feed: tech)
+        let b = article("B", feed: tech)
+        let summary = Summary(title: "T", text: "X", language: "cs", articleIDs: [b.id, a.id])
+        #expect(SummaryStep.isCurrent(summary, of: [a, b], language: "cs"))
+        #expect(!SummaryStep.isCurrent(summary, of: [a, b], language: "en"))
+        #expect(!SummaryStep.isCurrent(nil, of: [a, b], language: "cs"))
+        // A superset is enough: reading some articles doesn't make it out of date.
+        #expect(SummaryStep.isCurrent(summary, of: [a], language: "cs"))
+        // An unread article it doesn't cover does; a read one doesn't count.
+        #expect(!SummaryStep.isCurrent(summary, of: [a, b, article("C", feed: tech)], language: "cs"))
+        #expect(SummaryStep.isCurrent(summary, of: [a, b, article("C", feed: tech, read: true)], language: "cs"))
     }
 
     @Test func pendingStoriesAreUnreadOnesWithoutACurrentSummaryByPriority() {
@@ -89,6 +90,48 @@ struct SummaryStepTests {
         #expect(pending(.never) == [twoFeeds.id, sameFeed.id])
         #expect(pending(.otherLanguages) == [twoFeeds.id, sameFeed.id, foreign.id])
         #expect(pending(.always) == [twoFeeds.id, single.id, sameFeed.id, foreign.id])
+    }
+
+    @Test func partlyReadStoriesKeepTheirSummaryAndANewArticleNeedsANewOne() {
+        let read = article("Read", feed: tech, hours: -3, read: true)
+        let first = article("First", feed: tech, hours: -2)
+        let second = article("Second", feed: news, hours: -1)
+        let new = article("New", feed: tech, hours: 0)
+        let summary = Summary(
+            title: "T", text: "X", language: "cs", articleIDs: [read.id, first.id, second.id])
+        let partlyRead = Story(title: "1", articleIDs: [read.id, first.id, second.id], summary: summary)
+        var library = Library(feeds: [tech, news], articles: [read, first, second, new], stories: [partlyRead])
+        func pending() -> [Story.ID] {
+            SummaryStep.pending(in: library, language: "cs", singleArticles: .never)
+        }
+
+        #expect(pending().isEmpty)
+        library.stories[partlyRead.id]?.articleIDs.append(new.id)
+        #expect(pending() == [partlyRead.id])
+        // Only the unread articles are sent.
+        let (input, map) = SummaryStep.payload(for: [partlyRead.id], in: library, languageName: "Czech")
+        #expect(input.stories[0].articles.map(\.title) == ["First", "Second", "New"])
+        #expect(map["s1"]?.articles == [first.id, second.id, new.id])
+
+        // One unread article left needs no summary (unless it is in another language and chosen so).
+        library.markRead([first.id, second.id], at: .hours(0))
+        #expect(pending().isEmpty)
+        // Without unread articles a story isn't sent.
+        library.markRead([new.id], at: .hours(0))
+        #expect(SummaryStep.payload(for: [partlyRead.id], in: library, languageName: "Czech").0.stories.isEmpty)
+    }
+
+    @Test func pendingStoriesOfTheSameRankAreOrderedByID() {
+        let articles = (0..<4).map { article("\($0)", feed: tech, hours: -1) }
+        let stories = [
+            Story(title: "1", articleIDs: [articles[0].id, articles[1].id]),
+            Story(title: "2", articleIDs: [articles[2].id, articles[3].id]),
+        ]
+        let library = Library(feeds: [tech], articles: articles, stories: stories)
+
+        #expect(
+            SummaryStep.pending(in: library, language: "cs", singleArticles: .never)
+                == stories.map(\.id).sorted { $0.uuidString < $1.uuidString })
     }
 
     @Test func readStoriesWaitAlsoWithASavedArticle() {

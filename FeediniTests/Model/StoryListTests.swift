@@ -61,7 +61,7 @@ struct StoryListTests {
         #expect(entries[0].title == "Article title")
     }
 
-    @Test func filtersBySelectionAndHidesReadEntriesUnlessKept() {
+    @Test func filtersBySelectionAndHidesReadArticlesUnlessKept() {
         let topic = Topic(name: "Apple", description: "")
         let unread = Article.stub("Unread", feed: tech.id, hours: -1)
         let read = Article.stub("Read", feed: tech.id, hours: -2, read: true)
@@ -73,21 +73,26 @@ struct StoryListTests {
             feeds: [tech, news], articles: [unread, read, keptRead, mixedTech, mixedNews], stories: [mixed],
             topics: [topic])
         let all = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never)
-        let keeping: Set<StoryEntry.ID> = [.loose(keptRead.id)]
+        let keeping: Set<Article.ID> = [keptRead.id]
 
-        #expect(StoryList.entries(all, matching: .all, folders: [:]).map(\.title) == ["Unread", "Mixed"])
+        // The mixed story shows only its unread article, as that article.
+        #expect(StoryList.entries(all, matching: .all, folders: [:]).map(\.title) == ["Unread", "Mixed news"])
         #expect(
             StoryList.entries(all, matching: .all, folders: [:], keeping: keeping).map(\.title) == [
-                "Unread", "Kept", "Mixed",
+                "Unread", "Kept", "Mixed news",
             ])
-        // A story shows in every feed it has an article of.
-        #expect(StoryList.entries(all, matching: .feed(tech.id), folders: [:]).map(\.title) == ["Unread", "Mixed"])
+        // A story shows in every feed it has an article of that it shows: not in Tech for its read article.
+        #expect(StoryList.entries(all, matching: .feed(tech.id), folders: [:]).map(\.title) == ["Unread"])
         #expect(
             StoryList.entries(all, matching: .feed(news.id), folders: [:], keeping: keeping).map(\.title) == [
-                "Kept", "Mixed",
+                "Kept", "Mixed news",
             ])
-        #expect(StoryList.entries(all, matching: .topic(topic.id), folders: [:]).map(\.title) == ["Mixed"])
+        #expect(StoryList.entries(all, matching: .topic(topic.id), folders: [:]).map(\.title) == ["Mixed news"])
         #expect(StoryList.entries(all, matching: .topic(UUID()), folders: [:]).isEmpty)
+        // Read while shown, it stays in the story and in its feed.
+        let kept = StoryList.entries(all, matching: .feed(tech.id), folders: [:], keeping: [mixedTech.id])
+        #expect(kept.map(\.title) == ["Unread", "Mixed"])
+        #expect(kept[1].articles.count == 2)
     }
 
     @Test func countsUnreadEntriesPerSidebarItem() {
@@ -117,7 +122,8 @@ struct StoryListTests {
         #expect(counts.count(for: .topic(games.id)) == 2)
         #expect(counts.count(for: .topic(empty.id)) == 0)
         #expect(counts.count(for: .feed(tech.id)) == 2)
-        #expect(counts.count(for: .feed(news.id)) == 3)
+        // Not the story with a read article of News only.
+        #expect(counts.count(for: .feed(news.id)) == 2)
         #expect(StoryList.topics(in: library, counts: counts).map(\.name) == ["Games", "Apple"])
     }
 
@@ -215,9 +221,11 @@ struct StoryListTests {
         let a = Article.stub("A", feed: tech.id, hours: -1)
         let b = Article.stub("B", feed: news.id, hours: -2, read: true)
         let loose = Article.stub("Loose", feed: tech.id, hours: -3)
-        let story = Story(title: "S", articleIDs: [a.id, b.id], newArticleIDs: [a.id])
+        let summary = Summary(title: "Summary", text: "Gist.", language: "cs", articleIDs: [a.id])
+        let story = Story(title: "S", articleIDs: [a.id, b.id], summary: summary)
         var library = Library(feeds: [tech, news], articles: [a, b, loose], stories: [story])
         var entries = StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never)
+        #expect(entries[0].isSummaryCurrent)
 
         library.markRead([a.id, loose.id], at: .hours(0))
         #expect(!StoryList.updateReadingState(of: [a.id, loose.id], in: &entries, library: library))
@@ -226,6 +234,71 @@ struct StoryListTests {
         library.markUnread([b.id])
         StoryList.updateReadingState(of: [b.id], in: &entries, library: library)
         #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never))
+        // The summary doesn't cover the unread article.
+        #expect(!entries[0].isSummaryCurrent)
+    }
+
+    @Test func aStoryShowsOnlyItsVisibleArticlesWithTheirTitleAndSummary() throws {
+        let read = Article.stub("Read", feed: tech.id, hours: -3, read: true, language: "en")
+        let older = Article.stub("Older", feed: news.id, hours: -2, language: "en")
+        let newer = Article.stub("Newer", feed: tech.id, hours: -1, language: "en")
+        let summary = Summary(
+            title: "Summary", text: "Gist.", language: "en", articleIDs: [read.id, older.id, newer.id])
+        let story = Story(title: "Story", articleIDs: [read.id, older.id, newer.id], summary: summary)
+        let library = Library(feeds: [tech, news], articles: [read, older, newer], stories: [story])
+        let all = try #require(
+            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never).first)
+
+        let unread = try #require(all.visible(keeping: []))
+        #expect(unread.articles.map(\.id) == [newer.id, older.id])
+        #expect(unread.title == "Summary")
+        #expect(unread.summary == summary)
+        #expect(unread.isSummaryCurrent)
+        #expect(unread.feedIDs == [tech.id, news.id])
+        #expect(all.visible(keeping: [read.id]) == all)
+
+        // One article left: it behaves like an article, with its own title and no summary.
+        var oneLeft = all
+        oneLeft.show(
+            all.articles.map { article in
+                var article = article
+                if article.id == older.id {
+                    article.readAt = .hours(0)
+                }
+                return article
+            })
+        let single = try #require(oneLeft.visible(keeping: []))
+        #expect(single.articles.map(\.id) == [newer.id])
+        #expect(!single.isMultiArticle)
+        #expect(single.title == "Newer")
+        #expect(single.summary == nil)
+        #expect(!single.needsSummary)
+        #expect(single.singleArticle(at: .story(single.id)) == newer)
+
+        // In another language a single article needs its summary (a translation).
+        var inCzech = oneLeft
+        inCzech.story?.summaryLanguage = "cs"
+        inCzech.story?.singleArticles = .otherLanguages
+        inCzech.show(inCzech.articles)
+        let translated = try #require(inCzech.visible(keeping: []))
+        #expect(translated.needsSummary)
+        #expect(translated.title == "Summary")
+        #expect(!translated.isSummaryCurrent)
+
+        // Several articles without a summary take the story's title; all read: nothing to show.
+        var withoutSummary = all
+        withoutSummary.story?.summary = nil
+        withoutSummary.show(all.articles)
+        #expect(withoutSummary.visible(keeping: [])?.title == "Story")
+        var allRead = all
+        allRead.show(
+            all.articles.map { article in
+                var article = article
+                article.readAt = .hours(0)
+                return article
+            })
+        #expect(allRead.visible(keeping: []) == nil)
+        #expect(allRead.visible(keeping: [newer.id])?.title == "Newer")
     }
 
     @Test func updatingTheSavingMatchesRebuildingAndSaysSo() {

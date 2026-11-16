@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A story (or a loose article) in the list.
+/// A story (or a loose article) in the list, with the articles it shows (`StoryEntry.visible(keeping:)`).
 struct StoryRow: View {
     @Environment(AppModel.self) private var model
     let entry: StoryEntry
@@ -48,11 +48,6 @@ struct StoryRow: View {
                     }
                     Text(meta(sources: sources))
                         .lineLimit(1)
-                    if !entry.newArticleIDs.isEmpty {
-                        Text("+\(entry.newArticleIDs.count) new")
-                            .foregroundStyle(Color.accentColor)
-                            .fontWeight(.semibold)
-                    }
                     if isWaitingForAI {
                         Image(systemName: "sparkles")
                             .foregroundStyle(.tertiary)
@@ -102,7 +97,6 @@ struct StoryRow: View {
 struct ArticleRow: View {
     @Environment(AppModel.self) private var model
     let article: Article
-    let isNew: Bool
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -120,9 +114,6 @@ struct ArticleRow: View {
                         SourceLabel(title: source)
                     }
                     Text(RelativeTime.short(article.date, now: .now))
-                    if isNew {
-                        Text("new").foregroundStyle(Color.accentColor).fontWeight(.semibold)
-                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

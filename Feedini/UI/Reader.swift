@@ -1,8 +1,9 @@
 import AppKit
 import Observation
 
-/// The state of the main window: sidebar selection, the cursor in the story list, expanded stories and the source
-/// page shown in the detail. Carries out the keyboard decisions of `KeyboardNavigation` and the read rules.
+/// The state of the main window: sidebar selection, the cursor in the story list, expanded stories, the articles
+/// read while the list is shown and the source page shown in the detail. Carries out the keyboard decisions of
+/// `KeyboardNavigation` and the read rules.
 @MainActor
 @Observable
 final class Reader {
@@ -17,8 +18,9 @@ final class Reader {
     }
     private(set) var cursor: ListRow?
     private(set) var expanded: Set<StoryEntry.ID> = []
-    /// Entries read while shown; they stay in the list until the selection changes or a refresh.
-    private(set) var kept: Set<StoryEntry.ID> = []
+    /// Articles read while the list is shown; they stay in it (and in their stories) until the selection changes or a
+    /// refresh.
+    private(set) var keptArticles: Set<Article.ID> = []
     /// Articles removed from Saved while it was shown, with their save dates: they stay in their place like kept
     /// entries.
     private(set) var unsaved: [Article.ID: Date] = [:]
@@ -67,7 +69,8 @@ final class Reader {
         let entries =
             selection == .saved
             ? model.savedEntries(keeping: unsaved)
-            : StoryList.entries(model.entries, matching: selection, folders: model.folderIDsByFeed, keeping: kept)
+            : StoryList.entries(
+                model.entries, matching: selection, folders: model.folderIDsByFeed, keeping: keptArticles)
         return StoryList.ordered(entries, model.preferences.listOrder)
     }
 
@@ -75,8 +78,14 @@ final class Reader {
         KeyboardNavigation.rows(entries, expanded: expanded)
     }
 
+    /// The entry with the articles it shows (`StoryEntry.visible(keeping:)`); `nil` when it shows none. Saved shows
+    /// its articles read or not.
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
-        model.entry(id)
+        guard let entry = model.entry(id) else { return nil }
+        if case .savedArticle = id {
+            return entry
+        }
+        return entry.visible(keeping: keptArticles)
     }
 
     var opensInWindow: Bool {
@@ -96,7 +105,7 @@ final class Reader {
         }
         let read = ReadRules.articlesRead(byVisiting: row, of: entry, isExpanded: expanded.contains(entry.id))
         if !read.isEmpty {
-            kept.insert(entry.id)
+            keptArticles.formUnion(read)
             recording("Mark as Read", articles: read, row: row) { model.markRead(read) }
         }
     }
@@ -145,9 +154,10 @@ final class Reader {
 
     func toggleRead(_ row: ListRow) {
         guard let entry = entry(row.entryID) else { return }
-        kept.insert(entry.id)
         switch ReadRules.toggle(row, of: entry) {
-        case .markRead(let ids): recording("Mark as Read", articles: ids, row: row) { model.markRead(ids) }
+        case .markRead(let ids):
+            keptArticles.formUnion(ids)
+            recording("Mark as Read", articles: ids, row: row) { model.markRead(ids) }
         case .markUnread(let ids): recording("Mark as Unread", articles: ids, row: row) { model.markUnread(ids) }
         }
     }
@@ -186,7 +196,7 @@ final class Reader {
         guard selection != .saved else { return }
         let entries = entries
         let ids = entries.flatMap { $0.articles.filter { !$0.isRead }.map(\.id) }
-        kept = []
+        keptArticles = []
         cursor = nil
         shown = nil
         recording("Mark All as Read", articles: ids, row: entries.first.map { .story($0.id) }) { model.markRead(ids) }
@@ -218,11 +228,11 @@ final class Reader {
         }
     }
 
-    /// Moves the cursor onto the row of an undone step – without visiting it, which would read it again. It stays in
-    /// the list like an entry read there. A row that isn't in the current list (another selection) isn't shown.
+    /// Moves the cursor onto the row of an undone step – without visiting it, which would read it again. Its articles
+    /// stay in the list like articles read there. A row that isn't in the current list (another selection) isn't shown.
     private func show(_ step: UndoHistory.Step?) {
-        guard let row = step?.row else { return }
-        kept.insert(row.entryID)
+        guard let step, let row = step.row else { return }
+        keptArticles.formUnion(step.state.articles.keys)
         if case .article = row {
             expanded.insert(row.entryID)
         }
@@ -302,7 +312,7 @@ final class Reader {
     private func resetList() {
         cursor = nil
         shown = nil
-        kept = []
+        keptArticles = []
         unsaved = [:]
     }
 
@@ -314,8 +324,10 @@ final class Reader {
         history = UndoHistory()
     }
 
+    /// After a refresh the list shows only unread articles, except those of the entry under the cursor: nothing
+    /// changes under it.
     private func dropReadEntries() {
-        kept = cursor.map { [$0.entryID] } ?? []
+        keptArticles = cursor.flatMap { entry($0.entryID) }.map { Set($0.articles.map(\.id)) } ?? []
         unsaved = unsaved.filter { .savedArticle($0.key) == cursor?.entryID }
     }
 
@@ -326,24 +338,18 @@ final class Reader {
         }
     }
 
-    /// When the AI puts a loose article into a story, the list entry changes its ID. The cursor follows the article
-    /// (into the expanded story if it has several articles), and kept entries stay kept, without reading anything.
+    /// When the AI puts a loose article into a story, the list entry changes its ID. The cursor follows the article:
+    /// into the expanded story when that shows several articles, else onto the story's row. Nothing is read by that.
     private func followArticlesIntoStories() {
-        let isLoose: (StoryEntry.ID) -> Bool = { if case .loose = $0 { true } else { false } }
-        guard cursor.map({ isLoose($0.entryID) }) == true || kept.contains(where: isLoose) else { return }
-        let index = model.library.storyIDsByArticle()
-        kept = Set(
-            kept.map { id in
-                if case .loose(let article) = id, let story = index[article] { .story(story) } else { id }
-            })
-        guard let cursor, case .loose(let article) = cursor.entryID, let storyID = index[article],
-            let story = model.library.stories[storyID]
+        guard let cursor, case .loose(let article) = cursor.entryID,
+            let storyID = model.library.storyIDsByArticle()[article]
         else { return }
-        if story.articleIDs.count > 1 {
-            expanded.insert(.story(storyID))
-            self.cursor = .article(.story(storyID), article)
+        let id = StoryEntry.ID.story(storyID)
+        if entry(id)?.isMultiArticle == true {
+            expanded.insert(id)
+            self.cursor = .article(id, article)
         } else {
-            self.cursor = .story(.story(storyID))
+            self.cursor = .story(id)
         }
     }
 }

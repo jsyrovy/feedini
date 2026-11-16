@@ -73,7 +73,8 @@ final class AppModel: LibraryHost {
         }
     }
 
-    /// All stories and loose articles, newest first.
+    /// All stories and loose articles, newest first, with all their articles (`StoryEntry.visible(keeping:)` leaves
+    /// out the read ones).
     var entries: [StoryEntry] { cache.entries }
 
     /// The saved articles, most recently saved first, with articles removed from Saved while it was shown at the
@@ -404,9 +405,7 @@ final class AppModel: LibraryHost {
     /// Puts the reading state back (⌘Z); returns the state it replaced, `nil` when none of the items exists anymore.
     func restore(_ state: ReadingState) -> ReadingState? {
         var replaced = ReadingState()
-        changeReadingState(of: Array(state.articles.keys), stories: Array(state.stories.keys)) {
-            replaced = $0.restore(state)
-        }
+        changeReadingState(of: Array(state.articles.keys)) { replaced = $0.restore(state) }
         return replaced.isEmpty ? nil : replaced
     }
 
@@ -425,14 +424,12 @@ final class AppModel: LibraryHost {
 
     /// Patches the cached entries instead of building them again: reading (with J/K on every key) and saving change
     /// neither the order nor the grouping. Nor do they move articles into stories, so the reader isn't told.
-    private func changeReadingState(
-        of ids: [Article.ID] = [], stories: [Story.ID] = [], _ change: (inout Library) -> Void
-    ) {
-        guard !ids.isEmpty || !stories.isEmpty else { return }
+    private func changeReadingState(of ids: [Article.ID], _ change: (inout Library) -> Void) {
+        guard !ids.isEmpty else { return }
         let cache = entriesCache
         apply(change, notifiesReader: false)
         if var cache {
-            cache.updateReadingState(of: ids, stories: stories, library: library)
+            cache.updateReadingState(of: ids, library: library)
             entriesCache = cache
         }
     }
@@ -494,8 +491,8 @@ private struct EntriesCache {
         recount()
     }
 
-    mutating func updateReadingState(of ids: [Article.ID], stories: [Story.ID], library: Library) {
-        if StoryList.updateReadingState(of: ids, stories: stories, in: &entries, library: library) {
+    mutating func updateReadingState(of ids: [Article.ID], library: Library) {
+        if StoryList.updateReadingState(of: ids, in: &entries, library: library) {
             buildSaved(library)
         } else {
             StoryList.updateReadingState(of: ids, in: &saved, library: library)

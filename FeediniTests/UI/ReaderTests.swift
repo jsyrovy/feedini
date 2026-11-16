@@ -271,7 +271,7 @@ struct ReaderFollowsArticlesTests {
         model.update { $0.stories[story.id] = story }
 
         #expect(reader.cursor == .story(.story(story.id)))
-        #expect(reader.kept.contains(.story(story.id)))
+        #expect(reader.keptArticles.contains(first.id))
         #expect(reader.entries.contains { $0.id == .story(story.id) })
     }
 }

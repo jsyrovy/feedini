@@ -8,33 +8,29 @@ struct Story: Codable, Sendable, Hashable, Identifiable {
     var topicID: Topic.ID?
     /// In the order they joined the story.
     var articleIDs: [Article.ID]
-    /// Articles that joined after the story had been read ("+1 new"); cleared once the story is read again.
-    var newArticleIDs: Set<Article.ID>
     /// The AI summary, if the story needs one and it has been written.
     var summary: Summary?
 
     init(
-        id: UUID = UUID(), title: String, topicID: Topic.ID? = nil, articleIDs: [Article.ID],
-        newArticleIDs: Set<Article.ID> = [], summary: Summary? = nil
+        id: UUID = UUID(), title: String, topicID: Topic.ID? = nil, articleIDs: [Article.ID], summary: Summary? = nil
     ) {
         self.id = id
         self.title = title
         self.topicID = topicID
         self.articleIDs = articleIDs
-        self.newArticleIDs = newArticleIDs
         self.summary = summary
     }
 }
 
-/// What the AI wrote about a story: a title for the whole story and what its articles say together (or, for one
-/// article in another language, a translated gist).
+/// What the AI wrote about a story: a title and what its unread articles said together when it was written (or, for
+/// one article in another language, a translated gist).
 struct Summary: Codable, Sendable, Hashable {
     var title: String
     /// Sentences, or lines starting with "- " for bigger stories.
     var text: String
     /// The language code it was written in.
     var language: String
-    /// The articles it covered; a story with other articles needs a new one.
+    /// The articles it covered; a story with an unread article it didn't cover needs a new one.
     var articleIDs: [Article.ID]
 }
 

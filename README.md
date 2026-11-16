@@ -12,7 +12,8 @@ New articles show up right away; grouping and summaries arrive in the background
 ## Features
 
 - **Stories, not duplicates.** Ten articles about one product launch from three sites are one story with one
-  summary; expand it to read the articles one by one.
+  summary; expand it to read the articles one by one. When a new article joins a story you have read, the story
+  comes back with just what is new.
 - **Topics** that the AI keeps stable as new articles arrive, next to your feeds in the sidebar.
 - **Summaries in your language** for stories with several articles. Single articles keep their own text, unless you
   choose to summarize those in other languages (a translated gist) or all of them.

@@ -30,6 +30,10 @@ enum ListOrder: String, CaseIterable, Sendable {
 }
 
 /// One item of the story list: a story, or an article no story holds yet (shown like a story with one article).
+///
+/// A story shows only some of its articles (`visible(keeping:)`): the unread ones and those read while the list is
+/// shown. Its title, summary and everything else (the number of articles, sources, expanding, keys) follow them; with
+/// one article shown it behaves like an article.
 struct StoryEntry: Identifiable, Equatable, Sendable {
     enum ID: Hashable, Sendable {
         case story(Story.ID)
@@ -39,19 +43,29 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
         case savedArticle(Article.ID)
     }
 
+    /// What the entry of a story is built from, to show some of its articles (`show(_:)`).
+    struct StoryInfo: Equatable, Sendable {
+        /// The story's own (AI) title: the title of several articles without a summary.
+        var title: String
+        /// The story's stored summary; it may be out of date.
+        var summary: Summary?
+        var summaryLanguage: String
+        var singleArticles: SingleArticleSummaries
+    }
+
     var id: ID
     var title: String
     var topicID: Topic.ID?
-    /// Newest first.
+    /// The articles shown, newest first.
     var articles: [Article]
-    /// Articles that joined after the story had been read ("+1 new").
-    var newArticleIDs: Set<Article.ID>
-    /// Whether the story gets an AI summary in the summary language (`SummaryStep.needsSummary`).
+    /// Whether the articles get an AI summary in the summary language (`SummaryStep.needsSummary`).
     var needsSummary = false
-    /// The summary to show (`nil` when there is none or the story doesn't need one); it may be out of date.
+    /// The summary to show (`nil` when there is none or the articles don't need one); it may be out of date.
     var summary: Summary?
-    /// The summary covers exactly these articles in the summary language.
+    /// The summary is in the summary language and covers every unread article.
     var isSummaryCurrent = false
+    /// `nil` for an article without a story and a saved article.
+    var story: StoryInfo?
 
     /// The date of the newest article.
     var date: Date { articles.first?.date ?? .distantPast }
@@ -75,6 +89,33 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
 
     func article(_ id: Article.ID) -> Article? {
         articles.first { $0.id == id }
+    }
+
+    /// Shows the articles (newest first): a story takes its title and summary from them – the summary when they need
+    /// one, else the title of a single article or the story's own.
+    mutating func show(_ articles: [Article]) {
+        self.articles = articles
+        guard let story else { return }
+        needsSummary = SummaryStep.needsSummary(
+            articles, language: story.summaryLanguage, singleArticles: story.singleArticles)
+        summary = needsSummary ? story.summary : nil
+        title = summary?.title ?? (articles.count == 1 ? articles[0].title : story.title)
+        isSummaryCurrent = SummaryStep.isCurrent(summary, of: articles, language: story.summaryLanguage)
+    }
+
+    /// The entry with only the articles to show: unread ones and those in `keeping` (read while the list is shown);
+    /// `nil` when none is left.
+    func visible(keeping: Set<Article.ID>) -> StoryEntry? {
+        let isShown = { (article: Article) in !article.isRead || keeping.contains(article.id) }
+        // The usual cases (all unread, all read) without building anything.
+        if articles.allSatisfy(isShown) {
+            return articles.isEmpty ? nil : self
+        }
+        let shown = articles.filter(isShown)
+        guard !shown.isEmpty else { return nil }
+        var entry = self
+        entry.show(shown)
+        return entry
     }
 
     /// When the article S saves on the row (`singleArticle(at:)`) was saved; `nil` when it isn't saved or the row
@@ -132,25 +173,25 @@ enum StoryList {
         }.map(\.entry)
     }
 
-    /// The entry of a story; `nil` when none of its articles exists.
+    /// The entry of a story with all its articles (`StoryEntry.visible(keeping:)` leaves out the read ones); `nil`
+    /// when none of its articles exists.
     static func entry(
         for story: Story, in library: Library, summaryLanguage: String, singleArticles: SingleArticleSummaries
     ) -> StoryEntry? {
         let articles = library.articles(of: story)
         guard !articles.isEmpty else { return nil }
-        let needsSummary = SummaryStep.needsSummary(
-            articles, language: summaryLanguage, singleArticles: singleArticles)
-        let summary = needsSummary ? story.summary : nil
-        let title = summary?.title ?? (articles.count == 1 ? articles[0].title : story.title)
-        return StoryEntry(
-            id: .story(story.id), title: title, topicID: story.topicID, articles: newestFirst(articles),
-            newArticleIDs: story.newArticleIDs, needsSummary: needsSummary, summary: summary,
-            isSummaryCurrent: SummaryStep.isCurrent(summary, of: story, language: summaryLanguage))
+        var entry = StoryEntry(
+            id: .story(story.id), title: story.title, topicID: story.topicID, articles: [],
+            story: StoryEntry.StoryInfo(
+                title: story.title, summary: story.summary, summaryLanguage: summaryLanguage,
+                singleArticles: singleArticles))
+        entry.show(newestFirst(articles))
+        return entry
     }
 
     /// The entry of an article no story holds.
     static func entry(for article: Article) -> StoryEntry {
-        StoryEntry(id: .loose(article.id), title: article.title, topicID: nil, articles: [article], newArticleIDs: [])
+        StoryEntry(id: .loose(article.id), title: article.title, topicID: nil, articles: [article])
     }
 
     /// The saved articles, most recently saved first (ties: by title), each on its own (`savedEntry`).
@@ -166,37 +207,29 @@ enum StoryList {
 
     /// A saved article on its own (`.savedArticle`): its title and text, never its story's.
     static func savedEntry(for article: Article) -> StoryEntry {
-        StoryEntry(
-            id: .savedArticle(article.id), title: article.title, topicID: nil, articles: [article], newArticleIDs: [])
+        StoryEntry(id: .savedArticle(article.id), title: article.title, topicID: nil, articles: [article])
     }
 
-    /// Updates the entries holding the articles, and those of the stories, after their reading state (read and save
-    /// dates of the articles, "new" marks of the stories) changed – which changes neither the order nor the grouping – instead of building all entries
-    /// again (reading with J/K changes it on every key). Returns whether the saving of an entry changed.
+    /// Updates the entries holding the articles after their reading state (read and save dates) changed – which
+    /// changes neither the order nor the grouping – instead of building all entries again (reading with J/K changes it
+    /// on every key). Returns whether the saving of an entry changed.
     @discardableResult
     static func updateReadingState(
-        of articleIDs: some Sequence<Article.ID>, stories storyIDs: some Sequence<Story.ID> = [Story.ID](),
-        in entries: inout [StoryEntry], library: Library
+        of articleIDs: some Sequence<Article.ID>, in entries: inout [StoryEntry], library: Library
     ) -> Bool {
         let wanted = Set(articleIDs)
-        let wantedStories = Set(storyIDs)
         var savingChanged = false
-        for index in entries.indices {
-            let storyID: Story.ID? = if case .story(let id) = entries[index].id { id } else { nil }
-            guard
-                storyID.map(wantedStories.contains) == true
-                    || entries[index].articles.contains(where: { wanted.contains($0.id) })
-            else { continue }
-            for position in entries[index].articles.indices {
-                if let article = library.articles[entries[index].articles[position].id] {
-                    savingChanged = savingChanged || entries[index].articles[position].savedAt != article.savedAt
-                    entries[index].articles[position].readAt = article.readAt
-                    entries[index].articles[position].savedAt = article.savedAt
+        for index in entries.indices where entries[index].articles.contains(where: { wanted.contains($0.id) }) {
+            var articles = entries[index].articles
+            for position in articles.indices {
+                if let article = library.articles[articles[position].id] {
+                    savingChanged = savingChanged || articles[position].savedAt != article.savedAt
+                    articles[position].readAt = article.readAt
+                    articles[position].savedAt = article.savedAt
                 }
             }
-            if let storyID, let story = library.stories[storyID] {
-                entries[index].newArticleIDs = story.newArticleIDs
-            }
+            // Whether the summary is current depends on the unread articles.
+            entries[index].show(articles)
         }
         return savingChanged
     }
@@ -210,19 +243,20 @@ enum StoryList {
         }
     }
 
-    /// The entries shown for a sidebar selection: unread ones, plus those in `keeping` (read while the list was
-    /// shown, so they don't vanish under the cursor). `folders` is the folder of every feed in one
-    /// (`Library.folderIDsByFeed`).
+    /// The entries shown for a sidebar selection, with the articles they show: unread ones, plus those in `keeping`
+    /// (read while the list was shown, so they don't vanish under the cursor). An entry without any isn't shown.
+    /// `folders` is the folder of every feed in one (`Library.folderIDsByFeed`).
     static func entries(
         _ all: [StoryEntry], matching selection: SidebarSelection, folders: [Feed.ID: Folder.ID],
-        keeping: Set<StoryEntry.ID> = []
+        keeping: Set<Article.ID> = []
     ) -> [StoryEntry] {
-        all.filter { entry in
-            (!entry.isRead || keeping.contains(entry.id)) && matches(entry, selection, folders: folders)
+        all.compactMap { entry in
+            entry.visible(keeping: keeping).flatMap { matches($0, selection, folders: folders) ? $0 : nil }
         }
     }
 
-    /// A folder shows every story with an article of one of its feeds.
+    /// A feed shows every story with an article of it, a folder every story with an article of one of its feeds
+    /// (of the articles the entry shows).
     static func matches(
         _ entry: StoryEntry, _ selection: SidebarSelection, folders: [Feed.ID: Folder.ID]
     ) -> Bool {
@@ -257,8 +291,8 @@ enum StoryList {
     }
 
     /// Unread entries per sidebar item, matching what `entries` shows: a story counts once in every feed it has an
-    /// article of, and once in every folder of those feeds (not once per feed). Saved is left to the caller; saved
-    /// links count nowhere else.
+    /// unread article of, and once in every folder of those feeds (not once per feed). Saved is left to the caller;
+    /// saved links count nowhere else.
     static func unreadCounts(_ all: [StoryEntry], folders: [Feed.ID: Folder.ID]) -> Counts {
         var counts = Counts()
         for entry in all where !entry.isRead && !entry.isSavedLink {
@@ -266,8 +300,11 @@ enum StoryList {
             if let topic = entry.topicID {
                 counts.topics[topic, default: 0] += 1
             }
+            var countedFeeds: [Feed.ID] = []
             var countedFolders: [Folder.ID] = []
-            for feed in entry.feedIDs {
+            for article in entry.articles where !article.isRead && !countedFeeds.contains(article.feedID) {
+                let feed = article.feedID
+                countedFeeds.append(feed)
                 counts.feeds[feed, default: 0] += 1
                 if let folder = folders[feed], !countedFolders.contains(folder) {
                     countedFolders.append(folder)

@@ -5,16 +5,13 @@ import Testing
 
 extension ReaderTests {
     @Test func undoTakesBackReadingStepByStepAndShowsTheRowWithoutReadingIt() {
-        model.update { $0.stories[story.id]?.newArticleIDs = [second.id] }
         reader.handle(.next)
         reader.handle(.next)
         #expect(isRead(lone) && isRead(first) && isRead(second))
-        #expect(model.library.stories[story.id]?.newArticleIDs == [])
         #expect(reader.undoName == "Mark as Read")
 
         reader.undo()
         #expect(!isRead(first) && !isRead(second))
-        #expect(model.library.stories[story.id]?.newArticleIDs == [second.id])
         #expect(reader.cursor == .story(.story(story.id)))
         #expect(isRead(lone))
 

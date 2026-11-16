@@ -41,29 +41,15 @@ struct Library: Sendable, Equatable {
 
     // MARK: Read state
 
-    /// Marks the articles read. A story whose articles are all read loses its "new" marks.
     mutating func markRead(_ ids: some Sequence<Article.ID>, at date: Date) {
-        var changed = false
         for id in ids where articles[id]?.readAt == nil {
             articles[id]?.readAt = date
-            changed = true
-        }
-        if changed {
-            clearNewMarksOfReadStories()
         }
     }
 
     mutating func markUnread(_ ids: some Sequence<Article.ID>) {
         for id in ids {
             articles[id]?.readAt = nil
-        }
-    }
-
-    private mutating func clearNewMarksOfReadStories() {
-        for (id, story) in stories where !story.newArticleIDs.isEmpty {
-            if story.articleIDs.allSatisfy({ articles[$0]?.isRead ?? true }) {
-                stories[id]?.newArticleIDs = []
-            }
         }
     }
 
@@ -97,7 +83,6 @@ struct Library: Sendable, Equatable {
                 stories[id] = nil
             } else {
                 stories[id]?.articleIDs = remaining
-                stories[id]?.newArticleIDs.subtract(articleIDs)
             }
         }
     }

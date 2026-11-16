@@ -27,26 +27,11 @@ struct LibraryTests {
         #expect(library.articles[read.id]?.isRead == false)
     }
 
-    @Test func readingTheWholeStoryClearsItsNewMarks() {
-        let first = Article.stub(feed: feed.id, read: true)
-        let second = Article.stub(feed: feed.id)
-        let third = Article.stub(feed: feed.id)
-        let story = Story(
-            title: "Story", articleIDs: [first.id, second.id, third.id], newArticleIDs: [second.id, third.id])
-        var library = Library(feeds: [feed], articles: [first, second, third], stories: [story])
-
-        library.markRead([second.id], at: .hours(1))
-        #expect(library.stories[story.id]?.newArticleIDs == [second.id, third.id])
-
-        library.markRead([third.id], at: .hours(1))
-        #expect(library.stories[story.id]?.newArticleIDs == [])
-    }
-
     @Test func removingAFeedRemovesItsArticlesTombstonesAndEmptiedStories() {
         let mine = Article.stub(feed: feed.id)
         let theirs = Article.stub(feed: other.id)
         let onlyMine = Article.stub(feed: feed.id)
-        let shared = Story(title: "Shared", articleIDs: [mine.id, theirs.id], newArticleIDs: [mine.id])
+        let shared = Story(title: "Shared", articleIDs: [mine.id, theirs.id])
         let alone = Story(title: "Alone", articleIDs: [onlyMine.id])
         var library = Library(feeds: [feed, other], articles: [mine, theirs, onlyMine], stories: [shared, alone])
         let kept = Tombstone(feedID: other.id, key: "k", lastSeen: referenceDate)
@@ -61,7 +46,6 @@ struct LibraryTests {
         #expect(library.feeds == [other])
         #expect(Set(library.articles.keys) == [theirs.id])
         #expect(library.stories[shared.id]?.articleIDs == [theirs.id])
-        #expect(library.stories[shared.id]?.newArticleIDs == [])
         #expect(library.stories[alone.id] == nil)
         #expect(Array(library.tombstones.values) == [kept])
         #expect(library.pageTextIDs == [theirs.id])
@@ -92,7 +76,8 @@ struct LibraryTests {
     @Test func codableRoundTripKeepsEverything() throws {
         let article = Article.stub(feed: feed.id, read: true)
         let topic = Topic(name: "Apple", description: "News about Apple.")
-        let story = Story(title: "Story", topicID: topic.id, articleIDs: [article.id], newArticleIDs: [article.id])
+        let summary = Summary(title: "Title", text: "Gist.", language: "en", articleIDs: [article.id])
+        let story = Story(title: "Story", topicID: topic.id, articleIDs: [article.id], summary: summary)
         var library = Library(feeds: [feed], articles: [article], stories: [story], topics: [topic])
         let tombstone = Tombstone(feedID: feed.id, key: "gone", lastSeen: referenceDate)
         library.tombstones[tombstone.id] = tombstone
