@@ -286,7 +286,8 @@ Implementation:
 - `KeyboardNavigation.action` decides what a key does from the cursor, the rows, the expanded stories, the default
   way of opening pages and the shown page; `Reader.handle` carries it out. The story list's `onKeyPress` maps keys
   (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
-  any keyboard layout. A double click opens like V / Enter.
+  any keyboard layout. A mapped key is always used up, also when it does nothing: the list's type-to-select would
+  otherwise move onto (and read) a row starting with that letter. A double click opens like V / Enter.
 - `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles) before a change and records it in `UndoHistory` (its callers only make changes that change
   something); undo and redo are `Library.restore`, which returns the replaced state for the other stack
   (`AppModel.restore` patches the cached entries like reading and saving). `UndoCommands` replaces Edit → Undo / Redo: while the main

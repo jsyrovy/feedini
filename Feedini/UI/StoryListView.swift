@@ -21,7 +21,10 @@ struct StoryListView: View {
             .focused($isFocused)
             .onKeyPress(phases: .down) { press in
                 guard let key = Self.listKey(press) else { return .ignored }
-                return reader.handle(key) ? .handled : .ignored
+                // A key of the list is used up even when it does nothing here (S on a story with several
+                // articles): the list's type-to-select would otherwise jump to – and read – a row starting with it.
+                reader.handle(key)
+                return .handled
             }
             .contextMenu(forSelectionType: ListRow.self) { rows in
                 if let row = rows.first {
