@@ -82,10 +82,6 @@ struct ArticleDetail: View {
                     .textSelection(.enabled)
                 Text(meta)
                     .foregroundStyle(.secondary)
-                if let partOf = story?.partOf {
-                    Text("Part of: \(partOf)")
-                        .foregroundStyle(.secondary)
-                }
                 if article.isSavedLink {
                     Label(
                         "Saved link, added \(article.firstSeen.formatted(date: .abbreviated, time: .shortened))",

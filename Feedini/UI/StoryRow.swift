@@ -36,7 +36,7 @@ struct StoryRow: View {
                             Text("+\(sources.count - 3)")
                         }
                     }
-                    if entry.savedAt(at: .story(entry.id)) != nil {
+                    if entry.containsSaved {
                         SavedMark()
                     }
                     if !entry.isMultiArticle, let article = entry.articles.first {
@@ -61,12 +61,6 @@ struct StoryRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                if let partOf = entry.partOf {
-                    Text("Part of: \(partOf)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
             }
         }
         .padding(.vertical, 3)
@@ -150,7 +144,7 @@ struct UnreadDot: View {
     }
 }
 
-/// Marks a saved story or article.
+/// Marks a saved article, or a story with one.
 struct SavedMark: View {
     var body: some View {
         Image(systemName: "bookmark.fill")

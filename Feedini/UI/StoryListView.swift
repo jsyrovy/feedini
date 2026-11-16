@@ -26,8 +26,10 @@ struct StoryListView: View {
             .contextMenu(forSelectionType: ListRow.self) { rows in
                 if let row = rows.first {
                     Button("Mark as Read / Unread") { reader.toggleRead(row) }
-                    let isSaved = reader.entry(row.entryID)?.savedAt(at: row) != nil
-                    Button(isSaved ? "Remove from Saved" : "Save for Later") { reader.toggleSaved(row) }
+                    // Only articles are saved, not stories with several articles.
+                    if let article = reader.entry(row.entryID)?.singleArticle(at: row) {
+                        Button(article.isSaved ? "Remove from Saved" : "Save for Later") { reader.toggleSaved(row) }
+                    }
                 }
             } primaryAction: { rows in
                 if rows.first != nil {

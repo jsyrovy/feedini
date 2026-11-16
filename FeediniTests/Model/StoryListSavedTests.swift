@@ -7,106 +7,72 @@ struct StoryListSavedTests {
     private let tech = Feed.stub("Tech")
     private let news = Feed.stub("News")
 
-    private func savedEntries(_ library: Library) -> [StoryEntry] {
-        let all = StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .always)
-        return StoryList.savedEntries(in: library, storyIDs: library.storyIDsByArticle()) { id in
-            all.first { $0.id == id }
-        }
-    }
-
-    @Test func savedEntriesAreOrderedBySaveTimeWhateverTheirReadState() {
+    @Test func savedEntriesAreSavedArticlesOrderedBySaveTimeWhateverTheirReadState() {
         let loose = Article.stub("Loose", feed: tech.id, hours: -50, read: true, savedAt: .hours(-1))
-        let first = Article.stub("First", feed: tech.id, hours: -2)
+        let first = Article.stub("First", feed: tech.id, hours: -2, savedAt: .hours(-2))
         let second = Article.stub("Second", feed: news.id, hours: -3, read: true)
-        let story = Story(title: "Story", articleIDs: [first.id, second.id], savedAt: .hours(-2))
+        let story = Story(title: "Story", articleIDs: [first.id, second.id])
         let notSaved = Article.stub("Not saved", feed: tech.id)
         let library = Library(
             feeds: [tech, news], articles: [loose, first, second, notSaved], stories: [story])
 
-        let entries = savedEntries(library)
+        let entries = StoryList.savedEntries(in: library)
 
-        #expect(entries.map(\.id) == [.savedArticle(loose.id), .story(story.id)])
+        #expect(entries.map(\.id) == [.savedArticle(loose.id), .savedArticle(first.id)])
         #expect(entries[0].savedAt(at: .story(entries[0].id)) == .hours(-1))
         #expect(entries[1].savedAt(at: .story(entries[1].id)) == .hours(-2))
-        #expect(entries[1].storySavedAt == .hours(-2))
     }
 
-    @Test func aSavedArticleOfAStoryWithSeveralArticlesShowsOnItsOwnWithTheStory() {
-        let first = Article.stub("First", feed: tech.id, hours: -2, savedAt: .hours(-1))
+    @Test func aSavedArticleShowsOnItsOwnWithoutItsStory() {
+        let first = Article.stub("First", feed: tech.id, hours: -2, language: "cs", savedAt: .hours(-1))
         let second = Article.stub("Second", feed: news.id, hours: -3)
         let topic = Topic(name: "Apple", description: "")
-        let story = Story(title: "Story", topicID: topic.id, articleIDs: [first.id, second.id])
-        let library = Library(feeds: [tech, news], articles: [first, second], stories: [story], topics: [topic])
+        let summary = Summary(title: "Summary title", text: "Gist.", language: "en", articleIDs: [first.id])
+        let story = Story(title: "Story", topicID: topic.id, articleIDs: [first.id], summary: summary)
+        let multi = Story(title: "Multi", articleIDs: [second.id])
+        let library = Library(
+            feeds: [tech, news], articles: [first, second], stories: [story, multi], topics: [topic])
 
-        let entry = savedEntries(library)[0]
+        let entry = StoryList.savedEntries(in: library)[0]
 
         #expect(entry.id == .savedArticle(first.id))
         #expect(entry.title == "First")
         #expect(entry.articles == [first])
-        #expect(entry.partOf == "Story")
-        #expect(entry.topicID == topic.id)
+        #expect(entry.topicID == nil)
+        #expect(!entry.needsSummary)
+        #expect(entry.summary == nil)
         #expect(!entry.isMultiArticle)
-        #expect(entry.savedItem(at: .story(entry.id)) == .article(first.id))
+        #expect(entry.singleArticle(at: .story(entry.id)) == first)
     }
 
-    @Test func aSavedArticleOfAOneArticleStoryTakesItsSummary() {
-        let article = Article.stub("Article", feed: tech.id, language: "cs", savedAt: .hours(-1))
-        let summary = Summary(title: "Summary title", text: "Gist.", language: "en", articleIDs: [article.id])
-        let story = Story(title: "Story", articleIDs: [article.id], summary: summary)
-        let library = Library(feeds: [tech], articles: [article], stories: [story])
-
-        let entry = savedEntries(library)[0]
-
-        #expect(entry.id == .savedArticle(article.id))
-        #expect(entry.title == "Summary title")
-        #expect(entry.needsSummary)
-        #expect(entry.summary == summary)
-        #expect(entry.isSummaryCurrent)
-        #expect(entry.partOf == nil)
-    }
-
-    @Test func keptEntriesStayInTheirPlaceAfterTheyAreRemovedFromSaved() throws {
+    @Test func keptEntriesStayInTheirPlaceAfterTheyAreRemovedFromSaved() {
         let newer = Article.stub("Newer", feed: tech.id, savedAt: .hours(-1))
         let removed = Article.stub("Removed", feed: tech.id)
         let older = Article.stub("Older", feed: tech.id, savedAt: .hours(-3))
-        let first = Article.stub("First", feed: tech.id)
-        let second = Article.stub("Second", feed: tech.id)
-        let story = Story(title: "Story", articleIDs: [first.id, second.id])
-        let library = Library(feeds: [tech], articles: [newer, removed, older, first, second], stories: [story])
+        let library = Library(feeds: [tech], articles: [newer, removed, older])
 
-        let storyEntry = try #require(
-            StoryList.allEntries(in: library, summaryLanguage: "en", singleArticles: .never).first {
-                $0.id == .story(story.id)
-            })
         let entries = StoryList.savedEntries(
-            savedEntries(library),
-            keeping: [(.hours(-2), StoryList.savedEntry(for: removed, in: nil)), (.hours(-4), storyEntry)])
+            StoryList.savedEntries(in: library), keeping: [(.hours(-2), StoryList.savedEntry(for: removed))])
 
-        #expect(
-            entries.map(\.id) == [
-                .savedArticle(newer.id), .savedArticle(removed.id), .savedArticle(older.id), .story(story.id),
-            ])
+        #expect(entries.map(\.id) == [.savedArticle(newer.id), .savedArticle(removed.id), .savedArticle(older.id)])
         #expect(entries[1].savedAt(at: .story(entries[1].id)) == nil)
     }
 
-    @Test func theStoryRowSavesTheStoryWithSeveralArticlesElseItsArticle() {
+    @Test func onlyRowsWithASingleArticleAreSavedAndAStoryShowsItsSavedArticles() {
         let first = Article.stub("First", feed: tech.id)
-        let second = Article.stub("Second", feed: tech.id)
+        let second = Article.stub("Second", feed: tech.id, savedAt: .hours(1))
         let storyID = Story.ID()
         let multi = StoryEntry(id: .story(storyID), title: "", articles: [first, second], newArticleIDs: [])
-        let single = StoryEntry(id: .story(storyID), title: "", articles: [first], newArticleIDs: [])
-        var savedSingle = single
-        savedSingle.storySavedAt = .hours(1)
+        let single = StoryEntry(id: .story(storyID), title: "", articles: [second], newArticleIDs: [])
         let loose = StoryEntry(id: .loose(first.id), title: "", articles: [first], newArticleIDs: [])
         let empty = StoryEntry(id: .loose(first.id), title: "", articles: [], newArticleIDs: [])
 
-        #expect(multi.savedItem(at: .story(multi.id)) == .story(storyID))
-        #expect(multi.savedItem(at: .article(multi.id, second.id)) == .article(second.id))
-        #expect(single.savedItem(at: .story(single.id)) == .article(first.id))
-        #expect(savedSingle.savedItem(at: .story(single.id)) == .story(storyID))
-        #expect(savedSingle.savedAt(at: .story(single.id)) == .hours(1))
-        #expect(loose.savedItem(at: .story(loose.id)) == .article(first.id))
-        #expect(empty.savedItem(at: .story(empty.id)) == nil)
+        #expect(multi.savedAt(at: .story(multi.id)) == nil)
+        #expect(multi.savedAt(at: .article(multi.id, second.id)) == .hours(1))
+        #expect(multi.containsSaved)
+        #expect(single.savedAt(at: .story(single.id)) == .hours(1))
+        #expect(loose.savedAt(at: .story(loose.id)) == nil)
+        #expect(!loose.containsSaved)
         #expect(empty.savedAt(at: .story(empty.id)) == nil)
     }
 

@@ -236,9 +236,10 @@ struct StoryListTests {
         var library = Library(feeds: [tech, news], articles: [a, b, loose], stories: [story])
         var entries = StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never)
 
-        library.setSaved(.story(story.id), at: .hours(0))
-        #expect(StoryList.updateReadingState(of: [], stories: [story.id], in: &entries, library: library))
-        library.setSaved(.article(loose.id), at: .hours(0))
+        library.setSaved(a.id, at: .hours(0))
+        #expect(StoryList.updateReadingState(of: [a.id], in: &entries, library: library))
+        #expect(!StoryList.updateReadingState(of: [b.id], in: &entries, library: library))
+        library.setSaved(loose.id, at: .hours(0))
         #expect(StoryList.updateReadingState(of: [loose.id], in: &entries, library: library))
         #expect(entries == StoryList.allEntries(in: library, summaryLanguage: "cs", singleArticles: .never))
     }

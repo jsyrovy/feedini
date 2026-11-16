@@ -6,9 +6,10 @@ import Foundation
 /// - Read articles go once their story (or the article itself, without a story) has had no article younger than
 ///   `attachWindow`: until then a new article about the same event can still join the known story. A removed article
 ///   leaves a tombstone, so the next refresh doesn't bring it back, and its page text goes with it.
+/// - Saved articles are kept forever, but they don't keep their story: a story goes once its articles are all read
+///   and older than `attachWindow`, and its saved articles stay on their own (without a story).
 /// - A tombstone goes once its article has been missing from the feed for `tombstoneMargin`, judged by the feed's
 ///   last successful download (a feed that can't be downloaded keeps its tombstones).
-/// - Saved articles and stories are kept forever, and so is a story with a saved article (with all its articles).
 /// - Articles of removed feeds that saving doesn't keep go (without a tombstone: the feed is gone), and so do the names
 ///   of removed feeds no article comes from.
 /// - A topic goes once no story belongs to it.
@@ -20,13 +21,18 @@ enum Retention {
         let cutoff = now.addingTimeInterval(-attachWindow)
         var removed = Set<Article.ID>()
 
+        var removedStories: [Story.ID] = []
         for story in library.stories.values {
             let articles = library.articles(of: story)
-            if !story.isKeptBySaving(articles), articles.allSatisfy({ $0.isRead && $0.date < cutoff }) {
-                removed.formUnion(articles.map(\.id))
+            if articles.allSatisfy({ $0.isRead && $0.date < cutoff }) {
+                removedStories.append(story.id)
+                removed.formUnion(articles.lazy.filter { !$0.isSaved }.map(\.id))
             }
         }
         let storyIDs = library.storyIDsByArticle()
+        for id in removedStories {
+            library.stories[id] = nil
+        }
         for article in library.articles.values
         where storyIDs[article.id] == nil && article.isRead && !article.isSaved && article.date < cutoff {
             removed.insert(article.id)

@@ -57,7 +57,7 @@ Feedini/
               Preferences (UserDefaults), LoginItem (SMAppService), RuntimeEnvironment, Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
-              folders), Saved (SavedItem, Library's saving, names of removed feeds), SavedLink (pages saved by
+              folders), Saved (Library's saving of articles, names of removed feeds), SavedLink (pages saved by
               their address: comparing addresses, Library.saveLink), AIUsage (AI calls per day),
               StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts, ListOrder),
               ReadRules (pure: what visiting a row and M do; ListRow), UndoHistory (pure: ReadingState, the steps of
@@ -179,15 +179,16 @@ list (newest first), detail.
   inside a story stay newest first. The cursor stays on its row.
 - A read item doesn't vanish from the current list (no jumping under the cursor); it goes away when the sidebar
   selection changes or on refresh.
-- S saves the item under the cursor for later, S again removes it from Saved. On an article row, a story with one
-  article or a loose article it saves the article; on the row of a story with several articles (collapsed or
-  expanded) the whole story. Saved items have a bookmark in every list.
-- Saved (in the sidebar under All, with the number of saved items, not in the menu bar count) shows every saved
-  item, read or not, most recently saved first: saving happens on items that moving onto them already read. A saved
-  article is shown on its own even when its story has several articles, with "Part of: <story title>" (also after
-  the AI puts a saved loose article into a story). An item removed from Saved stays in its place until the selection
-  changes or a refresh; Shift+A does nothing there. Saved items are never forgotten, a saved story keeps its summary
-  up to date even when read, and removing a feed keeps its saved articles.
+- S saves the article under the cursor for later, S again removes it from Saved. Only articles are saved: an
+  article row, a story with one article or a loose article; on the row of a story with several articles S does
+  nothing (like P, T and Shift+V). Saved articles have a bookmark in every list, and so does the row of a story with
+  a saved article.
+- Saved (in the sidebar under All, with the number of saved articles, not in the menu bar count) shows every saved
+  article, read or not, most recently saved first: saving happens on items that moving onto them already read. A
+  saved article is shown on its own, as itself: its title, the feed text, the TL;DR of its page – never the title or
+  summary of its story. An article removed from Saved stays in its place until the selection changes or a refresh;
+  Shift+A does nothing there. Saved articles are never forgotten, but they don't keep their story (see "Storage and
+  retention"), and removing a feed keeps its saved articles.
 - Save Link… (the + next to Refresh in the toolbar, File → Save Link… ⌘L, the menu bar menu, or a link dropped on the
   list or on Saved) saves a web page by its address, like Pocket: `SaveLinkSheet` offers an `http(s)://` address from
   the clipboard, closes at once, and says so when the page is in Saved already (it doesn't move the cursor there:
@@ -208,9 +209,9 @@ list (newest first), detail.
   as bullet points. It replaces the AI gist of the feed text of a one-article story (it is more complete). T on a
   current summary does nothing; after a change of the summary language it writes a new one from the stored text.
   From the source page in the window, T (or its "Summarize Page" button) returns to the text with the summary.
-- Shift+S saves the item like S (never removes it) and on an article with a link prepares its TL;DR in the
+- Shift+S saves the article like S (never removes it) and, when it has a link, prepares its TL;DR in the
   background, as T would, without changing the detail: P and T are then instant, and the text stays even if the page
-  goes away. Without AI the page text is still stored; on a story with several articles it only saves. While it runs
+  goes away. Without AI the page text is still stored; on a story with several articles it does nothing. While it runs
   the row shows ✨, a failure (AI off, a consent or login wall, an error) ⚠︎ with the message, in every list; only T
   tries again.
 - ⌘Z takes back reading and saving in the main window, one step at a time, ⇧⌘Z does it again (a new step clears
@@ -238,9 +239,9 @@ list (newest first), detail.
 | Shift+V / Shift+Enter | open the source page the other way |
 | P | the text of the source page instead of the feed text, again: back (a saved link: load it again) |
 | T | TL;DR of the source page (AI) |
-| Shift+S | save for later and prepare the TL;DR of the source page |
+| Shift+S | save the article for later and prepare the TL;DR of its source page |
 | M | toggle read / unread |
-| S | save for later / remove from Saved |
+| S | save the article for later / remove it from Saved |
 | R | refresh now |
 | Shift+A | mark everything in the current selection (All, topic, folder, feed; not Saved) as read |
 | ? | keyboard shortcuts |
@@ -257,12 +258,12 @@ Implementation:
   with an article of it, a folder every story with an article of one of its feeds) and hides read entries unless
   they are in `keeping`; `ordered(_:_:)` puts them in the chosen `ListOrder` (`Reader.entries`). Counts match what
   is shown: a story counts once in a folder, even with articles of several of its feeds.
-- `StoryList.savedEntries` builds Saved from the entries: saved stories as their entry, saved articles as
-  `.savedArticle` entries (`partOf` for a story with several articles; a one-article story lends its title and
-  summary). `StoryEntry.savedItem(at:)` says what S saves on a row. `AppModel` caches them with the other entries;
-  reading and saving patch the entries (`StoryList.updateReadingState`) and saving rebuilds only Saved.
-  `Reader.unsaved` remembers the save dates of entries removed while Saved is shown, so they keep their place
-  (`AppModel.savedEntries(keeping:)`; `entry(_:)` builds a `.savedArticle` entry on demand, saved or not).
+- `StoryList.savedEntries` builds Saved from the saved articles, each a `.savedArticle` entry of its own
+  (`savedEntry(for:)`). `StoryEntry.singleArticle(at:)` says what S (and P, T, Shift+S) works on on a row,
+  `containsSaved` whether the row has a bookmark. `AppModel` caches Saved with the other entries; reading and saving
+  patch the entries (`StoryList.updateReadingState`) and saving rebuilds only Saved. `Reader.unsaved` remembers the
+  save dates of articles removed while Saved is shown, so they keep their place (`AppModel.savedEntries(keeping:)`;
+  `entry(_:)` builds a `.savedArticle` entry on demand, saved or not).
 - `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story). Moving
   onto a row (`visit`) applies `ReadRules` and adds the entry to `kept`, so it stays until the sidebar selection
   changes or a refresh ends (then only the entry under the cursor stays). Shift+A doesn't keep anything: the list
@@ -271,8 +272,8 @@ Implementation:
   way of opening pages and the shown page; `Reader.handle` carries it out. The story list's `onKeyPress` maps keys
   (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
   any keyboard layout. A double click opens like V / Enter.
-- `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles, save date and "new" marks of
-  their stories) before a change and records it in `UndoHistory` (its callers only make changes that change
+- `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles, "new" marks of their
+  stories) before a change and records it in `UndoHistory` (its callers only make changes that change
   something); undo and redo are `Library.restore`, which returns the replaced state for the other stack
   (`AppModel.restore` patches the cached entries like reading and saving). `UndoCommands` replaces Edit → Undo / Redo: while the main
   window is key (`Reader.isMainWindowKey`, set by `AppDelegate` from the key window notifications) they go to the
@@ -518,8 +519,7 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - `SummaryQueue` (main actor) also derives its work from the library: unread stories needing a summary that isn't
   current (`SummaryStep.pending`: stories from several feeds first, then newer first). Up to 3 calls run at once,
   10 stories each, plus one topic translation when needed. Read stories wait until they are unread again ("+1
-  new"), unless they are saved or have a saved article. Triggered with the assign queue and after every assign
-  batch. A failing batch is retried after 30 s; a story whose summary failed 3 times (or was left out of 3 answers)
+  new"), saved articles or not. Triggered with the assign queue and after every assign batch. A failing batch is retried after 30 s; a story whose summary failed 3 times (or was left out of 3 answers)
   waits for the next refresh and shows the error.
 - `AICaller` makes every AI call of the queues: it finds claude (the path from the settings), runs the call, applies
   the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude
@@ -599,14 +599,17 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 
 ## Storage and retention
 
-- One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 1, "library": {…}}`, pretty-printed
+- One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 2, "library": {…}}`, pretty-printed
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
   migration in decoding `LibraryStore.File` (shared by loading and restoring a backup; only work on files, like
   moving the old page texts out, stays in `LibraryStore.load()`). Fields added later are optional when decoding (`usage`, `folders` and
-  `removedFeeds` via `decodeIfPresent`; `Feed.folderID`, `Story.summary`, `Story.savedAt`, `Topic.language`,
-  `Article.pageSummary`, `Article.savedAt`, `Article.site` as optionals), so older files load without a bump. The version is read
-  before the library, so a file from a newer Feedini isn't decoded for nothing.
+  `removedFeeds` via `decodeIfPresent`; `Feed.folderID`, `Story.summary`, `Topic.language`, `Article.pageSummary`,
+  `Article.savedAt`, `Article.site` as optionals), so older files load without a bump. The version is read before
+  the library, so a file from a newer Feedini isn't decoded for nothing.
+- Schema versions: 2 saves only articles – a story saved as a whole in a version 1 file (or backup) has its articles
+  saved instead, at the story's save date (an article saved already keeps its own date). Feedini 0.1 refuses a
+  version 2 backup as one from a newer version.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
   newer Feedini – is moved aside as `library.unreadable-<unix time>.json`, never overwritten, and Feedini starts
@@ -633,8 +636,9 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   without a story) has no article younger than `attachWindow` (72 h); each leaves a `Tombstone` (feed + key). A
   tombstone goes once it hasn't been seen in its feed for `tombstoneMargin` (3 days) before the feed's last
   successful download, so a feed that can't be downloaded keeps them. Topics without stories go too.
-- Saving (`Article.savedAt`, `Story.savedAt`; `SavedItem`) keeps forever: a saved article, every article of a saved
-  story, and a whole story with a saved article. Removing a feed keeps them too (`articleIDsKeptBySaving`), with the
+- Saving (`Article.savedAt`) keeps a saved article forever, but not its story: a story goes once all its articles
+  are read and older than `attachWindow`, saved or not; its other articles leave tombstones, the saved ones stay on
+  their own, without a story. Removing a feed keeps saved articles too (`articleIDsKeptBySaving`), with the
   feed's name in `Library.removedFeeds` for their source labels (`sourceTitle(of:)`, also in the AI payloads).
   Articles of removed feeds that nothing saved keeps go at the next prune, without a tombstone, and so do the names
   of removed feeds no article comes from.

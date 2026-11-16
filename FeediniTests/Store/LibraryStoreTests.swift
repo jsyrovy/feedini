@@ -49,7 +49,7 @@ struct LibraryStoreTests {
         #expect(result.library == latest)
         #expect(result.problem == nil)
         let json = try #require(String(data: Data(contentsOf: fileURL), encoding: .utf8))
-        #expect(json.contains("\"version\" : 1"))
+        #expect(json.contains("\"version\" : \(LibraryStore.schemaVersion)"))
     }
 
     /// Saves the library and waits until it is written; `meanwhile` runs while it waits for the debounce delay.
@@ -169,6 +169,40 @@ struct LibraryStoreTests {
         #expect(await LibraryStore(fileURL: fileURL).load().library == loaded)
     }
 
+    /// Version 1 saved stories as a whole; their articles are saved instead.
+    @Test func loadsSavedStoriesOfSchemaVersion1AsSavedArticles() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let json = """
+            {"version": 1, "library": {"feeds": [], "pageTexts": [],
+             "articles": [
+              {"id": "6F9619FF-8B86-D011-B42D-00C04FC964F1", "feedID": "7F9619FF-8B86-D011-B42D-00C04FC964FF",
+               "key": "1", "title": "First", "text": "", "firstSeen": "2026-10-29T12:00:00Z"},
+              {"id": "6F9619FF-8B86-D011-B42D-00C04FC964F2", "feedID": "7F9619FF-8B86-D011-B42D-00C04FC964FF",
+               "key": "2", "title": "Saved before", "text": "", "firstSeen": "2026-10-29T12:00:00Z",
+               "savedAt": "2026-10-29T13:00:00Z"},
+              {"id": "6F9619FF-8B86-D011-B42D-00C04FC964F3", "feedID": "7F9619FF-8B86-D011-B42D-00C04FC964FF",
+               "key": "3", "title": "Not saved", "text": "", "firstSeen": "2026-10-29T12:00:00Z"}],
+             "stories": [
+              {"id": "8F9619FF-8B86-D011-B42D-00C04FC964F1", "title": "Saved", "newArticleIDs": [],
+               "articleIDs": ["6F9619FF-8B86-D011-B42D-00C04FC964F1", "6F9619FF-8B86-D011-B42D-00C04FC964F2",
+                 "6F9619FF-8B86-D011-B42D-00C04FC964F9"],
+               "savedAt": "2026-10-29T14:00:00Z"},
+              {"id": "8F9619FF-8B86-D011-B42D-00C04FC964F2", "title": "Not saved", "newArticleIDs": [],
+               "articleIDs": ["6F9619FF-8B86-D011-B42D-00C04FC964F3"]}],
+             "topics": [], "tombstones": []}}
+            """
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(json.utf8).write(to: fileURL)
+
+        let library = await store().load().library
+
+        let saved = library.articles.values.filter(\.isSaved).sorted { $0.title < $1.title }
+        #expect(saved.map(\.title) == ["First", "Saved before"])
+        #expect(saved.map(\.savedAt) == [.hours(2), .hours(1)])
+        #expect(library.articles.count == 3)
+        #expect(library.stories.count == 2)
+    }
+
     /// Files from before page texts have no such fields.
     @Test func articlesWithoutPageTextsAreSavedWithoutTheFields() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -210,11 +244,11 @@ struct LibraryStoreTests {
     @Test func movesAFileFromANewerVersionAside() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Data("{\"version\": 2, \"library\": {}}".utf8).write(to: fileURL)
+        try Data("{\"version\": 3, \"library\": {}}".utf8).write(to: fileURL)
 
         let result = await store().load()
 
-        #expect(result.problem == "The library was saved by a newer version of Feedini (schema 2).")
+        #expect(result.problem == "The library was saved by a newer version of Feedini (schema 3).")
         #expect(try backups().count == 1)
     }
 }

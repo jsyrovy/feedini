@@ -22,9 +22,9 @@ enum ListKey: CaseIterable, Sendable {
     case summarizePage
     /// M
     case toggleRead
-    /// S: save for later, or remove from Saved
+    /// S: save the article for later, or remove it from Saved
     case save
-    /// Shift+S: save for later with a TL;DR of the source page
+    /// Shift+S: save the article for later with a TL;DR of the source page
     case saveWithSummary
     /// R
     case refresh
@@ -51,7 +51,7 @@ enum KeyboardNavigation {
         case summarizePage(Article.ID)
         case toggleRead(ListRow)
         case toggleSaved(ListRow)
-        /// Saves the row's item (never removes it) and summarizes the article's source page, if it has one.
+        /// Saves the row's article (never removes it) and summarizes its source page, if it has one.
         case saveWithSummary(ListRow, Article.ID?)
         case refresh
         case markAllRead
@@ -88,10 +88,11 @@ enum KeyboardNavigation {
         switch (key, cursor) {
         case (.toggleRead, _):
             return .toggleRead(cursor)
-        case (.save, _):
-            return .toggleSaved(cursor)
-        case (.saveWithSummary, _):
-            return .saveWithSummary(cursor, entry.singleArticle(at: cursor).flatMap { $0.link != nil ? $0.id : nil })
+        case (.save, _), (.saveWithSummary, _):
+            // Only articles are saved: nothing on the row of a story with several articles.
+            guard let article = entry.singleArticle(at: cursor) else { return .none }
+            guard key == .saveWithSummary else { return .toggleSaved(cursor) }
+            return .saveWithSummary(cursor, article.link != nil ? article.id : nil)
         case (.expand, .story):
             guard entry.isMultiArticle else { return .none }
             return isExpanded ? .select(.article(entry.id, entry.articles[0].id)) : .expand(entry.id)

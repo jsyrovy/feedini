@@ -8,7 +8,6 @@ struct ReadingState: Equatable, Sendable {
     }
 
     struct StoryState: Equatable, Sendable {
-        var savedAt: Date?
         /// Reading a story clears its "+1 new" marks.
         var newArticleIDs: Set<Article.ID>
     }
@@ -39,7 +38,7 @@ extension Library {
         }
         for id in wanted {
             if let story = stories[id] {
-                state.stories[id] = ReadingState.StoryState(savedAt: story.savedAt, newArticleIDs: story.newArticleIDs)
+                state.stories[id] = ReadingState.StoryState(newArticleIDs: story.newArticleIDs)
             }
         }
         return state
@@ -53,11 +52,9 @@ extension Library {
             articles[id]?.savedAt = article.savedAt
         }
         for (id, saved) in state.stories {
-            guard var story = stories[id] else { continue }
-            story.savedAt = saved.savedAt
+            guard let articleIDs = stories[id]?.articleIDs else { continue }
             // Articles that left the story since can't be new in it.
-            story.newArticleIDs = saved.newArticleIDs.intersection(story.articleIDs)
-            stories[id] = story
+            stories[id]?.newArticleIDs = saved.newArticleIDs.intersection(articleIDs)
         }
         return replaced
     }

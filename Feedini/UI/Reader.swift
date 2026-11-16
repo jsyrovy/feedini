@@ -19,8 +19,9 @@ final class Reader {
     private(set) var expanded: Set<StoryEntry.ID> = []
     /// Entries read while shown; they stay in the list until the selection changes or a refresh.
     private(set) var kept: Set<StoryEntry.ID> = []
-    /// Entries removed from Saved while it was shown, with their save dates: they stay in their place like kept ones.
-    private(set) var unsaved: [StoryEntry.ID: Date] = [:]
+    /// Articles removed from Saved while it was shown, with their save dates: they stay in their place like kept
+    /// entries.
+    private(set) var unsaved: [Article.ID: Date] = [:]
     /// What the detail shows instead of the feed text.
     enum Shown: Equatable {
         /// The source page in the window (V).
@@ -151,28 +152,31 @@ final class Reader {
         }
     }
 
-    /// S: saves the row's item for later, or removes it from Saved (where it stays until the selection changes).
+    /// S: saves the row's article for later, or removes it from Saved (where it stays until the selection changes).
+    /// The row of a story with several articles has none.
     func toggleSaved(_ row: ListRow) {
-        guard let entry = entry(row.entryID), let item = entry.savedItem(at: row) else { return }
-        if let savedAt = entry.savedAt(at: row) {
-            if selection == .saved, case .story = row {
-                unsaved[entry.id] = savedAt
+        guard let article = entry(row.entryID)?.singleArticle(at: row) else { return }
+        let id = article.id
+        if let savedAt = article.savedAt {
+            if selection == .saved {
+                unsaved[id] = savedAt
             }
-            recording("Remove from Saved", item, row: row) { model.setSaved(item, at: nil) }
+            recording("Remove from Saved", articles: [id], row: row) { model.setSaved(id, at: nil) }
         } else {
-            recording("Save", item, row: row) { model.setSaved(item, at: .now) }
+            recording("Save", articles: [id], row: row) { model.setSaved(id, at: .now) }
         }
     }
 
-    /// Shift+S: saves the row's item unless it is saved and prepares the TL;DR of the article's source page in the
-    /// background; the detail stays as it is.
-    func saveWithSummary(_ row: ListRow, article: Article.ID?) {
-        guard let entry = entry(row.entryID), let item = entry.savedItem(at: row) else { return }
-        if entry.savedAt(at: row) == nil {
-            recording("Save", item, row: row) { model.setSaved(item, at: .now) }
+    /// Shift+S: saves the row's article unless it is saved and prepares the TL;DR of its source page (when it has a
+    /// link) in the background; the detail stays as it is.
+    func saveWithSummary(_ row: ListRow, article page: Article.ID?) {
+        guard let article = entry(row.entryID)?.singleArticle(at: row) else { return }
+        let id = article.id
+        if !article.isSaved {
+            recording("Save", articles: [id], row: row) { model.setSaved(id, at: .now) }
         }
-        if let article {
-            model.preparePage(article)
+        if let page {
+            model.preparePage(page)
         }
     }
 
@@ -206,20 +210,11 @@ final class Reader {
 
     /// Changes reading or saving and records the change for ⌘Z. The callers only make changes that change something
     /// (they read unread articles, toggle, save what isn't saved).
-    private func recording(
-        _ name: String, articles: [Article.ID] = [], stories: [Story.ID] = [], row: ListRow?, _ change: () -> Void
-    ) {
-        let before = model.library.readingState(articles: articles, stories: stories)
+    private func recording(_ name: String, articles: [Article.ID], row: ListRow?, _ change: () -> Void) {
+        let before = model.library.readingState(articles: articles)
         change()
         if !before.isEmpty {
             history.record(UndoHistory.Step(name: name, state: before, row: row))
-        }
-    }
-
-    private func recording(_ name: String, _ item: SavedItem, row: ListRow, _ change: () -> Void) {
-        switch item {
-        case .article(let id): recording(name, articles: [id], row: row, change)
-        case .story(let id): recording(name, stories: [id], row: row, change)
         }
     }
 
@@ -321,7 +316,7 @@ final class Reader {
 
     private func dropReadEntries() {
         kept = cursor.map { [$0.entryID] } ?? []
-        unsaved = unsaved.filter { $0.key == cursor?.entryID }
+        unsaved = unsaved.filter { .savedArticle($0.key) == cursor?.entryID }
     }
 
     /// A removed feed, folder or topic can't stay selected; All is selected instead.

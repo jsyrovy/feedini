@@ -126,8 +126,7 @@ struct SavedLinkTests {
         let counts = StoryList.unreadCounts(all, folders: [:])
         #expect(counts.all == 1)
         #expect(counts.feeds == [feed.id: 1])
-        let index = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
-        let saved = StoryList.savedEntries(in: library, storyIDs: [:]) { index[$0] }
+        let saved = StoryList.savedEntries(in: library)
         #expect(saved.map(\.id) == [.savedArticle(id)])
         #expect(saved.first?.isSavedLink == true)
         #expect(saved.first?.title == "example.com/essay")

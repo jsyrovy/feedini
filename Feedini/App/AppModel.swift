@@ -76,12 +76,13 @@ final class AppModel: LibraryHost {
     /// All stories and loose articles, newest first.
     var entries: [StoryEntry] { cache.entries }
 
-    /// The saved stories and articles, most recently saved first, with entries removed from Saved while it was shown
-    /// at the place of their former save date.
-    func savedEntries(keeping: [StoryEntry.ID: Date] = [:]) -> [StoryEntry] {
+    /// The saved articles, most recently saved first, with articles removed from Saved while it was shown at the
+    /// place of their former save date.
+    func savedEntries(keeping: [Article.ID: Date] = [:]) -> [StoryEntry] {
         let cache = cache
         let kept = keeping.compactMap { id, date in
-            cache.savedIndex[id] == nil ? entry(id).map { (date: date, entry: $0) } : nil
+            cache.savedIndex[.savedArticle(id)] == nil
+                ? library.articles[id].map { (date: date, entry: StoryList.savedEntry(for: $0)) } : nil
         }
         return StoryList.savedEntries(cache.saved, keeping: kept)
     }
@@ -99,7 +100,7 @@ final class AppModel: LibraryHost {
         if let position = cache.savedIndex[id] {
             return cache.saved[position]
         }
-        return library.articles[articleID].map { StoryList.savedEntry(for: $0, in: cache.container(of: articleID)) }
+        return library.articles[articleID].map(StoryList.savedEntry(for:))
     }
 
     /// Built when first needed after the articles, the stories or the summary settings changed.
@@ -409,12 +410,9 @@ final class AppModel: LibraryHost {
         return replaced.isEmpty ? nil : replaced
     }
 
-    /// Saves the item for later (S), or removes it from Saved for `nil`.
-    func setSaved(_ item: SavedItem, at date: Date?) {
-        switch item {
-        case .article(let id): changeReadingState(of: [id]) { $0.setSaved(item, at: date) }
-        case .story(let id): changeReadingState(stories: [id]) { $0.setSaved(item, at: date) }
-        }
+    /// Saves the article for later (S), or removes it from Saved for `nil`.
+    func setSaved(_ id: Article.ID, at date: Date?) {
+        changeReadingState(of: [id]) { $0.setSaved(id, at: date) }
     }
 
     func markRead(_ ids: [Article.ID]) {
@@ -477,8 +475,6 @@ private struct EntriesCache {
     private(set) var entries: [StoryEntry]
     /// Positions in `entries`; reading doesn't change the order.
     let index: [StoryEntry.ID: Int]
-    /// The story of every article in one; reading and saving don't change it.
-    let storyIDs: [Article.ID: Story.ID]
     /// The entries of Saved.
     private(set) var saved: [StoryEntry] = []
     /// Positions in `saved`.
@@ -493,16 +489,9 @@ private struct EntriesCache {
         self.entries = entries
         folders = library.folderIDsByFeed()
         index = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.id, $0) })
-        storyIDs = library.storyIDsByArticle()
         counts = StoryList.Counts()
         buildSaved(library)
         recount()
-    }
-
-    /// The entry of the article's story, or its loose entry.
-    func container(of articleID: Article.ID) -> StoryEntry? {
-        let id: StoryEntry.ID = storyIDs[articleID].map { .story($0) } ?? .loose(articleID)
-        return index[id].map { entries[$0] }
     }
 
     mutating func updateReadingState(of ids: [Article.ID], stories: [Story.ID], library: Library) {
@@ -521,8 +510,7 @@ private struct EntriesCache {
     }
 
     private mutating func buildSaved(_ library: Library) {
-        let (entries, index) = (entries, index)
-        saved = StoryList.savedEntries(in: library, storyIDs: storyIDs) { id in index[id].map { entries[$0] } }
+        saved = StoryList.savedEntries(in: library)
         savedIndex = Dictionary(uniqueKeysWithValues: saved.enumerated().map { ($1.id, $0) })
     }
 

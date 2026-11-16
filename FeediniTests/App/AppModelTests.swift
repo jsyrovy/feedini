@@ -108,7 +108,7 @@ struct AppModelTests {
         model.update { $0 = Library(feeds: [tech], articles: [article]) }
         #expect(model.savedEntries().isEmpty)
 
-        model.setSaved(.article(article.id), at: .hours(1))
+        model.setSaved(article.id, at: .hours(1))
         #expect(model.savedEntries().map(\.id) == [.savedArticle(article.id)])
         #expect(model.unreadCounts.saved == 1)
 
@@ -117,7 +117,7 @@ struct AppModelTests {
         #expect(model.unreadCounts.saved == 1)
         #expect(model.unreadCounts.all == 0)
 
-        model.setSaved(.article(article.id), at: nil)
+        model.setSaved(article.id, at: nil)
         #expect(model.savedEntries().isEmpty)
         #expect(model.unreadCounts.saved == 0)
         // Built on demand for an entry removed from Saved while it is shown.

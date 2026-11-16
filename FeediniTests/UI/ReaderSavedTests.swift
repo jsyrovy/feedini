@@ -4,40 +4,46 @@ import Testing
 @testable import Feedini
 
 extension ReaderTests {
-    @Test func sSavesTheArticleOrTheStoryUnderTheCursorAndAgainRemovesIt() {
+    @Test func sSavesTheArticleUnderTheCursorAndAgainRemovesIt() {
         reader.visit(.story(.loose(lone.id)))
         reader.handle(.save)
         #expect(model.library.articles[lone.id]?.isSaved == true)
-
-        reader.visit(.story(.story(story.id)))
-        reader.handle(.save)
-        #expect(model.library.stories[story.id]?.savedAt != nil)
-        #expect(Set(model.savedEntries().map(\.id)) == [.story(story.id), .savedArticle(lone.id)])
-        #expect(model.unreadCounts.saved == 2)
-
-        reader.handle(.save)
-        #expect(model.library.stories[story.id]?.savedAt == nil)
         #expect(model.savedEntries().map(\.id) == [.savedArticle(lone.id)])
+        #expect(model.unreadCounts.saved == 1)
+
+        reader.handle(.save)
+        #expect(model.library.articles[lone.id]?.isSaved == false)
+        #expect(model.savedEntries().isEmpty)
+    }
+
+    @Test func sOnACollapsedStoryWithSeveralArticlesDoesNothing() {
+        reader.visit(.story(.story(story.id)))
+
+        #expect(!reader.handle(.save))
+        reader.toggleSaved(.story(.story(story.id)))
+
+        #expect(model.savedEntries().isEmpty)
+        #expect(reader.undoName == "Mark as Read")
     }
 
     @Test func oldestFirstListsSavedFromTheFirstSaved() {
-        model.setSaved(.article(lone.id), at: .hours(-2))
-        model.setSaved(.story(story.id), at: .hours(-1))
+        model.setSaved(lone.id, at: .hours(-2))
+        model.setSaved(first.id, at: .hours(-1))
         reader.selection = .saved
-        #expect(reader.entries.map(\.id) == [.story(story.id), .savedArticle(lone.id)])
+        #expect(reader.entries.map(\.id) == [.savedArticle(first.id), .savedArticle(lone.id)])
 
         model.preferences.listOrder = .oldestFirst
 
-        #expect(reader.entries.map(\.id) == [.savedArticle(lone.id), .story(story.id)])
+        #expect(reader.entries.map(\.id) == [.savedArticle(lone.id), .savedArticle(first.id)])
     }
 
-    @Test func sOnAnArticleOfAnExpandedStorySavesTheArticle() {
+    @Test func sOnAnArticleOfAnExpandedStorySavesTheArticleAndTheStoryShowsIt() {
         reader.visit(.article(.story(story.id), second.id))
         reader.handle(.save)
 
         #expect(model.library.articles[second.id]?.isSaved == true)
-        #expect(model.library.stories[story.id]?.savedAt == nil)
-        #expect(model.entry(.savedArticle(second.id))?.partOf == "Story")
+        #expect(model.entry(.savedArticle(second.id))?.title == "Second")
+        #expect(model.entry(.story(story.id))?.containsSaved == true)
     }
 
     @Test func savedShowsSavedEntriesReadOrNotAndShiftADoesNothing() {
@@ -54,16 +60,16 @@ extension ReaderTests {
     }
 
     @Test func removingFromSavedKeepsTheEntryInItsPlaceUntilTheSelectionChanges() {
-        model.setSaved(.article(lone.id), at: .hours(-1))
-        model.setSaved(.article(first.id), at: .hours(-2))
-        model.setSaved(.story(story.id), at: .hours(-3))
+        model.setSaved(lone.id, at: .hours(-1))
+        model.setSaved(first.id, at: .hours(-2))
+        model.setSaved(second.id, at: .hours(-3))
         reader.selection = .saved
-        let ids: [StoryEntry.ID] = [.savedArticle(lone.id), .savedArticle(first.id), .story(story.id)]
+        let ids: [StoryEntry.ID] = [.savedArticle(lone.id), .savedArticle(first.id), .savedArticle(second.id)]
         #expect(reader.entries.map(\.id) == ids)
 
         reader.visit(.story(.savedArticle(first.id)))
         reader.handle(.save)
-        reader.visit(.story(.story(story.id)))
+        reader.visit(.story(.savedArticle(second.id)))
         reader.handle(.save)
 
         #expect(model.savedEntries().map(\.id) == [.savedArticle(lone.id)])
@@ -72,16 +78,16 @@ extension ReaderTests {
 
         // S again saves it anew.
         reader.handle(.save)
-        #expect(model.library.stories[story.id]?.savedAt != nil)
+        #expect(model.library.articles[second.id]?.isSaved == true)
 
         reader.selection = .all
         reader.selection = .saved
-        #expect(reader.entries.map(\.id) == [.story(story.id), .savedArticle(lone.id)])
+        #expect(reader.entries.map(\.id) == [.savedArticle(second.id), .savedArticle(lone.id)])
     }
 
     @Test func aRefreshKeepsOnlyTheEntryUnderTheCursor() {
-        model.setSaved(.article(lone.id), at: .hours(-1))
-        model.setSaved(.article(first.id), at: .hours(-2))
+        model.setSaved(lone.id, at: .hours(-1))
+        model.setSaved(first.id, at: .hours(-2))
         reader.selection = .saved
         reader.visit(.story(.savedArticle(lone.id)))
         reader.handle(.save)
@@ -94,7 +100,7 @@ extension ReaderTests {
     }
 
     @Test func removingAFeedKeepsItsSavedArticlesInSaved() {
-        model.setSaved(.article(lone.id), at: .hours(-1))
+        model.setSaved(lone.id, at: .hours(-1))
         model.removeFeeds([feed.id])
 
         #expect(model.library.articles.keys.map { $0 } == [lone.id])
@@ -119,11 +125,12 @@ extension ReaderTests {
         await model.pageQueue?.waitUntilIdle()
     }
 
-    @Test func shiftSOnAStoryWithSeveralArticlesOnlySavesIt() async {
+    @Test func shiftSOnAStoryWithSeveralArticlesDoesNothing() async {
         reader.visit(.story(.story(story.id)))
-        reader.handle(.saveWithSummary)
+        #expect(!reader.handle(.saveWithSummary))
+        reader.saveWithSummary(.story(.story(story.id)), article: nil)
 
-        #expect(model.library.stories[story.id]?.savedAt != nil)
+        #expect(model.savedEntries().isEmpty)
         #expect(model.aiStatus.pages.isEmpty)
         await model.pageQueue?.waitUntilIdle()
         #expect(extractor.requests.isEmpty)

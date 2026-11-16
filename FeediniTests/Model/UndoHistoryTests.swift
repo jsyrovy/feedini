@@ -68,7 +68,7 @@ struct UndoHistoryTests {
         let second = Article.stub(feed: feed.id)
         let other = Article.stub(feed: feed.id)
         let story = Story(title: "Story", articleIDs: [first.id, second.id], newArticleIDs: [second.id])
-        let unrelated = Story(title: "Other", articleIDs: [other.id], savedAt: .hours(2))
+        let unrelated = Story(title: "Other", articleIDs: [other.id], newArticleIDs: [other.id])
         var library = Library(feeds: [feed], articles: [first, second, other], stories: [story, unrelated])
 
         let before = library.readingState(articles: [second.id, UUID()], stories: [unrelated.id, UUID()])
@@ -76,8 +76,8 @@ struct UndoHistoryTests {
         #expect(Set(before.stories.keys) == [story.id, unrelated.id])
 
         library.markRead([second.id], at: .hours(1))
-        library.setSaved(.article(second.id), at: .hours(1))
-        library.setSaved(.story(unrelated.id), at: nil)
+        library.setSaved(second.id, at: .hours(1))
+        library.markRead([other.id], at: .hours(1))
         #expect(library.stories[story.id]?.newArticleIDs == [])
 
         let replaced = library.restore(before)
@@ -85,9 +85,9 @@ struct UndoHistoryTests {
         #expect(library.articles[second.id]?.readAt == nil)
         #expect(library.articles[second.id]?.savedAt == nil)
         #expect(library.stories[story.id]?.newArticleIDs == [second.id])
-        #expect(library.stories[unrelated.id]?.savedAt == .hours(2))
+        #expect(library.stories[unrelated.id]?.newArticleIDs == [other.id])
         #expect(replaced.articles[second.id] == .init(readAt: .hours(1), savedAt: .hours(1)))
-        #expect(replaced.stories[unrelated.id]?.savedAt == nil)
+        #expect(replaced.stories[unrelated.id]?.newArticleIDs == [])
     }
 
     @Test func restoringSkipsMissingItemsAndNewMarksOfArticlesThatLeft() {

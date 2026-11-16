@@ -47,11 +47,7 @@ enum BackupFile {
 
         /// "42 feeds, 3,210 articles, 12 saved", for the confirmation of a restore.
         var summary: String {
-            let saved =
-                library.articles.values.count(where: \.isSaved)
-                + library.stories.values.count {
-                    $0.savedAt != nil
-                }
+            let saved = library.articles.values.count(where: \.isSaved)
             let counts = [counted(library.feeds.count, "feed"), counted(library.articles.count, "article")]
             return (saved == 0 ? counts : counts + ["\(saved.formatted()) saved"]).joined(separator: ", ")
         }

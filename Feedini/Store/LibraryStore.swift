@@ -11,7 +11,8 @@ import Foundation
 /// the stored ones (`Library.pageTextIDs`); a text it no longer lists is deleted once that library is written, and
 /// loading deletes files it doesn't list (left by a crash) and forgets listed texts without a file.
 actor LibraryStore {
-    static let schemaVersion = 1
+    /// 2: only articles are saved (stories saved as a whole in version 1 have their articles saved instead).
+    static let schemaVersion = 2
 
     struct LoadResult: Sendable {
         var library: Library
@@ -206,12 +207,18 @@ actor LibraryStore {
             var pageText: String?
         }
 
+        /// A story saved as a whole in version 1.
+        private struct LegacyStory: Decodable {
+            var articleIDs: [Article.ID]
+            var savedAt: Date?
+        }
+
         private enum CodingKeys: String, CodingKey {
             case version, library
         }
 
         private enum LegacyKeys: String, CodingKey {
-            case articles, pageTexts
+            case articles, stories, pageTexts
         }
 
         var version: Int
@@ -236,6 +243,20 @@ actor LibraryStore {
                 legacyPageTexts = Dictionary(
                     articles.compactMap { article in article.pageText.map { (article.id, $0) } },
                     uniquingKeysWith: { _, last in last })
+            }
+            if version < 2 {
+                saveArticlesOfSavedStories(try legacy.decode([LegacyStory].self, forKey: .stories))
+            }
+        }
+
+        /// Version 1 saved stories as a whole; their articles are saved instead, at the story's save date. An article
+        /// saved already keeps its own date.
+        private mutating func saveArticlesOfSavedStories(_ stories: [LegacyStory]) {
+            for story in stories {
+                guard let date = story.savedAt else { continue }
+                for id in story.articleIDs where library.articles[id]?.savedAt == nil {
+                    library.articles[id]?.savedAt = date
+                }
             }
         }
     }

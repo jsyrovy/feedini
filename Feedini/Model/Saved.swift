@@ -1,36 +1,15 @@
 import Foundation
 
-/// What S saves for later: an article (also the one of a one-article story), or a story with several articles as a
-/// whole.
-enum SavedItem: Hashable, Sendable {
-    case article(Article.ID)
-    case story(Story.ID)
-}
-
-extension Story {
-    /// Saved as a whole or holding a saved article (of `articles`, its articles): such a story is kept whole and its
-    /// summary up to date, read or not.
-    func isKeptBySaving(_ articles: [Article]) -> Bool {
-        savedAt != nil || articles.contains(where: \.isSaved)
-    }
-}
-
 extension Library {
-    /// Saves the item at the date, or removes it from the saved ones for `nil`.
-    mutating func setSaved(_ item: SavedItem, at date: Date?) {
-        switch item {
-        case .article(let id): articles[id]?.savedAt = date
-        case .story(let id): stories[id]?.savedAt = date
-        }
+    /// Saves the article at the date (S), or removes it from the saved ones for `nil`. Only articles are saved; a story
+    /// is never saved as a whole.
+    mutating func setSaved(_ id: Article.ID, at date: Date?) {
+        articles[id]?.savedAt = date
     }
 
-    /// The articles saving keeps: saved articles, and every article of a saved story.
+    /// The articles saving keeps: the saved ones.
     func articleIDsKeptBySaving() -> Set<Article.ID> {
-        var ids = Set(articles.values.lazy.filter(\.isSaved).map(\.id))
-        for story in stories.values where story.savedAt != nil {
-            ids.formUnion(story.articleIDs)
-        }
-        return ids
+        Set(articles.values.lazy.filter(\.isSaved).map(\.id))
     }
 
     /// How many articles of the feeds saving keeps (they stay when the feeds are removed).

@@ -82,19 +82,20 @@ extension ReaderTests {
     }
 
     @Test func shiftSIsASaveStepOnlyWhenItSaves() async {
-        reader.visit(.story(.story(story.id)))
+        reader.visit(.article(.story(story.id), second.id))
         reader.handle(.saveWithSummary)
         #expect(reader.undoName == "Save")
         reader.handle(.saveWithSummary)
         #expect(reader.history.undoSteps.count == 2)
 
         reader.undo()
-        #expect(model.library.stories[story.id]?.savedAt == nil)
+        #expect(model.library.articles[second.id]?.isSaved == false)
+        await model.pageQueue?.waitUntilIdle()
     }
 
     @Test func undoInSavedPutsTheItemBackInItsPlace() {
-        model.setSaved(.article(lone.id), at: .hours(-1))
-        model.setSaved(.article(first.id), at: .hours(-2))
+        model.setSaved(lone.id, at: .hours(-1))
+        model.setSaved(first.id, at: .hours(-2))
         reader.selection = .saved
         reader.visit(.story(.savedArticle(first.id)))
         reader.handle(.save)

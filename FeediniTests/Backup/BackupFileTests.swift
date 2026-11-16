@@ -11,7 +11,7 @@ struct BackupFileTests {
         let other = Article.stub("Other", feed: feed.id, hours: 1)
         var library = Library(
             feeds: [feed], articles: [saved, other],
-            stories: [Story(title: "Story", articleIDs: [saved.id, other.id], savedAt: .hours(2))], folders: [folder])
+            stories: [Story(title: "Story", articleIDs: [saved.id, other.id])], folders: [folder])
         library.pageTextIDs = [saved.id]
         return BackupFile.Contents(
             created: referenceDate, device: "Test Mac", appVersion: "1.0",
@@ -53,7 +53,7 @@ struct BackupFileTests {
 
     @Test func summarizesWhatTheBackupHolds() {
         var contents = contents()
-        #expect(contents.summary == "1 feed, 2 articles, 2 saved")
+        #expect(contents.summary == "1 feed, 2 articles, 1 saved")
 
         contents.library = Library(feeds: [.stub(), .stub("Other")], articles: [])
         #expect(contents.summary == "2 feeds, 0 articles")
@@ -73,6 +73,23 @@ struct BackupFileTests {
         #expect(json.contains(libraryVersion))
         let newerLibrary = try compressed(json.replacing(libraryVersion, with: #""version":99},"settings""#))
         #expect(throws: BackupError.newerVersion) { try BackupFile.decode(newerLibrary) }
+    }
+
+    @Test func restoringABackupOfSchemaVersion1SavesTheArticlesOfSavedStories() throws {
+        let contents = contents()
+        let json = try json(of: contents)
+        let libraryVersion = #""version":\#(LibraryStore.schemaVersion)},"settings""#
+        let version1 = json.replacing(libraryVersion, with: #""version":1},"settings""#)
+            .replacing(#""title":"Story"}"#, with: #""savedAt":"2026-10-29T14:00:00Z","title":"Story"}"#)
+        #expect(version1.contains(#""savedAt":"2026-10-29T14:00:00Z","title":"Story"}"#))
+
+        let library = try BackupFile.decode(compressed(version1)).library
+
+        let saved = try #require(contents.library.articles.values.first { $0.title == "Saved" })
+        let other = try #require(contents.library.articles.values.first { $0.title == "Other" })
+        // An article saved already keeps its date.
+        #expect(library.articles[saved.id]?.savedAt == .hours(1))
+        #expect(library.articles[other.id]?.savedAt == .hours(2))
     }
 
     private func json(of contents: BackupFile.Contents) throws -> String {
