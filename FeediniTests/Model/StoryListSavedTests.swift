@@ -19,8 +19,7 @@ struct StoryListSavedTests {
         let entries = StoryList.savedEntries(in: library)
 
         #expect(entries.map(\.id) == [.savedArticle(loose.id), .savedArticle(first.id)])
-        #expect(entries[0].savedAt(at: .story(entries[0].id)) == .hours(-1))
-        #expect(entries[1].savedAt(at: .story(entries[1].id)) == .hours(-2))
+        #expect(entries.map { $0.articles.first?.savedAt } == [.hours(-1), .hours(-2)])
     }
 
     @Test func aSavedArticleShowsOnItsOwnWithoutItsStory() {
@@ -55,7 +54,7 @@ struct StoryListSavedTests {
             StoryList.savedEntries(in: library), keeping: [(.hours(-2), StoryList.savedEntry(for: removed))])
 
         #expect(entries.map(\.id) == [.savedArticle(newer.id), .savedArticle(removed.id), .savedArticle(older.id)])
-        #expect(entries[1].savedAt(at: .story(entries[1].id)) == nil)
+        #expect(entries[1].articles.first?.isSaved == false)
     }
 
     @Test func onlyRowsWithASingleArticleAreSavedAndAStoryShowsItsSavedArticles() {
@@ -67,13 +66,13 @@ struct StoryListSavedTests {
         let loose = StoryEntry(id: .loose(first.id), title: "", articles: [first])
         let empty = StoryEntry(id: .loose(first.id), title: "", articles: [])
 
-        #expect(multi.savedAt(at: .story(multi.id)) == nil)
-        #expect(multi.savedAt(at: .article(multi.id, second.id)) == .hours(1))
+        #expect(multi.singleArticle(at: .story(multi.id)) == nil)
+        #expect(multi.singleArticle(at: .article(multi.id, second.id)) == second)
         #expect(multi.containsSaved)
-        #expect(single.savedAt(at: .story(single.id)) == .hours(1))
-        #expect(loose.savedAt(at: .story(loose.id)) == nil)
+        #expect(single.singleArticle(at: .story(single.id)) == second)
+        #expect(loose.singleArticle(at: .story(loose.id)) == first)
         #expect(!loose.containsSaved)
-        #expect(empty.savedAt(at: .story(empty.id)) == nil)
+        #expect(empty.singleArticle(at: .story(empty.id)) == nil)
     }
 
     @Test func savedIsNotAFilterOfAllAndCountsEverySavedEntry() {

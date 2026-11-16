@@ -21,18 +21,13 @@ enum Retention {
         let cutoff = now.addingTimeInterval(-attachWindow)
         var removed = Set<Article.ID>()
 
-        var removedStories: [Story.ID] = []
-        for story in library.stories.values {
-            let articles = library.articles(of: story)
-            if articles.allSatisfy({ $0.isRead && $0.date < cutoff }) {
-                removedStories.append(story.id)
-                removed.formUnion(articles.lazy.filter { !$0.isSaved }.map(\.id))
-            }
+        // A story goes whatever is saved; its articles are then loose, and the rule for those removes them unless
+        // saved.
+        for story in library.stories.values
+        where library.articles(of: story).allSatisfy({ $0.isRead && $0.date < cutoff }) {
+            library.stories[story.id] = nil
         }
         let storyIDs = library.storyIDsByArticle()
-        for id in removedStories {
-            library.stories[id] = nil
-        }
         for article in library.articles.values
         where storyIDs[article.id] == nil && article.isRead && !article.isSaved && article.date < cutoff {
             removed.insert(article.id)

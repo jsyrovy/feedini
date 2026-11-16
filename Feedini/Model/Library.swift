@@ -28,6 +28,11 @@ struct Library: Sendable, Equatable {
         story.articleIDs.compactMap { articles[$0] }
     }
 
+    /// The unread articles of a story, in the story's order: what its summary is written from.
+    func unreadArticles(of story: Story) -> [Article] {
+        articles(of: story).filter { !$0.isRead }
+    }
+
     /// The story of every article that belongs to one.
     func storyIDsByArticle() -> [Article.ID: Story.ID] {
         var index: [Article.ID: Story.ID] = [:]

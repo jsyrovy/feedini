@@ -104,8 +104,11 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
     }
 
     /// The entry with only the articles to show: unread ones and those in `keeping` (read while the list is shown);
-    /// `nil` when none is left.
+    /// `nil` when none is left. A saved article in Saved shows read or not.
     func visible(keeping: Set<Article.ID>) -> StoryEntry? {
+        if case .savedArticle = id {
+            return self
+        }
         let isShown = { (article: Article) in !article.isRead || keeping.contains(article.id) }
         // The usual cases (all unread, all read) without building anything.
         if articles.allSatisfy(isShown) {
@@ -116,12 +119,6 @@ struct StoryEntry: Identifiable, Equatable, Sendable {
         var entry = self
         entry.show(shown)
         return entry
-    }
-
-    /// When the article S saves on the row (`singleArticle(at:)`) was saved; `nil` when it isn't saved or the row
-    /// has no single article.
-    func savedAt(at row: ListRow) -> Date? {
-        singleArticle(at: row)?.savedAt
     }
 
     /// The article P, T, S and Shift+S work on: the article of an article row, the only article of a story row; none
@@ -202,7 +199,7 @@ enum StoryList {
     /// Saved with entries removed from it while it was shown, each at the place its former save date gives it.
     static func savedEntries(_ saved: [StoryEntry], keeping kept: [(date: Date, entry: StoryEntry)]) -> [StoryEntry] {
         guard !kept.isEmpty else { return saved }
-        return sorted(saved.map { ($0.savedAt(at: .story($0.id)) ?? .distantPast, $0) } + kept)
+        return sorted(saved.map { ($0.articles.first?.savedAt ?? .distantPast, $0) } + kept)
     }
 
     /// A saved article on its own (`.savedArticle`): its title and text, never its story's.
@@ -300,16 +297,13 @@ enum StoryList {
             if let topic = entry.topicID {
                 counts.topics[topic, default: 0] += 1
             }
-            var countedFeeds: [Feed.ID] = []
-            var countedFolders: [Folder.ID] = []
-            for article in entry.articles where !article.isRead && !countedFeeds.contains(article.feedID) {
-                let feed = article.feedID
-                countedFeeds.append(feed)
+            // The feeds of the unread articles: those `visible(keeping: [])` shows.
+            let feeds = Set(entry.articles.lazy.filter { !$0.isRead }.map(\.feedID))
+            for feed in feeds {
                 counts.feeds[feed, default: 0] += 1
-                if let folder = folders[feed], !countedFolders.contains(folder) {
-                    countedFolders.append(folder)
-                    counts.folders[folder, default: 0] += 1
-                }
+            }
+            for folder in Set(feeds.compactMap { folders[$0] }) {
+                counts.folders[folder, default: 0] += 1
             }
         }
         return counts

@@ -82,8 +82,7 @@ final class AppModel: LibraryHost {
     func savedEntries(keeping: [Article.ID: Date] = [:]) -> [StoryEntry] {
         let cache = cache
         let kept = keeping.compactMap { id, date in
-            cache.savedIndex[.savedArticle(id)] == nil
-                ? library.articles[id].map { (date: date, entry: StoryList.savedEntry(for: $0)) } : nil
+            cache.savedIndex[.savedArticle(id)] == nil ? entry(.savedArticle(id)).map { (date: date, entry: $0) } : nil
         }
         return StoryList.savedEntries(cache.saved, keeping: kept)
     }

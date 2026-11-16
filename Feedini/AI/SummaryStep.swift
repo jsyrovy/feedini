@@ -36,8 +36,8 @@ enum SummaryStep {
     /// count).
     static func isCurrent(_ summary: Summary?, of articles: [Article], language: String) -> Bool {
         guard let summary, summary.language == language else { return false }
-        let covered = Set(summary.articleIDs)
-        return articles.allSatisfy { $0.isRead || covered.contains($0.id) }
+        // A story has a few articles: searching beats hashing.
+        return articles.allSatisfy { $0.isRead || summary.articleIDs.contains($0.id) }
     }
 
     /// Unread stories whose unread articles need a summary that is missing or out of date, in the order they should
@@ -49,7 +49,7 @@ enum SummaryStep {
     ) -> [Story.ID] {
         library.stories.values.compactMap { story -> (Story.ID, Bool, Date)? in
             guard !excluding.contains(story.id) else { return nil }
-            let articles = library.articles(of: story).filter { !$0.isRead }
+            let articles = library.unreadArticles(of: story)
             guard needsSummary(articles, language: language, singleArticles: singleArticles),
                 !isCurrent(story.summary, of: articles, language: language)
             else { return nil }
@@ -107,7 +107,7 @@ enum SummaryStep {
         var map: IDMap = [:]
         var items: [Input.StoryItem] = []
         for story in storyIDs.compactMap({ library.stories[$0] }) {
-            let articles = library.articles(of: story).filter { !$0.isRead }.sorted { $0.date < $1.date }
+            let articles = library.unreadArticles(of: story).sorted { $0.date < $1.date }
             guard !articles.isEmpty else { continue }
             let id = "s\(items.count + 1)"
             map[id] = (story.id, articles.map(\.id))

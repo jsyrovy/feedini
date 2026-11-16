@@ -159,21 +159,14 @@ struct KeyboardNavigationTests {
         }
     }
 
-    @Test func saveWithSummaryPreparesThePageOfAnArticleWithALink() {
-        #expect(action(.saveWithSummary, at: .story(single.id)) == .saveWithSummary(.story(single.id), lone.id))
+    @Test func saveWithSummaryWorksOnRowsWithASingleArticle() {
+        #expect(action(.saveWithSummary, at: .story(single.id)) == .saveWithSummary(.story(single.id)))
         #expect(
             action(.saveWithSummary, at: .article(multi.id, second.id), expanded: [multi.id])
-                == .saveWithSummary(.article(multi.id, second.id), second.id))
+                == .saveWithSummary(.article(multi.id, second.id)))
         // Only articles are saved.
         #expect(action(.saveWithSummary, at: .story(multi.id)) == .none)
         #expect(action(.saveWithSummary, at: .story(multi.id), expanded: [multi.id]) == .none)
-        var article = lone
-        article.link = nil
-        let entry = StoryEntry(id: .loose(article.id), title: "", articles: [article])
-        let result = KeyboardNavigation.action(
-            for: .saveWithSummary, at: .story(entry.id), entry: entry, rows: [.story(entry.id)], expanded: [],
-            opensInWindow: true, pageArticle: nil)
-        #expect(result == .saveWithSummary(.story(entry.id), nil))
     }
 
     @Test func theOtherKeysNeedNoCursor() {

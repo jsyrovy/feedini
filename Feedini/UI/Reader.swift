@@ -21,8 +21,8 @@ final class Reader {
     /// Articles read while the list is shown; they stay in it (and in their stories) until the selection changes or a
     /// refresh.
     private(set) var keptArticles: Set<Article.ID> = []
-    /// Articles removed from Saved while it was shown, with their save dates: they stay in their place like kept
-    /// entries.
+    /// Articles removed from Saved while it was shown, with their save dates: they stay in their place like articles
+    /// read there.
     private(set) var unsaved: [Article.ID: Date] = [:]
     /// What the detail shows instead of the feed text.
     enum Shown: Equatable {
@@ -81,11 +81,7 @@ final class Reader {
     /// The entry with the articles it shows (`StoryEntry.visible(keeping:)`); `nil` when it shows none. Saved shows
     /// its articles read or not.
     func entry(_ id: StoryEntry.ID) -> StoryEntry? {
-        guard let entry = model.entry(id) else { return nil }
-        if case .savedArticle = id {
-            return entry
-        }
-        return entry.visible(keeping: keptArticles)
+        model.entry(id)?.visible(keeping: keptArticles)
     }
 
     var opensInWindow: Bool {
@@ -142,8 +138,8 @@ final class Reader {
             toggleRead(row)
         case .toggleSaved(let row):
             toggleSaved(row)
-        case .saveWithSummary(let row, let article):
-            saveWithSummary(row, article: article)
+        case .saveWithSummary(let row):
+            saveWithSummary(row)
         case .refresh:
             model.refreshNow()
         case .markAllRead:
@@ -179,14 +175,13 @@ final class Reader {
 
     /// Shift+S: saves the row's article unless it is saved and prepares the TL;DR of its source page (when it has a
     /// link) in the background; the detail stays as it is.
-    func saveWithSummary(_ row: ListRow, article page: Article.ID?) {
+    func saveWithSummary(_ row: ListRow) {
         guard let article = entry(row.entryID)?.singleArticle(at: row) else { return }
-        let id = article.id
         if !article.isSaved {
-            recording("Save", articles: [id], row: row) { model.setSaved(id, at: .now) }
+            toggleSaved(row)
         }
-        if let page {
-            model.preparePage(page)
+        if article.link != nil {
+            model.preparePage(article.id)
         }
     }
 
@@ -342,7 +337,7 @@ final class Reader {
     /// into the expanded story when that shows several articles, else onto the story's row. Nothing is read by that.
     private func followArticlesIntoStories() {
         guard let cursor, case .loose(let article) = cursor.entryID,
-            let storyID = model.library.storyIDsByArticle()[article]
+            let storyID = model.library.stories.values.first(where: { $0.articleIDs.contains(article) })?.id
         else { return }
         let id = StoryEntry.ID.story(storyID)
         if entry(id)?.isMultiArticle == true {

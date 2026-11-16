@@ -52,7 +52,7 @@ enum KeyboardNavigation {
         case toggleRead(ListRow)
         case toggleSaved(ListRow)
         /// Saves the row's article (never removes it) and summarizes its source page, if it has one.
-        case saveWithSummary(ListRow, Article.ID?)
+        case saveWithSummary(ListRow)
         case refresh
         case markAllRead
         case showShortcuts
@@ -90,9 +90,8 @@ enum KeyboardNavigation {
             return .toggleRead(cursor)
         case (.save, _), (.saveWithSummary, _):
             // Only articles are saved: nothing on the row of a story with several articles.
-            guard let article = entry.singleArticle(at: cursor) else { return .none }
-            guard key == .saveWithSummary else { return .toggleSaved(cursor) }
-            return .saveWithSummary(cursor, article.link != nil ? article.id : nil)
+            guard entry.singleArticle(at: cursor) != nil else { return .none }
+            return key == .save ? .toggleSaved(cursor) : .saveWithSummary(cursor)
         case (.expand, .story):
             guard entry.isMultiArticle else { return .none }
             return isExpanded ? .select(.article(entry.id, entry.articles[0].id)) : .expand(entry.id)

@@ -125,10 +125,21 @@ extension ReaderTests {
         await model.pageQueue?.waitUntilIdle()
     }
 
+    @Test func shiftSOnAnArticleWithoutALinkOnlySavesIt() async {
+        model.update { $0.articles[lone.id]?.link = nil }
+        reader.visit(.story(.loose(lone.id)))
+        reader.handle(.saveWithSummary)
+
+        #expect(model.library.articles[lone.id]?.isSaved == true)
+        #expect(model.aiStatus.pages.isEmpty)
+        await model.pageQueue?.waitUntilIdle()
+        #expect(extractor.requests.isEmpty)
+    }
+
     @Test func shiftSOnAStoryWithSeveralArticlesDoesNothing() async {
         reader.visit(.story(.story(story.id)))
         #expect(!reader.handle(.saveWithSummary))
-        reader.saveWithSummary(.story(.story(story.id)), article: nil)
+        reader.saveWithSummary(.story(.story(story.id)))
 
         #expect(model.savedEntries().isEmpty)
         #expect(model.aiStatus.pages.isEmpty)
