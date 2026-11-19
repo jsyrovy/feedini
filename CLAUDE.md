@@ -85,6 +85,9 @@ Feedini/
               is due, thinning out; BackupFrequency), BackupStore (the files in iCloud Drive, file coordination),
               Backups (@Observable: automatic backups, Back Up Now, reading backups), BackedUpSettings (the settings
               in a backup, `Preferences.apply`)
+  Updates/    AppVersion (pure: parsing, comparison), LatestRelease (UpdateError, GitHub's latest release: request,
+              parsing, fetch), UpdateChecker (@Observable: check now, daily loop), HomebrewCask (is it installed, the
+              `brew upgrade` command)
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
@@ -96,7 +99,7 @@ Feedini/
               articles read while the list is shown, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
               Undo / Redo), ListOrderPicker (newest / oldest first), KeyboardNavigation (pure: what a key does),
               ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime, SettingsView
-              (tabs) + FeedsSettings + GeneralSettings + AISettings + BackupSettings, RestoreSheet, BackupCommands
+              (tabs) + FeedsSettings + GeneralSettings (+ UpdateSettings) + AISettings + BackupSettings, RestoreSheet, BackupCommands
               (File menu), SaveLinkSheet (+ SaveLinkButton), MenuBarContent (+ MenuBarLabel)
 FeediniTests/ Swift Testing tests, mirroring the app folders
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
@@ -382,8 +385,8 @@ Implementation:
   (`AppDelegate.mainWindowIsOpen`, called from `MainWindow` appearing and disappearing).
 - Menu bar item (`MenuBarExtra`, menu style): the hat with the number of unread stories (optional), and a menu with
   the count, "Open Feedini" (⌘O), "Save Link…" (⌘L, opens the window with the sheet), "Refresh Now" (⌘R), the time of the last refresh, the AI status (always shown:
-  "AI: ready", "AI: off", or what it is doing / why it can't run), a backup problem if there is one, Settings and
-  Quit.
+  "AI: ready", "AI: off", or what it is doing / why it can't run), a backup problem if there is one, "Feedini <version>
+  Is Available…" (opens the release page) when the update check found one, Settings and Quit.
 - After the Mac wakes from sleep (`NSWorkspace.didWakeNotification`) the feeds are refreshed right away.
 - Quitting waits for pending changes to be saved (`applicationShouldTerminate` → `AppModel.flush`). `pkill` (as in
   `make run`) skips that; quit with ⌘Q or `osascript -e 'tell application id "cz.jsyrovy.feedini" to quit'` when
@@ -428,7 +431,8 @@ Implementation:
 - **General** (`GeneralSettings`, `Preferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15),
   where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), open at login (`LoginItem`, the
   system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
-  count in the menu bar (`showsUnreadCount`, on by default). Values that aren't offered fall back to the default.
+  count in the menu bar (`showsUnreadCount`, on by default), and the update check ("Check for updates daily", "Check
+  Now" and the result, see "Update check"). Values that aren't offered fall back to the default.
 - **AI** (`AISettings`): the summary language ("System (…)" first, then common languages by English name with
   their own name), which single articles are summarized (Never / In other languages / Always), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
@@ -616,6 +620,29 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - Problems (`BackupError`: iCloud Drive off, no access, not a backup, newer version, other errors with their message)
   show in Settings → Backup and in the menu bar menu until a backup works.
 
+## Update check
+
+`UpdateChecker` (taken over from buddr) asks GitHub for the latest release and tells whether it is newer than the
+running app (`CFBundleShortVersionString`). Updates are only reported, never installed.
+
+- One request: `GET https://api.github.com/repos/jsyrovy/feedini/releases/latest` (`LatestRelease`), headers `Accept:
+  application/vnd.github+json`, `X-GitHub-Api-Version`, the user agent of the feed downloads (`FeedFetcher.userAgent`;
+  GitHub refuses requests without one), ephemeral `URLSession`, timeout 15 s. It answers the latest *published*
+  release only – never a draft (`make publish` leaves one) or a prerelease – so the app offers what the Homebrew cask
+  offers. Read: `tag_name` (`v0.4`, compared number by number by `AppVersion`, so 0.10 > 0.9) and `html_url` (the
+  release page). Without a login GitHub allows 60 requests an hour per IP address; another status than 200 is a
+  failure (`UpdateError.status`).
+- Settings → General: "Check for updates daily" (`Preferences.checksForUpdates`, **off** by default – the request
+  tells GitHub the IP address; not in backups) checks at once when switched on or at launch (`AppModel.start`), then
+  every 24 h (`UpdateChecker.setDaily`); "Check Now" (`checkNow()`) checks once in any case. A check while one runs is
+  skipped; a cancelled one (the loop switched off) leaves the previous result. Nothing is persisted: after a restart
+  the result is unknown until the next check.
+- Below the checkbox: checking, up to date, a failure (⚠︎ + message), or "Feedini 0.4 is available" with "Download"
+  (opens the release page) and, when the Homebrew cask is installed (`HomebrewCask.isInstalled`: `Caskroom/feedini`
+  under `/opt/homebrew` or `/usr/local`, looked up once), the `brew upgrade` command, since an update outside Homebrew
+  leaves the cask's version behind. The menu bar menu has "Feedini <version> Is Available…" too. No notifications, no
+  download or installation (Sparkle was rejected: a third-party dependency).
+
 ## Storage and retention
 
 - One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 2, "library": {…}}`, pretty-printed
@@ -692,7 +719,8 @@ state transitions, the commands that were run), not just execute lines. There is
 total is dominated by the UI layer, which is deliberately not unit-tested.
 
 Aim for ~100 % in the pure types: `Model/`, `Store/`, `Feeds/`, `Refresh/` (the scheduler with `ManualSleeper`),
-`Backup/` (`BackupStore.temporary()`: a temporary folder standing in for iCloud Drive, UTC names),
+`Backup/` (`BackupStore.temporary()`: a temporary folder standing in for iCloud Drive, UTC names), `Updates/`
+(`LatestRelease` through a fake transport – never the real GitHub –, `UpdateChecker` with `ManualSleeper`),
 `AI/` (the queues with `FakeCommandRunner`, `TestLibraryHost`, `FakePageExtractor` and `ManualSleeper` for the
 backoff), `Debug/`, `KeyboardNavigation`, `ShortcutHelp`, `RelativeTime`, `Preferences`, and `Reader` (tested with a
 real `AppModel` over a temporary store). In `PageExtractor` the WebKit callbacks for HTTP errors and failed loads
@@ -752,6 +780,6 @@ watchers or 225 stars on GitHub.
 ## Logs
 
 `os.Logger` subsystem `cz.jsyrovy.feedini`, categories `refresh`, `feeds`, `ai` (one line per call with the metrics
-of the answer), `store` and `backup`. Watch with
+of the answer), `store`, `backup` and `updates`. Watch with
 `/usr/bin/log stream --level info --predicate 'subsystem == "cz.jsyrovy.feedini"'` – in zsh, plain `log` is a shell
 builtin. The test host is also called Feedini; filter by `processID` to see only the running app.

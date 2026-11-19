@@ -19,6 +19,7 @@ final class Preferences {
     private static let listOrderKey = "listOrder"
     private static let backsUpKey = "backsUp"
     private static let backupFrequencyKey = "backupFrequency"
+    private static let checksForUpdatesKey = "checksForUpdates"
 
     /// The choices for `refreshMinutes`.
     static let refreshMinutesChoices = [5, 15, 30, 60]
@@ -142,6 +143,15 @@ final class Preferences {
         }
     }
 
+    /// Whether GitHub is asked for a newer release once a day. Off by default: the request tells GitHub the IP
+    /// address, which the user should agree to.
+    var checksForUpdates: Bool {
+        didSet {
+            defaults.set(checksForUpdates, forKey: Self.checksForUpdatesKey)
+            onUpdatesChange?()
+        }
+    }
+
     /// The language code in effect.
     var summaryLanguageCode: String {
         summaryLanguage.isEmpty ? OutputLanguage.systemCode : summaryLanguage
@@ -162,6 +172,9 @@ final class Preferences {
 
     /// Called after a backup preference changed.
     @ObservationIgnored var onBackupChange: (@MainActor () -> Void)?
+
+    /// Called after `checksForUpdates` changed.
+    @ObservationIgnored var onUpdatesChange: (@MainActor () -> Void)?
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -187,6 +200,7 @@ final class Preferences {
         backsUp = defaults.bool(forKey: Self.backsUpKey)
         backupFrequency =
             defaults.string(forKey: Self.backupFrequencyKey).flatMap(BackupFrequency.init(rawValue:)) ?? .daily
+        checksForUpdates = defaults.bool(forKey: Self.checksForUpdatesKey)
     }
 }
 

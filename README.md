@@ -38,6 +38,10 @@ New articles show up right away; grouping and summaries arrive in the background
   (V), its full text (P) or its summary (T). Only T sends the page's text to the AI. If you are logged in on the
   site, the text may include what the page shows about you (such as "Logged in as …").
 - The AI gets titles and the start of the feed texts through the `claude` CLI, with all of its tools turned off.
+- The update check (Settings → General, off by default) asks GitHub's API for the latest release
+  (`api.github.com/repos/jsyrovy/feedini/releases/latest`) once a day, or when you click "Check Now". A newer release
+  shows up with a link to its page (and the `brew upgrade` command when the Homebrew cask is installed); Feedini never
+  installs it itself.
 - With the default model (Claude Haiku) organizing new articles costs about $0.002–0.005 per batch of 20 and a
   summary of ten stories about $0.004; Settings → AI shows the calls, time and cost per day.
 

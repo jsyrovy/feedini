@@ -51,6 +51,7 @@ struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            UpdateSettings(preferences: preferences, updates: model.updates)
         }
         .formStyle(.grouped)
         .onAppear { isLoginItem = LoginItem.isEnabled }
@@ -66,5 +67,67 @@ struct GeneralSettings: View {
                 loginError = LoginItem.setEnabled(enabled)
                 isLoginItem = LoginItem.isEnabled
             })
+    }
+}
+
+/// "Check for updates daily", "Check Now" and what the last check found.
+private struct UpdateSettings: View {
+    @Bindable var preferences: Preferences
+    let updates: UpdateChecker
+
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Section {
+            HStack {
+                Toggle("Check for updates daily", isOn: $preferences.checksForUpdates)
+                Spacer()
+                Button("Check Now") {
+                    Task { await updates.checkNow() }
+                }
+                .disabled(updates.state == .checking)
+            }
+            status
+        } footer: {
+            Text("Asks GitHub for the latest release. Feedini never installs it itself.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// What the last check found; nothing before the first one.
+    @ViewBuilder private var status: some View {
+        switch updates.state {
+        case .unchecked:
+            EmptyView()
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking for updates…")
+            }
+            .foregroundStyle(.secondary)
+        case .upToDate(let version):
+            Label("Feedini \(version.description) is up to date", systemImage: "checkmark.circle")
+                .foregroundStyle(.secondary)
+        case .available(let release):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Label("Feedini \(release.version.description) is available", systemImage: "arrow.down.circle")
+                    Spacer()
+                    Button("Download") { openURL(release.pageURL) }
+                }
+                if HomebrewCask.isInstalled {
+                    Text("With Homebrew: \(Text(HomebrewCask.upgradeCommand).monospaced())")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
     }
 }

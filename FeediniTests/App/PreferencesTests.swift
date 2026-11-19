@@ -31,6 +31,18 @@ struct PreferencesTests {
         #expect(Preferences(defaults: defaults).collapsedFolders == [folder])
     }
 
+    @Test func doesNotCheckForUpdatesByDefault() {
+        let preferences = Preferences(defaults: defaults)
+        var changes = 0
+        preferences.onUpdatesChange = { changes += 1 }
+        #expect(!preferences.checksForUpdates)
+
+        preferences.checksForUpdates = true
+
+        #expect(changes == 1)
+        #expect(Preferences(defaults: defaults).checksForUpdates)
+    }
+
     @Test func savesTheListOrder() {
         #expect(Preferences(defaults: defaults).listOrder == .newestFirst)
 

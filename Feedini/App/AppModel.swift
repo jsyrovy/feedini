@@ -8,6 +8,7 @@ final class AppModel: LibraryHost {
     let preferences: Preferences
     let aiStatus = AIStatus()
     let backups: Backups
+    let updates: UpdateChecker
     private(set) var library = Library() {
         didSet {
             // Comparing unchanged collections is cheap (they share their storage).
@@ -49,9 +50,10 @@ final class AppModel: LibraryHost {
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
         claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator(),
         pageExtractor: (any PageExtracting)? = nil, backupStore: BackupStore = BackupStore(),
-        now: @escaping @Sendable () -> Date = { .now }
+        updates: UpdateChecker = UpdateChecker(), now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.preferences = preferences
+        self.updates = updates
         self.now = now
         backups = Backups(store: backupStore, preferences: preferences, now: now)
         self.store = store
@@ -140,6 +142,11 @@ final class AppModel: LibraryHost {
         preferences.onBackupChange = { [weak self] in
             self?.backUpIfDue()
         }
+        preferences.onUpdatesChange = { [weak self] in
+            guard let self else { return }
+            updates.setDaily(preferences.checksForUpdates)
+        }
+        updates.setDaily(preferences.checksForUpdates)
         scheduler.start()
         self.scheduler = scheduler
         organize()

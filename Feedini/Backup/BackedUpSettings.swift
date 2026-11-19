@@ -1,6 +1,6 @@
 /// The settings that go into a backup. Those of one Mac stay out (the path to claude, the folders collapsed in the
-/// sidebar, opening at login), and so do those of backing up: restoring an old backup mustn't turn backups off. Values
-/// are kept as they were; restoring applies the valid ones (`Preferences.apply`).
+/// sidebar, opening at login, the update check), and so do those of backing up: restoring an old backup mustn't turn
+/// backups off. Values are kept as they were; restoring applies the valid ones (`Preferences.apply`).
 struct BackedUpSettings: Codable, Sendable, Equatable {
     var refreshMinutes: Int?
     var pageOpening: String?

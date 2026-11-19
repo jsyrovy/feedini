@@ -22,6 +22,7 @@ struct MenuBarContent: View {
     @Environment(AppModel.self) private var model
     @Environment(Reader.self) private var reader
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Text(unreadStories(model.unreadCounts.all))
@@ -36,6 +37,9 @@ struct MenuBarContent: View {
         Text(aiState)
         if let problem = model.backups.problem {
             Text("Backup: \(problem)")
+        }
+        if let release = model.updates.available {
+            Button("Feedini \(release.version.description) Is Available…") { openURL(release.pageURL) }
         }
         Divider()
         SettingsLink { Text("Settings…") }
