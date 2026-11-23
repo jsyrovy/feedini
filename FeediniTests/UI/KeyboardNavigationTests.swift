@@ -27,7 +27,7 @@ struct KeyboardNavigationTests {
         _ key: ListKey, at cursor: ListRow?, expanded: Set<StoryEntry.ID> = [], opensInWindow: Bool = true,
         page: Article.ID? = nil
     ) -> KeyboardNavigation.Action {
-        let rows = KeyboardNavigation.rows([single, multi], expanded: expanded)
+        let rows = ListRow.rows([single, multi], expanded: expanded)
         return KeyboardNavigation.action(
             for: key, at: cursor, entry: cursor.flatMap { entries[$0.entryID] }, rows: rows, expanded: expanded,
             opensInWindow: opensInWindow,
@@ -35,9 +35,9 @@ struct KeyboardNavigationTests {
     }
 
     @Test func rowsIncludeTheArticlesOfExpandedStories() {
-        #expect(KeyboardNavigation.rows([single, multi], expanded: []) == [.story(single.id), .story(multi.id)])
+        #expect(ListRow.rows([single, multi], expanded: []) == [.story(single.id), .story(multi.id)])
         #expect(
-            KeyboardNavigation.rows([single, multi], expanded: [multi.id, single.id])
+            ListRow.rows([single, multi], expanded: [multi.id, single.id])
                 == [.story(single.id), .story(multi.id), .article(multi.id, first.id), .article(multi.id, second.id)])
     }
 

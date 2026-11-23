@@ -7,6 +7,7 @@ import Testing
 struct ReaderTests {
     let feed = Feed.stub("Tech")
     let extractor = FakePageExtractor()
+    let services: MacServices
     let model: AppModel
     let reader: Reader
     let lone: Article
@@ -15,8 +16,9 @@ struct ReaderTests {
     let story: Story
 
     init() {
-        model = AppModel.test(extractor: extractor)
-        reader = Reader(model: model)
+        services = MacServices.test(extractor: extractor)
+        model = services.model
+        reader = Reader(services: services)
         lone = Article.stub("Lone", feed: feed.id, hours: -1)
         first = Article.stub("First", feed: feed.id, hours: -2)
         second = Article.stub("Second", feed: feed.id, hours: -3)
@@ -138,7 +140,7 @@ struct ReaderTests {
         reader.visit(.story(.loose(lone.id)))
         reader.handle(.preview)
         #expect(reader.previewArticle == lone.id)
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
         #expect(model.library.pageTextIDs == [lone.id])
         #expect(await model.pageText(lone.id) == "Text of the page \(lone.link!.lastPathComponent).")
 
@@ -158,13 +160,13 @@ struct ReaderTests {
         reader.handle(.preview)
         #expect(reader.pageArticle == nil)
         #expect(reader.previewArticle == lone.id)
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
     }
 
     @Test func openingThePageInTheWindowForgetsItsText() async {
         reader.visit(.story(.loose(lone.id)))
         reader.handle(.preview)
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
 
         reader.handle(.open)
         #expect(reader.pageArticle == lone.id)
@@ -178,15 +180,15 @@ struct ReaderTests {
         reader.handle(.summarizePage)
 
         #expect(reader.pageArticle == nil)
-        #expect(model.aiStatus.pages[lone.id]?.summary == true)
-        await model.pageQueue?.waitUntilIdle()
+        #expect(model.pageStatus[lone.id]?.summary == true)
+        await model.pageLoader.waitUntilIdle()
         #expect(extractor.requests == [lone.link!])
     }
 
     @Test func pOnASavedLinkLoadsItsPageAgainAndLeavesTheSourcePage() async throws {
-        model.preferences.aiEnabled = false
+        services.preferences.aiEnabled = false
         let id = try model.saveLink("example.com/essay").articleID
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
         reader.selection = .saved
         reader.visit(.story(.savedArticle(id)))
         reader.handle(.open)
@@ -196,7 +198,7 @@ struct ReaderTests {
         reader.handle(.preview)
         #expect(reader.pageArticle == nil)
         #expect(reader.previewArticle == nil)
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
         #expect(extractor.requests.count == 2)
     }
 
@@ -237,14 +239,15 @@ struct ReaderTests {
 @MainActor
 struct ReaderFollowsArticlesTests {
     private let feed = Feed.stub("Tech")
+    private let services = MacServices.test()
     private let model: AppModel
     private let reader: Reader
     private let first: Article
     private let second: Article
 
     init() {
-        model = AppModel.test()
-        reader = Reader(model: model)
+        model = services.model
+        reader = Reader(services: services)
         first = Article.stub("First", feed: feed.id, hours: -1)
         second = Article.stub("Second", feed: feed.id, hours: -2)
         let library = Library(feeds: [feed], articles: [first, second])

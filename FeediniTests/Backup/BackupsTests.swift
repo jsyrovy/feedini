@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct BackupsTests {
     private let store = BackupStore.temporary()
-    private let preferences = Preferences.test()
+    private let preferences = MacPreferences.test()
     private let clock = TestClock()
     private let library = Library(feeds: [.stub()], articles: [])
 
@@ -26,7 +26,7 @@ struct BackupsTests {
     @Test func backsUpTheLibraryAndSettings() async throws {
         defer { remove() }
         let backups = backups()
-        preferences.refreshMinutes = 30
+        preferences.shared.refreshMinutes = 30
         #expect(backups.lastBackup == nil)
 
         try await backups.backUp(library)

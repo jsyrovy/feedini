@@ -24,6 +24,7 @@ struct FeediniApp: App {
         Window("Feedini", id: Self.mainWindowID) {
             MainWindow()
                 .environment(appDelegate.model)
+                .environment(appDelegate.services)
                 .environment(appDelegate.reader)
         }
         .commands {
@@ -31,7 +32,7 @@ struct FeediniApp: App {
                 SaveLinkButton(reader: appDelegate.reader)
             }
             CommandGroup(after: .importExport) {
-                BackupCommands(model: appDelegate.model, reader: appDelegate.reader)
+                BackupCommands(services: appDelegate.services, reader: appDelegate.reader)
             }
             CommandGroup(replacing: .undoRedo) {
                 UndoCommands(reader: appDelegate.reader)
@@ -54,14 +55,16 @@ struct FeediniApp: App {
         Settings {
             SettingsView()
                 .environment(appDelegate.model)
+                .environment(appDelegate.services)
         }
 
         MenuBarExtra {
             MenuBarContent()
                 .environment(appDelegate.model)
+                .environment(appDelegate.services)
                 .environment(appDelegate.reader)
         } label: {
-            MenuBarLabel(model: appDelegate.model)
+            MenuBarLabel(services: appDelegate.services)
         }
     }
 }

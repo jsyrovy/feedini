@@ -96,7 +96,7 @@ struct ArticleDetail: View {
                     }
                 }
                 // The page summary replaces the AI gist of the feed text: it is more complete.
-                if PageSummaryView.isShown(for: article, status: model.aiStatus) {
+                if PageSummaryView.isShown(for: article, status: model.pageStatus) {
                     PageSummaryView(article: article)
                 } else if let story, story.needsSummary {
                     SummaryView(entry: story)
@@ -152,7 +152,7 @@ struct PagePreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !isStored {
-                PageLoadStatus(phase: model.aiStatus.pages[article.id]?.phase)
+                PageLoadStatus(phase: model.pageStatus[article.id]?.phase)
             } else if let text {
                 Label("Text of the source page · P shows the feed text", systemImage: "doc.plaintext")
                     .font(.caption)
@@ -174,7 +174,7 @@ struct PagePreview: View {
 
 /// Loading a page (also before the work started), or why it failed.
 struct PageLoadStatus: View {
-    let phase: AIStatus.PageWork.Phase?
+    let phase: PageStatus.Work.Phase?
 
     var body: some View {
         switch phase {
@@ -208,6 +208,7 @@ struct PageTextBody: View {
 /// "Preview" (P) – "Reload Page" on a saved link – and "Summarize Page" (T).
 struct PageButtons: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
     @Environment(Reader.self) private var reader
     let article: Article
 
@@ -215,7 +216,7 @@ struct PageButtons: View {
         if article.isSavedLink {
             Button("Reload Page", systemImage: "arrow.clockwise") { reader.reloadPage(article.id) }
                 .help("P: load the page again, after accepting cookies or logging in with V")
-                .disabled(model.aiStatus.pages[article.id]?.isRunning == true)
+                .disabled(model.pageStatus[article.id]?.isRunning == true)
         } else {
             Toggle(
                 "Preview", systemImage: "doc.plaintext",
@@ -228,7 +229,7 @@ struct PageButtons: View {
         }
         Button("Summarize Page", systemImage: "sparkles") { reader.summarizePage(article.id) }
             .help("T")
-            .disabled(!model.canSummarizePage(article.id))
+            .disabled(!mac.canSummarizePage(article.id))
     }
 
 }
@@ -244,7 +245,7 @@ struct LinkText: View {
     @State private var text: String?
 
     var body: some View {
-        let work = model.aiStatus.pages[article.id]
+        let work = model.pageStatus[article.id]
         let isLoading = work?.phase == .loading
         VStack(alignment: .leading, spacing: 14) {
             if let work, !work.summary {

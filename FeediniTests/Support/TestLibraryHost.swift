@@ -44,18 +44,33 @@ extension ClaudeLocator {
     }
 }
 
-extension AppModel {
-    /// A model over a store in a new temporary directory and defaults of its own, not loaded (no refresh, no AI
-    /// queues running). Claude calls and source pages go to the given fakes, backups to a temporary folder.
+extension MacServices {
+    /// The Mac services with their model over a store in a new temporary directory and defaults of their own, not
+    /// loaded (no refresh, no AI queues running). Claude calls and source pages go to the given fakes, backups to a
+    /// temporary folder. Keep the services in a local: the model holds them weakly.
     static func test(
         runner: FakeCommandRunner = FakeCommandRunner([]), extractor: FakePageExtractor = FakePageExtractor(),
         backupStore: BackupStore = .temporary()
-    ) -> AppModel {
+    ) -> MacServices {
+        MacServices(
+            preferences: MacPreferences.test(), store: .temporary(), claudeRunner: runner, claudeLocator: .stub(),
+            pageExtractor: extractor, backupStore: backupStore)
+    }
+}
+
+extension AppModel {
+    /// A model without the Mac services (no AI, no backups) over a store in a new temporary directory and defaults
+    /// of its own, not loaded. Source pages go to the given fake.
+    static func test(extractor: FakePageExtractor = FakePageExtractor()) -> AppModel {
+        AppModel(preferences: Preferences.test(), store: .temporary(), pageExtractor: extractor)
+    }
+}
+
+extension LibraryStore {
+    /// A store in a new temporary directory.
+    static func temporary() -> LibraryStore {
         let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-\(UUID().uuidString)")
-        return AppModel(
-            preferences: Preferences.test(),
-            store: LibraryStore(fileURL: directory.appending(path: "library.json")), claudeRunner: runner,
-            claudeLocator: .stub(), pageExtractor: extractor, backupStore: backupStore)
+        return LibraryStore(fileURL: directory.appending(path: "library.json"))
     }
 }
 
@@ -75,5 +90,12 @@ extension Preferences {
     /// Preferences over defaults of their own.
     static func test() -> Preferences {
         Preferences(defaults: UserDefaults(suiteName: "feedini-tests-\(UUID().uuidString)")!)
+    }
+}
+
+extension MacPreferences {
+    /// Mac preferences over defaults of their own.
+    static func test() -> MacPreferences {
+        MacPreferences(shared: .test())
     }
 }

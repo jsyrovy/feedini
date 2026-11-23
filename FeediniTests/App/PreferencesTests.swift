@@ -14,9 +14,9 @@ struct PreferencesTests {
     }
 
     @Test func defaultsToFifteenMinutesAndTheWindow() {
-        let preferences = Preferences(defaults: defaults)
-        #expect(preferences.refreshMinutes == 15)
-        #expect(preferences.pageOpening == .window)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
+        #expect(preferences.shared.refreshMinutes == 15)
+        #expect(preferences.shared.pageOpening == .window)
         #expect(preferences.showsUnreadCount)
     }
 
@@ -32,7 +32,7 @@ struct PreferencesTests {
     }
 
     @Test func doesNotCheckForUpdatesByDefault() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         var changes = 0
         preferences.onUpdatesChange = { changes += 1 }
         #expect(!preferences.checksForUpdates)
@@ -40,7 +40,7 @@ struct PreferencesTests {
         preferences.checksForUpdates = true
 
         #expect(changes == 1)
-        #expect(Preferences(defaults: defaults).checksForUpdates)
+        #expect(MacPreferences(shared: Preferences(defaults: defaults)).checksForUpdates)
     }
 
     @Test func savesTheListOrder() {
@@ -52,8 +52,8 @@ struct PreferencesTests {
     }
 
     @Test func savesWhetherTheMenuBarShowsTheCount() {
-        Preferences(defaults: defaults).showsUnreadCount = false
-        #expect(!Preferences(defaults: defaults).showsUnreadCount)
+        MacPreferences(shared: Preferences(defaults: defaults)).showsUnreadCount = false
+        #expect(!MacPreferences(shared: Preferences(defaults: defaults)).showsUnreadCount)
     }
 
     @Test func savesChangesAndReportsThem() {
@@ -81,7 +81,7 @@ struct PreferencesTests {
     }
 
     @Test func aiDefaultsToHaikuWithLowEffort() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         let configuration = preferences.aiConfiguration
         #expect(configuration.isEnabled)
         #expect(configuration.assignModel == "claude-haiku-5-5")
@@ -93,7 +93,7 @@ struct PreferencesTests {
     }
 
     @Test func theSummaryLanguageDefaultsToTheSystem() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         var aiChanges = 0
         preferences.onAIChange = { aiChanges += 1 }
         #expect(preferences.summaryLanguage == "")
@@ -104,13 +104,13 @@ struct PreferencesTests {
         #expect(aiChanges == 1)
         #expect(preferences.aiConfiguration.languageCode == "cs")
         #expect(preferences.aiConfiguration.language == "Czech")
-        #expect(Preferences(defaults: defaults).summaryLanguage == "cs")
+        #expect(MacPreferences(shared: Preferences(defaults: defaults)).summaryLanguage == "cs")
         defaults.set("not a language", forKey: "summaryLanguage")
-        #expect(Preferences(defaults: defaults).summaryLanguage == "")
+        #expect(MacPreferences(shared: Preferences(defaults: defaults)).summaryLanguage == "")
     }
 
     @Test func singleArticlesAreNotSummarizedByDefault() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         var aiChanges = 0
         preferences.onAIChange = { aiChanges += 1 }
         #expect(preferences.singleArticleSummaries == .never)
@@ -120,16 +120,16 @@ struct PreferencesTests {
 
         #expect(aiChanges == 1)
         #expect(preferences.aiConfiguration.singleArticleSummaries == .otherLanguages)
-        #expect(Preferences(defaults: defaults).singleArticleSummaries == .otherLanguages)
+        #expect(MacPreferences(shared: Preferences(defaults: defaults)).singleArticleSummaries == .otherLanguages)
         defaults.set("sometimes", forKey: "singleArticleSummaries")
-        #expect(Preferences(defaults: defaults).singleArticleSummaries == .never)
+        #expect(MacPreferences(shared: Preferences(defaults: defaults)).singleArticleSummaries == .never)
     }
 
     @Test func savesAIChangesAndReportsThemSeparately() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         var changes = 0
         var aiChanges = 0
-        preferences.onChange = { changes += 1 }
+        preferences.shared.onChange = { changes += 1 }
         preferences.onAIChange = { aiChanges += 1 }
 
         preferences.aiEnabled = false
@@ -140,7 +140,7 @@ struct PreferencesTests {
 
         #expect(aiChanges == 5)
         #expect(changes == 0)
-        let reloaded = Preferences(defaults: defaults).aiConfiguration
+        let reloaded = MacPreferences(shared: Preferences(defaults: defaults)).aiConfiguration
         #expect(
             reloaded
                 == AIConfiguration(
@@ -151,7 +151,7 @@ struct PreferencesTests {
     @Test func ignoresEmptyModelsAndUnknownEfforts() {
         defaults.set("", forKey: "assignModel")
         defaults.set("extreme", forKey: "aiEffort")
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         #expect(preferences.assignModel == "claude-haiku-5-5")
         #expect(preferences.aiEffort == "low")
     }
@@ -167,7 +167,7 @@ struct PreferencesTests {
 
 extension PreferencesTests {
     @Test func backupsAreOffAndDailyByDefault() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         var changes = 0
         preferences.onBackupChange = { changes += 1 }
         #expect(!preferences.backsUp)
@@ -177,18 +177,18 @@ extension PreferencesTests {
         preferences.backupFrequency = .hourly
 
         #expect(changes == 2)
-        let reloaded = Preferences(defaults: defaults)
+        let reloaded = MacPreferences(shared: Preferences(defaults: defaults))
         #expect(reloaded.backsUp)
         #expect(reloaded.backupFrequency == .hourly)
         defaults.set("monthly", forKey: "backupFrequency")
-        #expect(Preferences(defaults: defaults).backupFrequency == .daily)
+        #expect(MacPreferences(shared: Preferences(defaults: defaults)).backupFrequency == .daily)
     }
 
     @Test func backsUpTheSettingsOfAllMacsAndAppliesTheValidOnes() {
-        let preferences = Preferences(defaults: defaults)
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         preferences.claudePath = "/tools/claude"
-        preferences.refreshMinutes = 60
-        preferences.pageOpening = .browser
+        preferences.shared.refreshMinutes = 60
+        preferences.shared.pageOpening = .browser
         preferences.showsUnreadCount = false
         preferences.aiEnabled = false
         preferences.assignModel = "claude-sonnet-5-5"
@@ -198,7 +198,7 @@ extension PreferencesTests {
         preferences.singleArticleSummaries = .always
         let settings = preferences.backedUpSettings
 
-        let restored = Preferences.test()
+        let restored = MacPreferences.test()
         restored.apply(settings)
 
         #expect(restored.backedUpSettings == settings)

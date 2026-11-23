@@ -87,7 +87,7 @@ extension ReaderTests {
 
         reader.undo()
         #expect(model.library.articles[second.id]?.isSaved == false)
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
     }
 
     @Test func undoInSavedPutsTheItemBackInItsPlace() {

@@ -18,7 +18,7 @@ extension ReaderTests {
         try await model.storePageText("The text of the lone article's page.", for: lone.id)
         try await model.storePageText("The text of the first article's page.", for: first.id)
 
-        try await model.restore(backup, settings: false)
+        try await services.restore(backup, settings: false)
 
         #expect(model.library.articles.keys.sorted() == [lone.id])
         #expect(!isRead(lone))
@@ -31,15 +31,15 @@ extension ReaderTests {
         #expect(reader.undoName == nil)
         #expect(reader.entries.map(\.title) == ["Lone"])
         // The library before the restore.
-        let backups = try await model.backups.backups()
+        let backups = try await services.backups.backups()
         #expect(backups.map(\.kind) == [.beforeRestore])
-        let before = try await model.backups.contents(of: backups[0])
+        let before = try await services.backups.contents(of: backups[0])
         #expect(before.library.articles.count == 3)
         #expect(before.library.articles[lone.id]?.isRead == true)
     }
 
     @Test func restoringTheSettingsToo() async throws {
-        try await model.restore(backup, settings: true)
+        try await services.restore(backup, settings: true)
 
         #expect(model.preferences.refreshMinutes == 5)
     }
@@ -47,18 +47,19 @@ extension ReaderTests {
     @Test func aLibraryWithoutFeedsIsNotBackedUpBeforeARestore() async throws {
         model.update { $0 = Library() }
 
-        try await model.restore(backup, settings: false)
+        try await services.restore(backup, settings: false)
 
         #expect(model.library == backup.library)
-        #expect(try await model.backups.backups().isEmpty)
+        #expect(try await services.backups.backups().isEmpty)
     }
 
     @Test func nothingIsRestoredWhenTheLibraryCantBeBackedUpFirst() async throws {
-        let model = AppModel.test(backupStore: .temporary(driveExists: false))
+        let services = MacServices.test(backupStore: .temporary(driveExists: false))
+        let model = services.model
         let library = Library(feeds: [feed], articles: [first])
         model.update { $0 = library }
 
-        await #expect(throws: BackupError.iCloudDriveOff) { try await model.restore(backup, settings: true) }
+        await #expect(throws: BackupError.iCloudDriveOff) { try await services.restore(backup, settings: true) }
 
         #expect(model.library == library)
         #expect(model.preferences.refreshMinutes == 15)

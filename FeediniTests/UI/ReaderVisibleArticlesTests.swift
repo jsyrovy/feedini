@@ -71,7 +71,7 @@ extension ReaderTests {
         #expect(model.library.articles[first.id]?.isSaved == false)
         reader.handle(.preview)
         #expect(reader.previewArticle == second.id)
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
     }
 
     @Test func mTogglesTheArticlesTheStoryShows() {

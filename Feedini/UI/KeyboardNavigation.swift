@@ -59,14 +59,6 @@ enum KeyboardNavigation {
         case none
     }
 
-    /// The rows of the list: every entry, followed by its articles when expanded.
-    static func rows(_ entries: [StoryEntry], expanded: Set<StoryEntry.ID>) -> [ListRow] {
-        entries.flatMap { entry -> [ListRow] in
-            guard entry.isMultiArticle, expanded.contains(entry.id) else { return [.story(entry.id)] }
-            return [.story(entry.id)] + entry.articles.map { .article(entry.id, $0.id) }
-        }
-    }
-
     /// - Parameters:
     ///   - entry: the entry of the cursor's row.
     ///   - opensInWindow: the default way of opening source pages (Settings → General).

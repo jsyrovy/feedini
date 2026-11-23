@@ -3,14 +3,15 @@ import SwiftUI
 /// AI: on / off, where claude is, models and effort, the latest calls.
 struct AISettings: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
 
     var body: some View {
-        @Bindable var preferences = model.preferences
+        @Bindable var preferences = mac.preferences
         Form {
             Section {
                 Toggle("Organize and summarize articles with AI", isOn: $preferences.aiEnabled)
                 LabeledContent("Status") {
-                    AIStateLabel(state: model.aiStatus.state)
+                    AIStateLabel(state: mac.aiStatus.state)
                 }
             } footer: {
                 Text(
@@ -53,7 +54,7 @@ struct AISettings: View {
                 ModelPicker(title: "Organizing model", selection: $preferences.assignModel)
                 ModelPicker(title: "Summary model", selection: $preferences.summaryModel)
                 Picker("Effort", selection: $preferences.aiEffort) {
-                    ForEach(Preferences.effortChoices, id: \.self) { Text($0.capitalized).tag($0) }
+                    ForEach(MacPreferences.effortChoices, id: \.self) { Text($0.capitalized).tag($0) }
                 }
             }
 
@@ -62,22 +63,22 @@ struct AISettings: View {
             }
 
             Section("Recent calls") {
-                if model.aiStatus.calls.isEmpty {
+                if mac.aiStatus.calls.isEmpty {
                     Text("None yet").foregroundStyle(.secondary)
                 } else {
-                    ForEach(model.aiStatus.calls) { call in
+                    ForEach(mac.aiStatus.calls) { call in
                         CallRow(call: call)
                     }
                 }
             }
         }
         .formStyle(.grouped)
-        .onAppear { claudePath = model.preferences.claudePath }
+        .onAppear { claudePath = mac.preferences.claudePath }
         // A typed path is used once it is submitted or the settings close, not on every keystroke.
-        .onDisappear { model.preferences.claudePath = claudePath }
-        .task(id: model.preferences.claudePath) {
+        .onDisappear { mac.preferences.claudePath = claudePath }
+        .task(id: mac.preferences.claudePath) {
             let locator = ClaudeLocator()
-            let saved = model.preferences.claudePath
+            let saved = mac.preferences.claudePath
             detectedPath = locator.locate()?.path
             if saved.isEmpty {
                 pathHint =
@@ -98,7 +99,7 @@ struct AISettings: View {
         let choices = OutputLanguage.choices.sorted {
             OutputLanguage.name(of: $0).localizedStandardCompare(OutputLanguage.name(of: $1)) == .orderedAscending
         }
-        let saved = model.preferences.summaryLanguage
+        let saved = mac.preferences.summaryLanguage
         return saved.isEmpty || choices.contains(saved) ? choices : choices + [saved]
     }
 }
@@ -115,7 +116,8 @@ private struct ModelPicker: View {
 
     /// The offered models plus a different one saved before.
     private var choices: [String] {
-        Preferences.modelChoices.contains(selection) ? Preferences.modelChoices : Preferences.modelChoices + [selection]
+        MacPreferences.modelChoices.contains(selection)
+            ? MacPreferences.modelChoices : MacPreferences.modelChoices + [selection]
     }
 }
 

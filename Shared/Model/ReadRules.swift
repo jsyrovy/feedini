@@ -41,3 +41,13 @@ enum ReadRules {
         }
     }
 }
+
+extension ListRow {
+    /// The rows of the list: every entry, followed by its articles when expanded.
+    static func rows(_ entries: [StoryEntry], expanded: Set<StoryEntry.ID>) -> [ListRow] {
+        entries.flatMap { entry -> [ListRow] in
+            guard entry.isMultiArticle, expanded.contains(entry.id) else { return [.story(entry.id)] }
+            return [.story(entry.id)] + entry.articles.map { .article(entry.id, $0.id) }
+        }
+    }
+}

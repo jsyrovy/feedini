@@ -24,9 +24,11 @@ struct SettingsView: View {
 /// General: refresh interval and where source pages open.
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
 
     var body: some View {
         @Bindable var preferences = model.preferences
+        @Bindable var macPreferences = mac.preferences
         Form {
             Picker("Refresh every:", selection: $preferences.refreshMinutes) {
                 ForEach(Preferences.refreshMinutesChoices, id: \.self) { minutes in
@@ -45,13 +47,13 @@ struct GeneralSettings: View {
                 if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.orange)
                 }
-                Toggle("Show the number of unread stories in the menu bar", isOn: $preferences.showsUnreadCount)
+                Toggle("Show the number of unread stories in the menu bar", isOn: $macPreferences.showsUnreadCount)
             } footer: {
                 Text("Closing the window keeps Feedini in the menu bar; it keeps refreshing and organizing there.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            UpdateSettings(preferences: preferences, updates: model.updates)
+            UpdateSettings(preferences: macPreferences, updates: mac.updates)
         }
         .formStyle(.grouped)
         .onAppear { isLoginItem = LoginItem.isEnabled }
@@ -72,7 +74,7 @@ struct GeneralSettings: View {
 
 /// "Check for updates daily", "Check Now" and what the last check found.
 private struct UpdateSettings: View {
-    @Bindable var preferences: Preferences
+    @Bindable var preferences: MacPreferences
     let updates: UpdateChecker
 
     @Environment(\.openURL) private var openURL

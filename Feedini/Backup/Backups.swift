@@ -19,7 +19,7 @@ final class Backups {
     var isBackingUp: Bool { runningCount > 0 }
 
     @ObservationIgnored let store: BackupStore
-    @ObservationIgnored private let preferences: Preferences
+    @ObservationIgnored private let preferences: MacPreferences
     @ObservationIgnored private let appVersion: String
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var knowsLastBackup = false
@@ -27,7 +27,7 @@ final class Backups {
     @ObservationIgnored private var running: Task<Void, Never>?
 
     init(
-        store: BackupStore, preferences: Preferences,
+        store: BackupStore, preferences: MacPreferences,
         appVersion: String = RuntimeEnvironment.appVersion,
         now: @escaping @Sendable () -> Date = { .now }
     ) {

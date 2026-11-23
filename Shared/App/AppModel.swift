@@ -1,14 +1,29 @@
 import Foundation
 import Observation
 
-/// Connects the layers: holds the library on the main actor, saves its changes, runs the refreshes.
+/// What a platform adds to the shared model: on the Mac the AI organizing and summarizing, and backups.
+@MainActor
+protocol PlatformServices: AnyObject {
+    /// Lets the AI organize articles without a story (after loading, new feeds); `retryingFailed` gives failed ones
+    /// another chance.
+    func organize(retryingFailed: Bool)
+    /// A refresh ended.
+    func refreshEnded()
+    /// Save Link…: starts the work on the page of a newly saved link; `false` leaves it to the page loader (only its
+    /// text).
+    func prepareSavedLink(_ id: Article.ID) -> Bool
+}
+
+/// Connects the layers: holds the library on the main actor, saves its changes, runs the refreshes, loads source
+/// pages. Shared by both apps; what only the Mac does comes through `services`.
 @MainActor
 @Observable
 final class AppModel: LibraryHost {
     let preferences: Preferences
-    let aiStatus = AIStatus()
-    let backups: Backups
-    let updates: UpdateChecker
+    /// What the list shows of the summaries; the Mac sets it from its settings.
+    var summarySettings = SummarySettings()
+    /// The Mac's AI and backups (`MacServices`); `nil` elsewhere.
+    @ObservationIgnored weak var services: (any PlatformServices)?
     private(set) var library = Library() {
         didSet {
             // Comparing unchanged collections is cheap (they share their storage).
@@ -37,9 +52,8 @@ final class AppModel: LibraryHost {
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private let coordinator: RefreshCoordinator
     @ObservationIgnored private let subscriber: FeedSubscriber
-    @ObservationIgnored private(set) var assignQueue: AssignQueue?
-    @ObservationIgnored private(set) var summaryQueue: SummaryQueue?
-    @ObservationIgnored private(set) var pageQueue: PageSummaryQueue?
+    /// Loads source pages (P, Save Link); on the Mac also for their summaries.
+    @ObservationIgnored private(set) var pageLoader: PageLoader!
     @ObservationIgnored private var scheduler: RefreshScheduler?
     @ObservationIgnored private var entriesCache: EntriesCache?
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
@@ -48,32 +62,18 @@ final class AppModel: LibraryHost {
     init(
         preferences: Preferences = Preferences(), store: LibraryStore = LibraryStore(),
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
-        claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator(),
-        pageExtractor: (any PageExtracting)? = nil, backupStore: BackupStore = BackupStore(),
-        updates: UpdateChecker = UpdateChecker(), now: @escaping @Sendable () -> Date = { .now }
+        pageExtractor: (any PageExtracting)? = nil, now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.preferences = preferences
-        self.updates = updates
         self.now = now
-        backups = Backups(store: backupStore, preferences: preferences, now: now)
         self.store = store
         self.coordinator = coordinator
         self.subscriber = subscriber
-        let configuration: @MainActor () -> AIConfiguration = { [preferences] in preferences.aiConfiguration }
-        let assignQueue = AssignQueue(
-            host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
-        let summaryQueue = SummaryQueue(
-            host: self, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
-        assignQueue.onBatchApplied = { [weak summaryQueue] in summaryQueue?.trigger() }
-        self.assignQueue = assignQueue
-        self.summaryQueue = summaryQueue
-        pageQueue = PageSummaryQueue(
-            host: self, extractor: pageExtractor ?? PageExtractor(), runner: claudeRunner, locator: claudeLocator,
-            status: aiStatus, configuration: configuration)
-        if !preferences.aiEnabled {
-            aiStatus.set(.off)
-        }
+        pageLoader = PageLoader(host: self, extractor: pageExtractor ?? PageExtractor())
     }
+
+    /// The work on source pages.
+    var pageStatus: PageStatus { pageLoader.status }
 
     /// All stories and loose articles, newest first, with all their articles (`StoryEntry.visible(keeping:)` leaves
     /// out the read ones).
@@ -108,8 +108,8 @@ final class AppModel: LibraryHost {
     /// Built when first needed after the articles, the stories or the summary settings changed.
     private var cache: EntriesCache {
         let library = library
-        let language = preferences.summaryLanguageCode
-        let singleArticles = preferences.singleArticleSummaries
+        let language = summarySettings.language
+        let singleArticles = summarySettings.singleArticles
         if let entriesCache, entriesCache.language == language, entriesCache.singleArticles == singleArticles {
             return entriesCache
         }
@@ -134,19 +134,6 @@ final class AppModel: LibraryHost {
             guard let self else { return }
             scheduler?.setInterval(.seconds(self.preferences.refreshMinutes * 60))
         }
-        preferences.onAIChange = { [weak self] in
-            self?.organize(retryingFailed: true)
-        }
-        // Turning backups on backs up at once (the first one, or one that is due), so macOS asks for access to iCloud
-        // Drive now and a problem shows right away.
-        preferences.onBackupChange = { [weak self] in
-            self?.backUpIfDue()
-        }
-        preferences.onUpdatesChange = { [weak self] in
-            guard let self else { return }
-            updates.setDaily(preferences.checksForUpdates)
-        }
-        updates.setDaily(preferences.checksForUpdates)
         scheduler.start()
         self.scheduler = scheduler
         organize()
@@ -155,8 +142,7 @@ final class AppModel: LibraryHost {
     /// Lets the AI organize articles without a story (after a refresh, new feeds, settings changes).
     func organize(retryingFailed: Bool = false) {
         guard isLoaded else { return }
-        assignQueue?.trigger(retryingFailed: retryingFailed)
-        summaryQueue?.trigger(retryingFailed: retryingFailed)
+        services?.organize(retryingFailed: retryingFailed)
     }
 
     func refreshNow() {
@@ -176,8 +162,7 @@ final class AppModel: LibraryHost {
         isRefreshing = false
         lastRefresh = now()
         onRefresh?()
-        organize(retryingFailed: true)
-        backUpIfDue()
+        services?.refreshEnded()
     }
 
     /// Downloads the feeds and merges them into the library as it is by then.
@@ -190,48 +175,25 @@ final class AppModel: LibraryHost {
         }
     }
 
-    // MARK: Backups
+    // MARK: Replacing the library
 
-    /// An automatic backup if it is due. Not awaited: the refresh loop mustn't wait for iCloud Drive (or for the user
-    /// to answer macOS asking for access to it).
-    private func backUpIfDue() {
-        Task { [weak self] in
-            guard let self else { return }
-            await backups.backUpIfDue { self.library }
-        }
-    }
-
-    /// Whether Back Up Now does anything.
-    var canBackUpNow: Bool {
-        !backups.isBackingUp && !library.feeds.isEmpty
-    }
-
-    /// Back Up Now; a failure shows in `backups.problem`.
-    func backUpNow() {
-        Task { [backups, library] in try? await backups.backUp(library) }
-    }
-
-    /// Replaces the library with a backup's, and the settings too if asked. The current library is backed up first
-    /// (unless it has no feeds, as on a new Mac: `Backups.backUp`); if that fails, nothing changes. Refreshing and the AI stop meanwhile
-    /// and start again with the restored library; page texts stay for the articles that are in it.
-    func restore(_ contents: BackupFile.Contents, settings: Bool) async throws(BackupError) {
-        try await backups.backUp(library, kind: .beforeRestore)
+    /// Stops the refresh loop (before the library is replaced); a running refresh ends first.
+    func stopRefreshing() async {
         await scheduler?.stop()
-        assignQueue?.cancel()
-        summaryQueue?.cancel()
-        await assignQueue?.waitUntilIdle()
-        await summaryQueue?.waitUntilIdle()
-        var restored = contents.library
-        restored.pageTextIDs = library.pageTextIDs.filter { restored.articles[$0] != nil }
-        update { $0 = restored }
-        if settings {
-            preferences.apply(contents.settings)
-        }
-        Log.store.info(
-            "Restored a backup of \(contents.created, privacy: .public) from \(contents.device, privacy: .public)")
-        onRestore?()
+    }
+
+    /// Starts the refresh loop again.
+    func startRefreshing() {
         scheduler?.start()
-        organize(retryingFailed: true)
+    }
+
+    /// Replaces the library (with a backup's): page texts stay for the articles that are in it, and the reader starts
+    /// over.
+    func replaceLibrary(with library: Library) {
+        var replacement = library
+        replacement.pageTextIDs = self.library.pageTextIDs.filter { replacement.articles[$0] != nil }
+        update { $0 = replacement }
+        onRestore?()
     }
 
     // MARK: Feeds
@@ -327,19 +289,14 @@ final class AppModel: LibraryHost {
 
     // MARK: Saved links
 
-    /// Save Link…: saves the page at the address (`Library.saveLink`) and loads it with its summary in the background,
-    /// as Shift+S does (without AI only its text).
+    /// Save Link…: saves the page at the address (`Library.saveLink`) and loads it in the background – on the Mac
+    /// with its summary, as Shift+S does, when AI is on (`PlatformServices.prepareSavedLink`).
     @discardableResult
     func saveLink(_ address: String) throws(SavedLink.Failure) -> SavedLink.Outcome {
         let url = try SavedLink.url(from: address)
         let outcome = change { $0.saveLink(url, at: now()) }
-        if case .saved(let id) = outcome {
-            // Without AI only the text: every saved link would say that AI is off.
-            if preferences.aiEnabled {
-                pageQueue?.prepare(id)
-            } else {
-                pageQueue?.loadPage(id)
-            }
+        if case .saved(let id) = outcome, services?.prepareSavedLink(id) != true {
+            pageLoader.loadPage(id)
         }
         return outcome
     }
@@ -360,33 +317,12 @@ final class AppModel: LibraryHost {
 
     /// P: loads the text of the article's source page unless it is stored.
     func loadPage(_ id: Article.ID) {
-        pageQueue?.loadPage(id)
+        pageLoader.loadPage(id)
     }
 
-    /// T: summarizes the article's source page, loading it first unless its text is stored.
-    func summarizePage(_ id: Article.ID) {
-        pageQueue?.summarize(id)
-    }
-
-    /// Shift+S: loads and summarizes the article's source page, the page also without AI
-    /// (`PageSummaryQueue.prepare`).
-    func preparePage(_ id: Article.ID) {
-        pageQueue?.prepare(id)
-    }
-
-    /// P on a saved link: loads its page again (`PageSummaryQueue.reload`).
-    func reloadPage(_ id: Article.ID) {
-        pageQueue?.reload(id)
-    }
-
-    /// Whether T does anything for the article (`PageSummaryQueue.canSummarize`).
-    func canSummarizePage(_ id: Article.ID) -> Bool {
-        pageQueue?.canSummarize(id) ?? false
-    }
-
-    /// The user opened the article's source page in the window (`PageSummaryQueue.pageOpened`).
+    /// The user opened the article's source page in the window (`PageLoader.pageOpened`).
     func pageOpened(_ id: Article.ID) {
-        pageQueue?.pageOpened(id)
+        pageLoader.pageOpened(id)
     }
 
     func pageText(_ id: Article.ID) async -> String? {

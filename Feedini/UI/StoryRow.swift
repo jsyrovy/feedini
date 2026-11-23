@@ -3,6 +3,7 @@ import SwiftUI
 /// A story (or a loose article) in the list, with the articles it shows (`StoryEntry.visible(keeping:)`).
 struct StoryRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
     let entry: StoryEntry
     let isExpanded: Bool
     let toggleExpanded: () -> Void
@@ -75,7 +76,7 @@ struct StoryRow: View {
     /// A loose article the AI is about to organize.
     private var isWaitingForAI: Bool {
         guard case .loose = entry.id else { return false }
-        if case .organizing = model.aiStatus.state { return true }
+        if case .organizing = mac.aiStatus.state { return true }
         return false
     }
 
@@ -151,7 +152,7 @@ struct PageSummaryMark: View {
     let article: Article.ID
 
     var body: some View {
-        if let work = model.aiStatus.pages[article],
+        if let work = model.pageStatus[article],
             work.summary || model.library.articles[article]?.isSavedLink == true
         {
             switch work.phase {

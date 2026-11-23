@@ -3,19 +3,36 @@ SCHEME        := Feedini
 CONFIG        ?= Debug
 DERIVED_DATA  := build/DerivedData
 APP           := $(DERIVED_DATA)/Build/Products/$(CONFIG)/Feedini.app
-SOURCES       := Shared Feedini FeediniTests
+SOURCES       := Shared Feedini FeediniMobile FeediniTests
 ARCH          := $(shell uname -m)
 INSTALL_DIR   ?= $(HOME)/Applications
 RELEASE_APP   := $(DERIVED_DATA)/Build/Products/Release/Feedini.app
 RESULT_BUNDLE := build/Test.xcresult
 
+IOS_APP       := $(DERIVED_DATA)/Build/Products/$(CONFIG)-iphonesimulator/Feedini.app
+SIMULATOR     ?= iPhone 17
+
 XCODEBUILD    := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIG) \
 	-destination 'platform=macOS,arch=$(ARCH)' -derivedDataPath $(DERIVED_DATA) -quiet
 
-.PHONY: build test coverage run install uninstall release publish format lint clean
+.PHONY: build build-ios run-ios test coverage run install uninstall release publish format lint clean
 
 build:
 	$(XCODEBUILD) build
+
+# The iOS app for the simulator, unsigned (it shares Shared/ with the Mac app).
+build-ios:
+	xcodebuild -project $(PROJECT) -scheme FeediniMobile -configuration $(CONFIG) \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath $(DERIVED_DATA) -quiet build
+
+# Builds the iOS app and runs it in the simulator SIMULATOR (booted when needed) with the launch arguments ARGS, e.g.
+# ARGS=-sampleLibrary (Debug only: made-up articles in a temporary library). See it with
+# `xcrun simctl io booted screenshot <file>`.
+run-ios: build-ios
+	xcrun simctl boot "$(SIMULATOR)" 2>/dev/null || true
+	xcrun simctl bootstatus "$(SIMULATOR)" -b >/dev/null
+	xcrun simctl install "$(SIMULATOR)" "$(IOS_APP)"
+	xcrun simctl launch --terminate-running-process "$(SIMULATOR)" cz.jsyrovy.feedini $(ARGS)
 
 test:
 	$(XCODEBUILD) test

@@ -19,6 +19,7 @@
 /* Begin PBXFileReference section */
 		FEED00000000000000000201 /* Feedini.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Feedini.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEED00000000000000000202 /* FeediniTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FeediniTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FEED00000000000000000203 /* Feedini.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Feedini.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -30,6 +31,11 @@
 		FEED00000000000000000303 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		FEED00000000000000000304 /* FeediniMobile */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FeediniMobile;
 			sourceTree = "<group>";
 		};
 		FEED00000000000000000302 /* FeediniTests */ = {
@@ -54,6 +60,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FEED00000000000000000432 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -62,6 +75,7 @@
 			children = (
 				FEED00000000000000000303 /* Shared */,
 				FEED00000000000000000301 /* Feedini */,
+				FEED00000000000000000304 /* FeediniMobile */,
 				FEED00000000000000000302 /* FeediniTests */,
 				FEED00000000000000000003 /* Products */,
 			);
@@ -72,6 +86,7 @@
 			children = (
 				FEED00000000000000000201 /* Feedini.app */,
 				FEED00000000000000000202 /* FeediniTests.xctest */,
+				FEED00000000000000000203 /* Feedini.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -125,6 +140,29 @@
 			productReference = FEED00000000000000000202 /* FeediniTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		FEED00000000000000000103 /* FeediniMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FEED00000000000000000704 /* Build configuration list for PBXNativeTarget "FeediniMobile" */;
+			buildPhases = (
+				FEED00000000000000000431 /* Sources */,
+				FEED00000000000000000432 /* Frameworks */,
+				FEED00000000000000000433 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FEED00000000000000000303 /* Shared */,
+				FEED00000000000000000304 /* FeediniMobile */,
+			);
+			name = FeediniMobile;
+			packageProductDependencies = (
+			);
+			productName = FeediniMobile;
+			productReference = FEED00000000000000000203 /* Feedini.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -141,6 +179,9 @@
 					FEED00000000000000000102 = {
 						CreatedOnToolsVersion = 27.0;
 						TestTargetID = FEED00000000000000000101;
+					};
+					FEED00000000000000000103 = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -160,6 +201,7 @@
 			targets = (
 				FEED00000000000000000101 /* Feedini */,
 				FEED00000000000000000102 /* FeediniTests */,
+				FEED00000000000000000103 /* FeediniMobile */,
 			);
 		};
 /* End PBXProject section */
@@ -179,6 +221,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FEED00000000000000000433 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -190,6 +239,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FEED00000000000000000421 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FEED00000000000000000431 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -349,6 +405,68 @@
 			};
 			name = Release;
 		};
+		FEED00000000000000000631 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Feedini;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Jiří Syrový. MIT License.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = cz.jsyrovy.feedini;
+				PRODUCT_NAME = Feedini;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FEED00000000000000000632 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Feedini;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Jiří Syrový. MIT License.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = cz.jsyrovy.feedini;
+				PRODUCT_NAME = Feedini;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -375,6 +493,15 @@
 			buildConfigurations = (
 				FEED00000000000000000621 /* Debug */,
 				FEED00000000000000000622 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FEED00000000000000000704 /* Build configuration list for PBXNativeTarget "FeediniMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FEED00000000000000000631 /* Debug */,
+				FEED00000000000000000632 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

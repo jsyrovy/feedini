@@ -3,11 +3,12 @@ import SwiftUI
 /// Backup: automatic backups to iCloud Drive, Back Up Now, restoring.
 struct BackupSettings: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
     @State private var isRestoring = false
 
     var body: some View {
-        @Bindable var preferences = model.preferences
-        let backups = model.backups
+        @Bindable var preferences = mac.preferences
+        let backups = mac.backups
         Form {
             Section {
                 Toggle("Back up to iCloud Drive automatically", isOn: $preferences.backsUp)
@@ -35,8 +36,8 @@ struct BackupSettings: View {
                     Text(problem).font(.caption).foregroundStyle(.orange)
                 }
                 HStack {
-                    Button("Back Up Now") { model.backUpNow() }
-                        .disabled(!model.canBackUpNow)
+                    Button("Back Up Now") { mac.backUpNow() }
+                        .disabled(!mac.canBackUpNow)
                     Button("Restore…") { isRestoring = true }
                     Spacer()
                     Button("Show in Finder") { NSWorkspace.shared.open(backups.store.directory) }
@@ -52,7 +53,7 @@ struct BackupSettings: View {
     }
 
     private var lastBackup: String {
-        let backups = model.backups
+        let backups = mac.backups
         if backups.isBackingUp {
             return "Backing up…"
         }

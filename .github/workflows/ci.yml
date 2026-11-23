@@ -41,6 +41,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: CONFIG=Release make build
 
+      - name: Build the iOS app
+        if: ${{ !cancelled() }}
+        run: make build-ios
+
       - name: Upload test results
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7

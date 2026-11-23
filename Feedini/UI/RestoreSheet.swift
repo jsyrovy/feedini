@@ -3,6 +3,7 @@ import SwiftUI
 /// Restoring a backup: the backups of all Macs, the newest selected, then a confirmation with what the backup holds.
 struct RestoreSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
     @Environment(\.dismiss) private var dismiss
 
     private enum Phase {
@@ -106,7 +107,7 @@ struct RestoreSheet: View {
 
     private func list() async {
         do {
-            backups = try await model.backups.backups()
+            backups = try await mac.backups.backups()
             selection = backups.first?.id
         } catch {
             self.error = error.message
@@ -120,7 +121,7 @@ struct RestoreSheet: View {
         error = nil
         Task {
             do throws(BackupError) {
-                confirming = try await model.backups.contents(of: selected)
+                confirming = try await mac.backups.contents(of: selected)
                 phase = .ready
             } catch {
                 self.error = error.message
@@ -133,7 +134,7 @@ struct RestoreSheet: View {
         phase = .restoring
         Task {
             do throws(BackupError) {
-                try await model.restore(contents, settings: restoresSettings)
+                try await mac.restore(contents, settings: restoresSettings)
                 dismiss()
             } catch {
                 self.error = "The current library couldn't be backed up, nothing was restored: \(error.message)"

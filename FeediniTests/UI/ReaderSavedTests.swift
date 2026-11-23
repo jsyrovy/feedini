@@ -115,14 +115,14 @@ extension ReaderTests {
 
         #expect(model.library.articles[lone.id]?.isSaved == true)
         #expect(reader.pageArticle == lone.id)
-        #expect(model.aiStatus.pages[lone.id]?.summary == true)
-        await model.pageQueue?.waitUntilIdle()
+        #expect(model.pageStatus[lone.id]?.summary == true)
+        await model.pageLoader.waitUntilIdle()
         #expect(extractor.requests == [lone.link!])
 
         // Shift+S never removes it from Saved.
         reader.handle(.saveWithSummary)
         #expect(model.library.articles[lone.id]?.isSaved == true)
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
     }
 
     @Test func shiftSOnAnArticleWithoutALinkOnlySavesIt() async {
@@ -131,8 +131,8 @@ extension ReaderTests {
         reader.handle(.saveWithSummary)
 
         #expect(model.library.articles[lone.id]?.isSaved == true)
-        #expect(model.aiStatus.pages.isEmpty)
-        await model.pageQueue?.waitUntilIdle()
+        #expect(model.pageStatus.pages.isEmpty)
+        await model.pageLoader.waitUntilIdle()
         #expect(extractor.requests.isEmpty)
     }
 
@@ -142,8 +142,8 @@ extension ReaderTests {
         reader.saveWithSummary(.story(.story(story.id)))
 
         #expect(model.savedEntries().isEmpty)
-        #expect(model.aiStatus.pages.isEmpty)
-        await model.pageQueue?.waitUntilIdle()
+        #expect(model.pageStatus.pages.isEmpty)
+        await model.pageLoader.waitUntilIdle()
         #expect(extractor.requests.isEmpty)
     }
 }

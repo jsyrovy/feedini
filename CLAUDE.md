@@ -2,11 +2,15 @@
 
 Feedini is a native macOS RSS reader, driven by the keyboard, that groups articles from many feeds into stories and
 topics and summarizes them with AI (through the local `claude` CLI). Without AI it is a plain, fast feed reader.
+An iOS app (`FeediniMobile`, being built: see `plan/IOS_SYNC.md` locally) shares the core in `Shared/`; it is a plain
+reader without AI that will show what the Mac produced through iCloud sync.
 
 ## Commands
 
 ```bash
 make build    # xcodebuild Debug build into build/DerivedData
+make build-ios # the iOS app for the simulator (unsigned)
+make run-ios  # build-ios, then install and launch it in the simulator SIMULATOR (default "iPhone 17"); ARGS=-sampleLibrary
 make test     # Swift Testing unit tests (hosted by the app)
 make coverage # tests + line coverage report of the app target (result bundle build/Test.xcresult)
 make run      # build, kill a running instance, open the app
@@ -21,25 +25,31 @@ make clean    # rm -rf build
 Run `make lint test` after every change. `CONFIG=Release make build` builds Release.
 
 CI (`.github/workflows/ci.yml`, GitHub Actions on pushes to `main` and pull requests) runs `make lint`,
-`make coverage` and `CONFIG=Release make build` in one job; the steps run even after an earlier one fails, and the
+`make coverage`, `CONFIG=Release make build` and `make build-ios` in one job; the steps run even after an earlier one fails, and the
 result bundle is uploaded when something fails. It uses the `xcode-27` runner image (a preview; `macos-26` only has
 Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a release is published (see "Releasing").
 
 ## Toolchain and project
 
-- Xcode 27 / Swift 6.4, deployment target macOS 15, Swift 6 language mode (complete strict concurrency).
-- `Feedini.xcodeproj` is hand-written (`objectVersion = 77`) with file-system synchronized root groups for `Feedini/`
-  and `FeediniTests/`: new files are picked up automatically, do not add file references to `project.pbxproj`. Edit
-  the pbxproj only for build settings / targets; keep object IDs in the `FEED…` scheme.
-- Shared scheme `Feedini` (`xcshareddata/xcschemes/Feedini.xcscheme`) so `xcodebuild -scheme Feedini` works; it
-  collects coverage for the app target only.
+- Xcode 27 / Swift 6.4, deployment target macOS 15 and iOS 18 (iPhone only, portrait), Swift 6 language mode
+  (complete strict concurrency).
+- `Feedini.xcodeproj` is hand-written (`objectVersion = 77`) with file-system synchronized root groups for `Shared/`,
+  `Feedini/`, `FeediniMobile/` and `FeediniTests/`: new files are picked up automatically, do not add file
+  references to `project.pbxproj`. Edit the pbxproj only for build settings / targets; keep object IDs in the `FEED…`
+  scheme.
+- Targets: `Feedini` (the Mac app: `Shared/` + `Feedini/`), `FeediniMobile` (the iOS app, product and home screen
+  name "Feedini": `Shared/` + `FeediniMobile/`) and `FeediniTests` (hosted by the Mac app). Shared code is compiled
+  into both apps (no module, no `public`); it must not import AppKit or use Mac-only types – `make build-ios` checks.
+  Code only the Mac runs (AI, backups, updates, keys) stays in `Feedini/`.
+- Shared schemes `Feedini` (`xcshareddata/xcschemes/Feedini.xcscheme`; it collects coverage for the app target
+  only) and `FeediniMobile` (no tests: the shared code is tested on the Mac).
 - Bundle ID `cz.jsyrovy.feedini`, a regular app (`LSUIElement = NO`), generated Info.plist, App Sandbox off (the app
   runs the `claude` CLI, which a sandboxed app can't), ad-hoc signing ("Sign to Run Locally", no team) for everything
   but `make release`, which signs with Developer ID. Hardened runtime is on in Release only (see "Releasing"). App
   Transport Security keeps its defaults (no exceptions): only HTTPS feeds work.
-- Version: `MARKETING_VERSION` (`major.minor`) of the app target, the same in Debug and Release; the test target has
-  none. `CURRENT_PROJECT_VERSION` stays 1; a release sets the build number.
-- The app icon (`Feedini/AppIcon.icon`, Icon Composer format) is a pixel-art top hat (32 × 32 grid) with the RSS
+- Version: `MARKETING_VERSION` (`major.minor`) of the app targets, the same in Debug and Release and in both apps;
+  the test target has none. `CURRENT_PROJECT_VERSION` stays 1; a release sets the build number.
+- The app icon (`Shared/AppIcon.icon`, Icon Composer format, both apps; for iOS 18 Xcode adds bitmaps) is a pixel-art top hat (32 × 32 grid) with the RSS
   symbol cut out of its crown: a black hat on cream in the light appearance, a cream hat on charcoal in the dark one
   (`fill-specializations`, `image-name-specializations`). Layers: outline, brim, band, crown, without glass (it
   blurs the pixels). The menu bar item shows the same hat, 16 × 16 pixels without the RSS symbol, as a template
@@ -50,18 +60,18 @@ Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a rel
 ## Structure
 
 ```
-Feedini/
-  App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
-              TestHostApp under tests), AppDelegate (owns the model, saves at quit, Dock icon only with the window,
-              refresh after wake), AppModel (library on the main actor, saving, refreshing, the AI queues),
-              Preferences (UserDefaults), LoginItem (SMAppService), RuntimeEnvironment, Log (os.Logger categories)
+Shared/       compiled into both apps
+  App/        AppModel (library on the main actor, saving, refreshing, feeds, folders, saved links, source pages,
+              the cached entries; PlatformServices: what the Mac adds), LibraryHost (what the page loader and the AI
+              queues change the library through), Preferences (the shared ones, UserDefaults), RuntimeEnvironment,
+              Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
               folders), Saved (Library's saving of articles, names of removed feeds), SavedLink (pages saved by
-              their address: comparing addresses, Library.saveLink), AIUsage (AI calls per day),
+              their address: comparing addresses, Library.saveLink), AIUsage (AIUsageDay: AI calls per day),
               StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts, ListOrder),
-              ReadRules (pure: what visiting a row and M do; ListRow), UndoHistory (pure: ReadingState, the steps of
-              ⌘Z / ⇧⌘Z)
+              ReadRules (pure: what visiting a row and M do; ListRow, the rows of the list), UndoHistory (pure:
+              ReadingState, the steps of undo)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving, page texts as files of their own),
               Retention (pure: what is forgotten when)
   Feeds/      FeedFetcher (URLSession, concurrent, timeouts, ETag / Last-Modified), FeedParser (XMLParser: RSS
@@ -72,36 +82,53 @@ Feedini/
               itself)
   Refresh/    RefreshCoordinator (download + parse off the main actor), FeedMerge (pure: new articles, dedupe against
               known articles and tombstones), RefreshScheduler (periodic loop with an injected sleep)
+  Pages/      PageLoader (P and Save Link on request: loading and storing page texts, at most 2 at a time; goes on to
+              a summary through PageSummarizing on the Mac), PageStatus (@Observable: the pages being loaded or
+              summarized and their errors)
+  Reading/    ReadingSession (@Observable window state: selection, cursor, expanded stories, articles read while the
+              list is shown, the undo history; visiting, M, S, Shift+A, undo)
+  Summaries/  SummaryStep (what the list needs: needsSummary, isCurrent) + SingleArticleSummaries, SummarySettings
+              (the summary language and choice the list shows), OutputLanguage (names, choices)
+  Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
+  Debug/      Debug builds only: SampleLibrary (made-up library for `-sampleLibrary` on iOS)
+  AppIcon.icon
+Feedini/      the Mac app
+  App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
+              TestHostApp under tests), AppDelegate (owns the services, saves at quit, Dock icon only with the window,
+              refresh after wake), MacServices (owns the AppModel: the AI queues, backups and restoring, the update
+              check), MacPreferences (the Mac's preferences on top of the shared ones: menu bar, AI, backups,
+              updates), LoginItem (SMAppService)
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
               ClaudeClient (CLI arguments, envelope, errors), Prompts (system prompts + JSON schemas), AssignStep
               (payload with short IDs), Validation (pure: applying an assign answer), SummaryStep (pure: which
               stories, priority, payload, applying) + TopicTranslation, AIQueue (AICaller: one call with its
               recording; AssignQueue: serial batches, backoff; SummaryQueue: parallel batches, priority;
-              LibraryHost, AIConfiguration), PageSummaryStep (pure: page summary request, applying),
-              PageSummaryQueue (P / T on request: loading pages, summarizing them), AIStatus (@Observable state,
-              stories being summarized, pages being loaded or summarized, recent calls), OutputLanguage (names,
-              choices)
+              AIConfiguration), AIUsageRecording (Library.recordAICall), PageSummaryStep (pure: page summary
+              request, applying), PageSummaryQueue (T / Shift+S on request: summarizing pages on top of the
+              PageLoader), AIStatus (@Observable state, stories being summarized, recent calls)
   Backup/     BackupFile (pure: the file format, names, compression; BackupError), BackupPlan (pure: when a backup
               is due, thinning out; BackupFrequency), BackupStore (the files in iCloud Drive, file coordination),
               Backups (@Observable: automatic backups, Back Up Now, reading backups), BackedUpSettings (the settings
-              in a backup, `Preferences.apply`)
+              in a backup, `MacPreferences.apply`)
   Updates/    AppVersion (pure: parsing, comparison), LatestRelease (UpdateError, GitHub's latest release: request,
               parsing, fetch), UpdateChecker (@Observable: check now, daily loop), HomebrewCask (is it installed, the
               `brew upgrade` command)
-  Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
   UI/         MainWindow (NavigationSplitView), Sidebar (+ folders, dragging), FolderViews (FolderNameSheet,
               MoveToFolderMenu), Removal (confirming the removal of feeds or a folder), StoryListView (keys, status
               bar), StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
-              PageSummaryView), WebPageView (WKWebView), Reader (window state: selection, cursor, expanded stories,
-              articles read while the list is shown, the shown page or page text, the shortcuts sheet, the undo history), UndoCommands (Edit →
+              PageSummaryView), WebPageView (WKWebView), Reader (the main window on top of its
+              ReadingSession: keys, the shown page or page text, the sheets, focus), UndoCommands (Edit →
               Undo / Redo), ListOrderPicker (newest / oldest first), KeyboardNavigation (pure: what a key does),
               ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime, SettingsView
               (tabs) + FeedsSettings + GeneralSettings (+ UpdateSettings) + AISettings + BackupSettings, RestoreSheet, BackupCommands
               (File menu), SaveLinkSheet (+ SaveLinkButton), MenuBarContent (+ MenuBarLabel)
-FeediniTests/ Swift Testing tests, mirroring the app folders
+FeediniMobile/ the iOS app
+  App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, the sample library in Debug)
+  UI/         StoryListScreen (All)
+FeediniTests/ Swift Testing tests of the shared code and the Mac app, in folders named like theirs
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
               content:encoded, CDATA, HTML entities, windows-1250, duplicates, missing dates), a web page, an OPML
@@ -109,7 +136,8 @@ FeediniTests/ Swift Testing tests, mirroring the app folders
               article in divs, `main` with a menu and navigation, JSON-LD only, no article, meta tags)
   Support/    Fixture loader, ManualSleeper, StubURLProtocol (canned HTTP replies by URL), FakeCommandRunner
               (canned CLI replies, recorded calls), FakePageExtractor (canned page texts and metadata, recorded
-              requests), TestLibraryHost + `ClaudeLocator.stub` + `AppModel.test()` (fake claude and pages), model
+              requests), TestLibraryHost + `ClaudeLocator.stub` + `MacServices.test()` (fake claude and pages) +
+              `AppModel.test()` (the shared model alone, as on iOS), model
               stubs (`referenceDate`, `Article.stub`, …)
 scripts/      release.sh (`make release`) and publish.sh (`make publish`), see "Releasing"
 CHANGELOG.md  one section per released version
@@ -272,16 +300,18 @@ Implementation:
   the article's title. `StoryEntry.visible(keeping:)` narrows an entry to its unread articles and those in
   `keeping` (`nil` when none is left). `entries(_:matching:folders:keeping:)` narrows every entry, then filters by
   the sidebar selection (a feed shows every story with a visible article of it, a folder every story with a visible
-  article of one of its feeds); `ordered(_:_:)` puts them in the chosen `ListOrder` (`Reader.entries`). Counts
+  article of one of its feeds); `ordered(_:_:)` puts them in the chosen `ListOrder` (`ReadingSession.entries`). Counts
   match what is shown: a story counts once in a folder, even with unread articles of several of its feeds.
 - `StoryList.savedEntries` builds Saved from the saved articles, each a `.savedArticle` entry of its own
   (`savedEntry(for:)`). `StoryEntry.singleArticle(at:)` says what S (and P, T, Shift+S) works on on a row,
   `containsSaved` whether the row has a bookmark. `AppModel` caches Saved with the other entries; reading and saving
-  patch the entries (`StoryList.updateReadingState`) and saving rebuilds only Saved. `Reader.unsaved` remembers the
+  patch the entries (`StoryList.updateReadingState`) and saving rebuilds only Saved. `ReadingSession.unsaved` remembers the
   save dates of articles removed while Saved is shown, so they keep their place (`AppModel.savedEntries(keeping:)`;
   `entry(_:)` builds a `.savedArticle` entry on demand, saved or not).
-- `Reader` (main actor, UI state) keeps the cursor (`ListRow`: a story or an article of an expanded story) and
-  narrows every entry it gives out (`Reader.entry`, `entries`; Saved shows its articles read or not). Moving onto a
+- `ReadingSession` (shared, main actor, UI state) keeps the selection and the cursor (`ListRow`: a story or an
+  article of an expanded story) and narrows every entry it gives out (`entry`, `entries`; Saved shows its articles
+  read or not). The Mac's `Reader` owns one and adds the keys, the shown page and the sheets; a cursor move
+  (`onCursorMove`) closes the shown page. Moving onto a
   row (`visit`) applies `ReadRules` and adds the articles it read to `keptArticles`, so they stay until the sidebar
   selection changes or a refresh ends (then only the visible articles of the entry under the cursor stay). M keeps
   the articles it reads too, and so does showing the row of an undone step. Shift+A doesn't keep anything: the list
@@ -291,7 +321,7 @@ Implementation:
   (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
   any keyboard layout. A mapped key is always used up, also when it does nothing: the list's type-to-select would
   otherwise move onto (and read) a row starting with that letter. A double click opens like V / Enter.
-- `Reader.recording` snapshots the `ReadingState` (read and save dates of the articles) before a change and records it in `UndoHistory` (its callers only make changes that change
+- `ReadingSession.recording` snapshots the `ReadingState` (read and save dates of the articles) before a change and records it in `UndoHistory` (its callers only make changes that change
   something); undo and redo are `Library.restore`, which returns the replaced state for the other stack
   (`AppModel.restore` patches the cached entries like reading and saving). `UndoCommands` replaces Edit → Undo / Redo: while the main
   window is key (`Reader.isMainWindowKey`, set by `AppDelegate` from the key window notifications) they go to the
@@ -303,7 +333,8 @@ Implementation:
 - The source page (`WebPageView`): a `WKWebView` with the default persistent website data store (logins and cookies
   work), JavaScript on, no script message handlers. Link clicks and new windows open in the default browser. Esc in
   the page (`EscapableWebView`) returns to the feed text and focuses the list (`Reader.listFocusRequests`).
-- When the AI puts a loose article into a story, the entry's ID changes (`.loose` → `.story`). `Reader` follows it
+- When the AI puts a loose article into a story, the entry's ID changes (`.loose` → `.story`). `ReadingSession`
+  follows it
   on every library change (`AppModel.onLibraryChange`): the cursor moves to the article inside the (expanded) story
   when the story shows several articles, else onto the story's row – nothing is marked read by that. Kept articles
   keep their IDs.
@@ -428,7 +459,7 @@ Implementation:
   entries 6 at a time, adds the good ones in file order and lists the others with the reason; "Copy Errors" puts
   the failed ones (not those already followed) on the clipboard as text with their feed and site addresses
   (`ImportResult.errorReport`), to pass on to whoever looks into them.
-- **General** (`GeneralSettings`, `Preferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15),
+- **General** (`GeneralSettings`; `Preferences`, the menu bar and update check in `MacPreferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15),
   where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), open at login (`LoginItem`, the
   system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
   count in the menu bar (`showsUnreadCount`, on by default), and the update check ("Check for updates daily", "Check
@@ -548,26 +579,28 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   the answer and records it – `AIStatus` call list, `Library.usage`, the `ai` log. Usage is counted whenever claude
   actually ran (`ClaudeError.isTransient`), also when its answer was an error. The queues only add their retry
   policy.
-- `PageSummaryQueue` (main actor) does P and T, only on request: `loadPage` stores the page text (through
-  `LibraryHost.storePageText`) unless it is stored; `summarize` loads it if needed and writes the summary unless it
-  is current. Requests are per article; one for an article already being worked on is ignored, except that T makes
-  a running P go on to the summary. At most 2 run at once. Nothing is retried by itself (it is the user's action);
-  errors stay in `AIStatus.pages` (the only record of the work) and show in the detail. `canSummarize` (also for the
-  button) says whether T does anything; `pageOpened` (V in the window) forgets the stored text. AI off: T says so at
+- P and T run only on request. The shared `PageLoader` (main actor, owned by `AppModel`) does P: `loadPage` stores
+  the page text (through `LibraryHost.storePageText`) unless it is stored. The Mac's `PageSummaryQueue` does T on
+  top of it: `summarize` asks the loader (`enqueue(_:summary: true)`), which loads the text if needed and then
+  calls the queue back (`PageSummarizing`) in the same slot; the summary is written unless it is current. Requests
+  are per article; one for an article already being worked on is ignored, except that T makes a running P go on to
+  the summary. At most 2 run at once. Nothing is retried by itself (it is the user's action); errors stay in
+  `PageStatus` (`AppModel.pageStatus`, the only record of the work) and show in the detail. `canSummarize` (also for
+  the button) says whether T does anything; `pageOpened` (V in the window) forgets the stored text. AI off: T says so at
   once (`AIStatus.State.problem`: "AI is off (Settings → AI).") and P still works. `prepare` (Shift+S) is T that
   loads the page even with AI off and then fails with that message.
-- A saved link's page text is all it has: Save Link… without AI only loads it (`AppModel.saveLink`: no "AI is off"
-  on every link), loading fills in its title, site, author and date (`Library.applyPageMetadata`), `pageOpened` and
+- A saved link's page text is all it has: Save Link… without AI only loads it (`AppModel.saveLink` asks
+  `PlatformServices.prepareSavedLink`, which declines without AI: no "AI is off" on every link), loading fills in its title, site, author and date (`Library.applyPageMetadata`), `pageOpened` and
   a `not_article` answer keep the text (`Library.forgetPageText`; the message points to P), and `reload` (P) loads
   the page again – the stored text and summary stay
   until the new text is stored, then a new summary is written when AI is on. The row shows ✨ / ⚠︎ for loading it too.
 - `AIStatus`: `idle` / `off` / `organizing(count)` / `unavailable(reason)`, the stories being summarized and their
-  errors, the pages being loaded or summarized (`PageWork`: phase, whether T asked for a summary) and their errors,
-  for the status line ("Organizing 12 articles…", "Summarizing 5 stories…", "Summarizing page…", "AI
+  errors, the page work (its `PageStatus`: `PageStatus.Work`: phase, whether T asked for a summary), for the status
+  line ("Organizing 12 articles…", "Summarizing 5 stories…", "Summarizing page…", "AI
   unavailable: …"), and the last 20 calls (time, cost or error) for Settings → AI.
-- AI settings (`Preferences`): `aiEnabled` (on by default), `claudePath` (empty = look it up), `assignModel` and
+- AI settings (`MacPreferences`): `aiEnabled` (on by default), `claudePath` (empty = look it up), `assignModel` and
   `summaryModel` (free text, default `claude-haiku-5-5`), `aiEffort` (`low` / `medium` / `high`, default `low`); a
-  change calls `onAIChange`, which triggers the queues. `summaryLanguage` (a language code, empty = the system
+  change calls `onAIChange`, which triggers the queues (`MacServices`) and hands `summarySettings` to the model. `summaryLanguage` (a language code, empty = the system
   language from `Locale.current`) is the language of story titles, topics and summaries; the prompt gets its English
   name (`OutputLanguage`). `singleArticleSummaries` (`never` / `otherLanguages` / `always`, default `never`) decides
   which single articles get a summary. Haiku was as accurate as Sonnet for assigning and 1.1–3× faster; for
@@ -613,9 +646,9 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - Restore (`RestoreSheet`; Settings → Backup, File → Restore from Backup…, the empty sidebar): the backups of all
   Macs, newest first and selected, those only in iCloud marked (a coordinated read downloads them), "Also restore
   settings" (on). Reading a backup shows a confirmation with what it holds (`BackupFile.Contents.summary`).
-  `AppModel.restore` first backs up the current library (unless it has no feeds; if that fails nothing changes),
+  `MacServices.restore` first backs up the current library (unless it has no feeds; if that fails nothing changes),
   stops the refresh loop and the AI queues, replaces the library (page texts stay for the articles it has), applies
-  the settings if asked, lets the reader start over (`Reader.startOver`: selection All, no cursor, an empty ⌘Z history)
+  the settings if asked, lets the reader start over (`ReadingSession.startOver`: selection All, no cursor, an empty ⌘Z history)
   and starts refreshing and organizing again. Restoring replaces, it never merges.
 - Problems (`BackupError`: iCloud Drive off, no access, not a backup, newer version, other errors with their message)
   show in Settings → Backup and in the menu bar menu until a backup works.
@@ -632,8 +665,8 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   offers. Read: `tag_name` (`v0.4`, compared number by number by `AppVersion`, so 0.10 > 0.9) and `html_url` (the
   release page). Without a login GitHub allows 60 requests an hour per IP address; another status than 200 is a
   failure (`UpdateError.status`).
-- Settings → General: "Check for updates daily" (`Preferences.checksForUpdates`, **off** by default – the request
-  tells GitHub the IP address; not in backups) checks at once when switched on or at launch (`AppModel.start`), then
+- Settings → General: "Check for updates daily" (`MacPreferences.checksForUpdates`, **off** by default – the request
+  tells GitHub the IP address; not in backups) checks at once when switched on or at launch (`MacServices.start`), then
   every 24 h (`UpdateChecker.setDaily`); "Check Now" (`checkNow()`) checks once in any case. A check while one runs is
   skipped; a cancelled one (the loop switched off) leaves the previous result. Nothing is persisted: after a restart
   the result is unknown until the next check.
@@ -705,9 +738,18 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
 - The extraction script runs in a real hidden web view in the test host (`PageExtractor.extract(html:baseURL:)`
   with the `page-*.html` fixtures, a non-persistent data store and no settle delay; a `data:` URL for loading by
   address). Everything above it uses `FakePageExtractor`. The queues hold their host unowned, so a test that starts
-  a page load waits for `pageQueue.waitUntilIdle()` before it ends.
-- Checking the running app: `screencapture` needs the Screen Recording permission (without it: "could not create
-  image from display"). Without it, inspect windows with `CGWindowListCopyWindowInfo` (owner `Feedini`).
+  a page load waits for `pageLoader.waitUntilIdle()` before it ends.
+- The shared code is tested only on the Mac (the same code); there is no iOS test target yet. `MacServices.test()`
+  gives the Mac services with their model (keep the services in a local: the model holds them weakly),
+  `AppModel.test()` the shared model alone, as the iOS app has it.
+- Checking the running Mac app: `screencapture` needs the Screen Recording permission (without it: "could not
+  create image from display"). Without it, inspect windows with `CGWindowListCopyWindowInfo` (owner `Feedini`). A
+  Debug build can run next to an installed Feedini without touching its library: start the binary with
+  `CFFIXED_USER_HOME=<empty folder>` (Application Support moves there; UserDefaults stay shared), and quit it by its
+  PID – `make run` kills every Feedini.
+- Checking the iOS app: `xcrun simctl io booted screenshot <file>` works without Screen Recording, so screens can be
+  checked by looking at screenshots: `make run-ios ARGS=-sampleLibrary` shows the made-up `SampleLibrary` (Debug
+  only, a temporary store). Taps and swipes can't be driven yet (no UI tests).
 
 ### Test coverage
 
@@ -722,12 +764,14 @@ Aim for ~100 % in the pure types: `Model/`, `Store/`, `Feeds/`, `Refresh/` (the 
 `Backup/` (`BackupStore.temporary()`: a temporary folder standing in for iCloud Drive, UTC names), `Updates/`
 (`LatestRelease` through a fake transport – never the real GitHub –, `UpdateChecker` with `ManualSleeper`),
 `AI/` (the queues with `FakeCommandRunner`, `TestLibraryHost`, `FakePageExtractor` and `ManualSleeper` for the
-backoff), `Debug/`, `KeyboardNavigation`, `ShortcutHelp`, `RelativeTime`, `Preferences`, and `Reader` (tested with a
-real `AppModel` over a temporary store). In `PageExtractor` the WebKit callbacks for HTTP errors and failed loads
+backoff), `Pages/` (`PageLoader` with `TestLibraryHost` and `FakePageExtractor`), `Summaries/`, `Debug/`,
+`KeyboardNavigation`, `ShortcutHelp`, `RelativeTime`, `Preferences`, `MacPreferences`, and `ReadingSession` and
+`Reader` (tested with a real `AppModel` over a temporary store). In `PageExtractor` the WebKit callbacks for HTTP errors and failed loads
 stay uncovered (they need the network).
 
-Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp`, `AppDelegate`, `LoginItem`, `AppModel.start` and the
-non-test branch of `RuntimeEnvironment`) and `UI/` views. Keep these files pure wiring: logic that needs a test
+Fine to leave uncovered: `App/` (`FeediniMain`, `FeediniApp`, `AppDelegate`, `LoginItem`, `AppModel.start`,
+`MacServices.start` and the backup wiring, the non-test branch of `RuntimeEnvironment`, the whole iOS app) and `UI/`
+views. Keep these files pure wiring: logic that needs a test
 moves into a testable type. Do not add abstractions to production code just to cover lines.
 
 Tests that wait for real time are slow and flaky; timer-driven code takes an injected `sleep` instead. The queues

@@ -123,7 +123,7 @@ private final class PageLoad: NSObject, WKNavigationDelegate {
             configuration.userContentController.add(resourceBlocker)
         }
         // A desktop-sized layout, so the page shows its article column as in a browser.
-        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 900), configuration: configuration)
+        webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1200, height: 900), configuration: configuration)
         self.settleDelay = settleDelay
         super.init()
         webView.navigationDelegate = self

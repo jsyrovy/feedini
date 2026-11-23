@@ -3,13 +3,14 @@ import SwiftUI
 /// The keyboard shortcuts (?), a sheet over the main window. Esc, ? or Done close it.
 struct ShortcutsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
     @Environment(Reader.self) private var reader
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isFocused: Bool
 
     var body: some View {
         let sections = ShortcutHelp.sections(
-            opensInWindow: reader.opensInWindow, aiProblem: model.aiStatus.state.problem)
+            opensInWindow: reader.opensInWindow, aiProblem: mac.aiStatus.state.problem)
         VStack(alignment: .leading, spacing: 16) {
             Text("Keyboard Shortcuts")
                 .font(.title2.bold())

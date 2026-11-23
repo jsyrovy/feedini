@@ -1,6 +1,6 @@
 /// The settings that go into a backup. Those of one Mac stay out (the path to claude, the folders collapsed in the
 /// sidebar, opening at login, the update check), and so do those of backing up: restoring an old backup mustn't turn
-/// backups off. Values are kept as they were; restoring applies the valid ones (`Preferences.apply`).
+/// backups off. Values are kept as they were; restoring applies the valid ones (`MacPreferences.apply`).
 struct BackedUpSettings: Codable, Sendable, Equatable {
     var refreshMinutes: Int?
     var pageOpening: String?
@@ -13,10 +13,11 @@ struct BackedUpSettings: Codable, Sendable, Equatable {
     var singleArticleSummaries: String?
 }
 
-extension Preferences {
+extension MacPreferences {
     var backedUpSettings: BackedUpSettings {
         BackedUpSettings(
-            refreshMinutes: refreshMinutes, pageOpening: pageOpening.rawValue, showsUnreadCount: showsUnreadCount,
+            refreshMinutes: shared.refreshMinutes, pageOpening: shared.pageOpening.rawValue,
+            showsUnreadCount: showsUnreadCount,
             aiEnabled: aiEnabled, assignModel: assignModel, summaryModel: summaryModel, aiEffort: aiEffort,
             summaryLanguage: summaryLanguage, singleArticleSummaries: singleArticleSummaries.rawValue)
     }
@@ -24,11 +25,11 @@ extension Preferences {
     /// Takes over the settings of a backup; missing values and those that aren't valid (offered) any more are left
     /// as they are – the same rules as for the stored values.
     func apply(_ settings: BackedUpSettings) {
-        if let minutes = Self.refreshMinutes(settings.refreshMinutes) {
-            refreshMinutes = minutes
+        if let minutes = Preferences.refreshMinutes(settings.refreshMinutes) {
+            shared.refreshMinutes = minutes
         }
-        if let opening = settings.pageOpening.flatMap(PageOpening.init(rawValue:)) {
-            pageOpening = opening
+        if let opening = settings.pageOpening.flatMap(Preferences.PageOpening.init(rawValue:)) {
+            shared.pageOpening = opening
         }
         if let shows = settings.showsUnreadCount {
             showsUnreadCount = shows

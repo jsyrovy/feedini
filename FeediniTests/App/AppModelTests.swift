@@ -14,7 +14,7 @@ struct AppModelTests {
             preferences: Preferences.test(),
             store: LibraryStore(fileURL: directory.appending(path: "library.json")),
             coordinator: RefreshCoordinator(fetcher: FeedFetcher(session: session)),
-            subscriber: FeedSubscriber(fetcher: FeedFetcher(session: session)), backupStore: .temporary(),
+            subscriber: FeedSubscriber(fetcher: FeedFetcher(session: session)),
             // The day of the fixtures: the first download keeps only items younger than `firstDownloadMaxAge`.
             now: { referenceDate })
     }
@@ -200,19 +200,18 @@ struct AppModelTests {
         let extractor = FakePageExtractor()
         extractor.metadata = { _ in PageMetadata(title: "An Essay", site: "Example Magazine") }
         let model = AppModel.test(extractor: extractor)
-        model.preferences.aiEnabled = false
         let feed = Feed.stub("Tech")
         let article = Article.stub(feed: feed.id)
         model.update { $0 = Library(feeds: [feed], articles: [article]) }
 
         #expect(throws: SavedLink.Failure.invalidAddress) { try model.saveLink("no address") }
         let id = try model.saveLink("example.com/essay").articleID
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
 
         #expect(extractor.requests == [URL(string: "https://example.com/essay")!])
         #expect(model.library.pageTextIDs == [id])
-        // Without AI only the text, without saying that AI is off.
-        #expect(model.aiStatus.pages.isEmpty)
+        // Without AI (no Mac services) only the text.
+        #expect(model.pageStatus.pages.isEmpty)
         #expect(model.savedEntries().map(\.id) == [.savedArticle(id)])
         #expect(model.savedEntries().first?.title == "An Essay")
         #expect(model.unreadCounts.saved == 1)
@@ -221,35 +220,19 @@ struct AppModelTests {
 
         // The address of a feed's article saves that article.
         #expect(try model.saveLink(article.link!.absoluteString) == .saved(article.id))
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
         #expect(model.library.articles.count == 2)
         #expect(model.library.pageTextIDs == [id, article.id])
-        #expect(model.aiStatus.pages.isEmpty)
+        #expect(model.pageStatus.pages.isEmpty)
     }
 
     @Test func droppedLinksAreSavedUnlessTheyAreNoWebAddresses() async {
         let model = AppModel.test()
-        model.preferences.aiEnabled = false
 
         #expect(!model.saveLinks([URL(filePath: "/tmp/page.html"), URL(string: "mailto:someone@example.com")!]))
         #expect(model.saveLinks([URL(string: "https://example.com/a")!, URL(string: "http://example.com/b")!]))
-        await model.pageQueue?.waitUntilIdle()
+        await model.pageLoader.waitUntilIdle()
 
         #expect(Set(model.library.articles.values.map(\.key)) == ["example.com/a", "example.com/b"])
-    }
-
-    @Test func reloadingASavedLinkLoadsItsPageAgain() async throws {
-        let extractor = FakePageExtractor()
-        let model = AppModel.test(extractor: extractor)
-        model.preferences.aiEnabled = false
-        let id = try model.saveLink("example.com/essay").articleID
-        await model.pageQueue?.waitUntilIdle()
-
-        model.pageOpened(id)
-        model.reloadPage(id)
-        await model.pageQueue?.waitUntilIdle()
-
-        #expect(extractor.requests.count == 2)
-        #expect(model.library.pageTextIDs == [id])
     }
 }

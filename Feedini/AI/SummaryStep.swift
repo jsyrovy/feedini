@@ -1,44 +1,9 @@
 import Foundation
 
-/// Which stories with a single article get an AI title and summary (Settings → AI).
-enum SingleArticleSummaries: String, CaseIterable, Sendable {
-    /// None: a single article shows its own title and text.
-    case never
-    /// Articles in another language than the summary language (the summary is a translated gist).
-    case otherLanguages
-    /// Every article.
-    case always
-}
-
-/// The summary step: a title and a summary for stories where they add something (pure parts).
-///
-/// A summary is written from the unread articles of a story only: it is needed when there are several, for a single
-/// one only as `singleArticles` says (without one, a single article shows its own text). Reading some of them doesn't
-/// make it out of date; an unread article it doesn't cover does.
-enum SummaryStep {
+/// The work of the summary step (pure parts): which stories, the payload, applying the answer.
+extension SummaryStep {
     static let batchSize = 10
     static let excerptLength = 1000
-
-    /// An unknown article language counts as the summary language.
-    static func needsSummary(
-        _ articles: [Article], language: String, singleArticles: SingleArticleSummaries
-    ) -> Bool {
-        guard let article = articles.first else { return false }
-        if articles.count > 1 { return true }
-        switch singleArticles {
-        case .never: return false
-        case .otherLanguages: return article.language != nil && article.language != language
-        case .always: return true
-        }
-    }
-
-    /// Written in the language and covering every unread article (`articles` may hold read ones too, they don't
-    /// count).
-    static func isCurrent(_ summary: Summary?, of articles: [Article], language: String) -> Bool {
-        guard let summary, summary.language == language else { return false }
-        // A story has a few articles: searching beats hashing.
-        return articles.allSatisfy { $0.isRead || summary.articleIDs.contains($0.id) }
-    }
 
     /// Unread stories whose unread articles need a summary that is missing or out of date, in the order they should
     /// be written: stories from several feeds first, then the others, newer before older. Read stories wait until

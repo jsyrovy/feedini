@@ -2,13 +2,13 @@ import SwiftUI
 
 /// The menu bar item: the pixel-art hat (a template image) with the number of unread stories.
 struct MenuBarLabel: View {
-    let model: AppModel
+    let services: MacServices
 
     var body: some View {
-        let unread = model.unreadCounts.all
+        let unread = services.model.unreadCounts.all
         HStack {
             Image(.menuBarIcon)
-            if model.preferences.showsUnreadCount && unread > 0 {
+            if services.preferences.showsUnreadCount && unread > 0 {
                 Text(verbatim: "\(unread)")
             }
         }
@@ -20,6 +20,7 @@ struct MenuBarLabel: View {
 /// The menu of the menu bar item.
 struct MenuBarContent: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
     @Environment(Reader.self) private var reader
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openURL) private var openURL
@@ -35,10 +36,10 @@ struct MenuBarContent: View {
             .disabled(model.library.feeds.isEmpty || model.isRefreshing)
         Text(refreshState)
         Text(aiState)
-        if let problem = model.backups.problem {
+        if let problem = mac.backups.problem {
             Text("Backup: \(problem)")
         }
-        if let release = model.updates.available {
+        if let release = mac.updates.available {
             Button("Feedini \(release.version.description) Is Available…") { openURL(release.pageURL) }
         }
         Divider()
@@ -52,10 +53,10 @@ struct MenuBarContent: View {
 
     /// Always shown, so the menu tells what the AI is doing even when it is idle.
     private var aiState: String {
-        if let message = model.aiStatus.message {
+        if let message = mac.aiStatus.message {
             return message
         }
-        return model.aiStatus.state == .off ? "AI: off" : "AI: ready"
+        return mac.aiStatus.state == .off ? "AI: off" : "AI: ready"
     }
 
     private var refreshState: String {

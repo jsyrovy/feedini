@@ -2,16 +2,17 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let model = AppModel()
+    let services = MacServices()
     let reader: Reader
+    var model: AppModel { services.model }
 
     override init() {
-        reader = Reader(model: model)
+        reader = Reader(services: services)
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Task { await model.start() }
+        Task { await services.start() }
         // After sleep the feeds are refreshed right away instead of at the end of the interval.
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main

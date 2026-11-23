@@ -127,6 +127,7 @@ struct StoryListView: View {
 /// Refresh status under the list.
 private struct StatusBar: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
 
     var body: some View {
         HStack(spacing: 6) {
@@ -142,8 +143,8 @@ private struct StatusBar: View {
                 Text(problem).lineLimit(1).help(problem)
             }
             Spacer()
-            if let message = model.aiStatus.message {
-                if model.aiStatus.isWorking {
+            if let message = mac.aiStatus.message {
+                if mac.aiStatus.isWorking {
                     Image(systemName: "sparkles")
                 } else {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)

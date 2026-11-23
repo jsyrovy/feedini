@@ -4,13 +4,14 @@ import SwiftUI
 /// written, or why it couldn't be.
 struct SummaryView: View {
     @Environment(AppModel.self) private var model
+    @Environment(MacServices.self) private var mac
     let entry: StoryEntry
 
     var body: some View {
         if let summary = entry.summary {
             VStack(alignment: .leading, spacing: 6) {
                 SummaryText(text: summary.text)
-                if !entry.isSummaryCurrent && model.aiStatus.isWorking {
+                if !entry.isSummaryCurrent && mac.aiStatus.isWorking {
                     Label("Updating summary…", systemImage: "sparkles")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -28,10 +29,10 @@ struct SummaryView: View {
 
     @ViewBuilder
     private var status: some View {
-        if case .story(let id) = entry.id, let error = model.aiStatus.summaryErrors[id] {
+        if case .story(let id) = entry.id, let error = mac.aiStatus.summaryErrors[id] {
             Label("No summary: \(error)", systemImage: "exclamationmark.triangle")
         } else {
-            switch model.aiStatus.state {
+            switch mac.aiStatus.state {
             case .off, .unavailable:
                 EmptyView()
             case .idle, .organizing:
@@ -75,8 +76,8 @@ struct PageSummaryView: View {
     let article: Article
 
     /// When there is a summary, or T was asked for one.
-    static func isShown(for article: Article, status: AIStatus) -> Bool {
-        article.pageSummary != nil || status.pages[article.id]?.summary == true
+    static func isShown(for article: Article, status: PageStatus) -> Bool {
+        article.pageSummary != nil || status[article.id]?.summary == true
     }
 
     var body: some View {
@@ -92,7 +93,7 @@ struct PageSummaryView: View {
                     SummaryText(text: summary.details.map { "- \($0)" }.joined(separator: "\n"))
                 }
             }
-            if let work = model.aiStatus.pages[article.id], work.summary {
+            if let work = model.pageStatus[article.id], work.summary {
                 status(work.phase, isUpdating: article.pageSummary != nil)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -104,7 +105,7 @@ struct PageSummaryView: View {
     }
 
     @ViewBuilder
-    private func status(_ phase: AIStatus.PageWork.Phase, isUpdating: Bool) -> some View {
+    private func status(_ phase: PageStatus.Work.Phase, isUpdating: Bool) -> some View {
         switch phase {
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle")
