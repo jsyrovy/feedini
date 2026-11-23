@@ -12,7 +12,8 @@ import Foundation
 /// loading deletes files it doesn't list (left by a crash) and forgets listed texts without a file.
 actor LibraryStore {
     /// 2: only articles are saved (stories saved as a whole in version 1 have their articles saved instead).
-    static let schemaVersion = 2
+    /// 3: feed and article IDs derived from addresses and keys (`StableID`, `StableIDMigration`).
+    static let schemaVersion = 3
 
     struct LoadResult: Sendable {
         var library: Library
@@ -60,10 +61,11 @@ actor LibraryStore {
         do {
             let file = try Self.decoder.decode(File.self, from: data)
             var library = file.library
+            let renamed = renamePageTexts(file.pageTextRenames)
             let moved = movePageTexts(file.legacyPageTexts, into: &library)
             checkPageTexts(of: &library)
-            if moved {
-                // Written without the texts at once, so they aren't moved again at every start.
+            if moved || renamed {
+                // Written at once (without the texts, with the new IDs), so nothing is moved again at every start.
                 pending = library
                 writePending()
             }
@@ -141,6 +143,21 @@ actor LibraryStore {
 
     private func unconfirmPageText(_ id: Article.ID) {
         savedPageTextIDs.remove(id)
+    }
+
+    /// Gives the files of page texts the new IDs of their articles (`StableIDMigration`); returns whether there were
+    /// any.
+    private func renamePageTexts(_ renames: [Article.ID: Article.ID]) -> Bool {
+        guard !renames.isEmpty else { return false }
+        for (old, new) in renames {
+            do {
+                try FileManager.default.moveItem(at: pageTextURL(old), to: pageTextURL(new))
+            } catch CocoaError.fileNoSuchFile {
+            } catch {
+                Log.store.error("Renaming a page text failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return true
     }
 
     /// Writes the texts a file from before page files had in its articles; returns whether there were any.
@@ -225,6 +242,8 @@ actor LibraryStore {
         var library: Library
         /// The page texts in the articles of a file from before page files (one without `pageTexts`).
         var legacyPageTexts: [Article.ID: String] = [:]
+        /// The new IDs of articles in a file from before schema 3, whose page text files are renamed.
+        var pageTextRenames: [Article.ID: Article.ID] = [:]
 
         init(version: Int, library: Library) {
             self.version = version
@@ -246,6 +265,12 @@ actor LibraryStore {
             }
             if version < 2 {
                 saveArticlesOfSavedStories(try legacy.decode([LegacyStory].self, forKey: .stories))
+            }
+            if version < 3 {
+                pageTextRenames = StableIDMigration.migrate(&library)
+                legacyPageTexts = Dictionary(
+                    legacyPageTexts.map { (pageTextRenames[$0.key] ?? $0.key, $0.value) },
+                    uniquingKeysWith: { first, _ in first })
             }
         }
 

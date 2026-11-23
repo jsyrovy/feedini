@@ -104,6 +104,36 @@ struct FeedMergeTests {
         #expect(later.count == 1)
     }
 
+    @Test func aFeedWithArticlesOrTombstonesFromElsewhereIsNotDownloadedForTheFirstTime() {
+        // As a feed that came from another device: no download of its own yet, but articles or tombstones.
+        var withArticles = Feed.stub("Synced")
+        withArticles.lastSuccess = nil
+        var withTombstones = Feed.stub("Read")
+        withTombstones.lastSuccess = nil
+        var library = Library(
+            feeds: [withArticles, withTombstones], articles: [Article.stub(feed: withArticles.id, key: "known")])
+        library.tombstones[Tombstone.Key(feedID: withTombstones.id, key: "gone")] = Tombstone(
+            feedID: withTombstones.id, key: "gone", lastSeen: .hours(-1))
+        let old = -FeedMerge.firstDownloadMaxAge / 3600 - 1
+
+        let added = FeedMerge.merge(
+            [
+                withArticles.id: updated([item("old", hours: old)]),
+                withTombstones.id: updated([item("older", hours: old)]),
+            ], into: &library, now: referenceDate)
+
+        #expect(Set(added.compactMap { library.articles[$0]?.key }) == ["old", "older"])
+        #expect(library.tombstones.count == 1)
+    }
+
+    @Test func newArticlesHaveTheIDsOfTheirFeedAndKey() {
+        var library = Library(feeds: [feed], articles: [])
+
+        let added = FeedMerge.merge([feed.id: updated([item("a")])], into: &library, now: referenceDate)
+
+        #expect(added == [StableID.article(feed: feed.id, key: "a")])
+    }
+
     @Test func notModifiedOnlyMarksTheFeedChecked() throws {
         var library = Library(feeds: [feed], articles: [])
         library.feeds[0].lastError = "Old error"

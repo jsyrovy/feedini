@@ -85,11 +85,27 @@ struct BackupFileTests {
 
         let library = try BackupFile.decode(compressed(version1)).library
 
-        let saved = try #require(contents.library.articles.values.first { $0.title == "Saved" })
-        let other = try #require(contents.library.articles.values.first { $0.title == "Other" })
+        let saved = try #require(library.articles.values.first { $0.title == "Saved" })
+        let other = try #require(library.articles.values.first { $0.title == "Other" })
         // An article saved already keeps its date.
-        #expect(library.articles[saved.id]?.savedAt == .hours(1))
-        #expect(library.articles[other.id]?.savedAt == .hours(2))
+        #expect(saved.savedAt == .hours(1))
+        #expect(other.savedAt == .hours(2))
+    }
+
+    @Test func restoringABackupOfSchemaVersion2GivesStableIDs() throws {
+        let contents = contents()
+        let json = try json(of: contents)
+        let libraryVersion = #""version":\#(LibraryStore.schemaVersion)},"settings""#
+        let version2 = json.replacing(libraryVersion, with: #""version":2},"settings""#)
+
+        let library = try BackupFile.decode(compressed(version2)).library
+
+        let feed = try #require(contents.library.feeds.first)
+        let feedID = StableID.feed(url: feed.url)
+        #expect(library.feeds.map(\.id) == [feedID])
+        let ids = Set(contents.library.articles.values.map { StableID.article(feed: feedID, key: $0.key) })
+        #expect(Set(library.articles.keys) == ids)
+        #expect(Set(library.stories.values.flatMap(\.articleIDs)) == ids)
     }
 
     private func json(of contents: BackupFile.Contents) throws -> String {

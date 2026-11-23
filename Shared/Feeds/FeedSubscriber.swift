@@ -63,10 +63,11 @@ struct FeedSubscriber: Sendable {
 
     /// Whether two feed URLs are the same feed (scheme and host case, a trailing slash don't matter).
     static func isSame(_ lhs: URL, _ rhs: URL) -> Bool {
-        normalized(lhs) == normalized(rhs)
+        normalizedAddress(lhs) == normalizedAddress(rhs)
     }
 
-    private static func normalized(_ url: URL) -> String {
+    /// The address with the scheme and host in lowercase and without a trailing slash (also `StableID.feed`).
+    static func normalizedAddress(_ url: URL) -> String {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return url.absoluteString
         }

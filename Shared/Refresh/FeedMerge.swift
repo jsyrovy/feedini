@@ -12,7 +12,9 @@ enum FeedRefresh: Sendable, Equatable {
 /// - New items become unread articles; items already in the library are left alone (the feed may have edited them,
 ///   the reader keeps what it showed); items with a tombstone (read and removed) only refresh the tombstone.
 /// - The first download of a feed skips items older than `firstDownloadMaxAge`: they become tombstones, so adding a
-///   feed with years of history doesn't flood the list.
+///   feed with years of history doesn't flood the list. A feed that has articles or tombstones already (it came from
+///   another device, or a backup) isn't downloaded for the first time, even without a download of its own: its old
+///   unread articles mustn't be hidden there.
 /// - A failed feed only records the error; everything it had stays.
 enum FeedMerge {
     static let firstDownloadMaxAge: TimeInterval = 7 * 24 * 60 * 60
@@ -26,6 +28,7 @@ enum FeedMerge {
         for article in library.articles.values {
             known[article.feedID, default: []].insert(article.key)
         }
+        let withTombstones = Set(library.tombstones.keys.map(\.feedID))
         for index in library.feeds.indices {
             let feedID = library.feeds[index].id
             switch refreshes[feedID] {
@@ -37,7 +40,9 @@ enum FeedMerge {
                 library.feeds[index].lastChecked = now
                 library.feeds[index].lastError = nil
             case .updated(let parsed, let etag, let lastModified):
-                let isFirstDownload = library.feeds[index].lastSuccess == nil
+                let isFirstDownload =
+                    library.feeds[index].lastSuccess == nil && known[feedID] == nil
+                    && !withTombstones.contains(feedID)
                 var feed = library.feeds[index]
                 feed.etag = etag
                 feed.lastModified = lastModified

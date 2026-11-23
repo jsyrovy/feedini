@@ -148,7 +148,6 @@ struct LibraryStoreTests {
     @Test func movesPageTextsOutOfAnOlderFile() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = sampleLibrary()
-        let id = try #require(library.articles.keys.first)
         var encoded = try #require(
             JSONSerialization.jsonObject(with: LibraryStore.encoder.encode(library)) as? [String: Any])
         encoded["pageTexts"] = nil
@@ -161,6 +160,8 @@ struct LibraryStoreTests {
         let store = store()
         let loaded = await store.load().library
 
+        // With the article's new ID (schema 3).
+        let id = try #require(loaded.articles.keys.first)
         #expect(loaded.pageTextIDs == [id])
         #expect(await store.pageText(for: id) == "The text of the page.")
         // Written without the texts at once.
@@ -244,11 +245,39 @@ struct LibraryStoreTests {
     @Test func movesAFileFromANewerVersionAside() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Data("{\"version\": 3, \"library\": {}}".utf8).write(to: fileURL)
+        try Data("{\"version\": 99, \"library\": {}}".utf8).write(to: fileURL)
 
         let result = await store().load()
 
-        #expect(result.problem == "The library was saved by a newer version of Feedini (schema 3).")
+        #expect(result.problem == "The library was saved by a newer version of Feedini (schema 99).")
         #expect(try backups().count == 1)
+    }
+
+    /// Schema 3 derives feed and article IDs from addresses and keys; the files of page texts get the new IDs.
+    @Test func givesTheFilesOfPageTextsTheNewIDsOfASchema2File() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var library = sampleLibrary()
+        let old = try #require(library.articles.keys.first)
+        // Listed, but its file is gone: nothing to rename, and it is forgotten.
+        let gone = Article.stub(feed: try #require(library.feeds.first).id)
+        library.articles[gone.id] = gone
+        library.pageTextIDs = [old, gone.id]
+        let store = store()
+        try await store.storePageText("The text of the page.", for: old)
+        let json = try String(
+            decoding: LibraryStore.encoder.encode(LibraryStore.File(version: 2, library: library)), as: UTF8.self)
+        try Data(json.utf8).write(to: fileURL)
+
+        let loaded = await store.load().library
+
+        let id = try #require(loaded.articles.values.first { $0.key == library.articles[old]?.key }?.id)
+        #expect(id != old)
+        #expect(loaded.pageTextIDs == [id])
+        #expect(await store.pageText(for: id) == "The text of the page.")
+        #expect(await store.pageText(for: old) == nil)
+        // Written at once with the new IDs.
+        let saved = try #require(String(data: Data(contentsOf: fileURL), encoding: .utf8))
+        #expect(saved.contains("\"version\" : 3"))
+        #expect(await LibraryStore(fileURL: fileURL).load().library == loaded)
     }
 }

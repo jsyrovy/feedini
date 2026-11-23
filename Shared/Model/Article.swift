@@ -26,12 +26,13 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
     /// The name of the web site of a saved link (`SavedLink`); articles of feeds show the feed's name.
     var site: String?
 
+    /// The ID is derived from the feed and the key (`StableID.article`) unless given.
     init(
-        id: UUID = UUID(), feedID: Feed.ID, key: String, title: String, link: URL? = nil, published: Date? = nil,
+        id: UUID? = nil, feedID: Feed.ID, key: String, title: String, link: URL? = nil, published: Date? = nil,
         author: String? = nil, text: String = "", language: String? = nil, firstSeen: Date, readAt: Date? = nil,
         pageSummary: PageSummary? = nil, savedAt: Date? = nil, site: String? = nil
     ) {
-        self.id = id
+        self.id = id ?? StableID.article(feed: feedID, key: key)
         self.feedID = feedID
         self.key = key
         self.title = title

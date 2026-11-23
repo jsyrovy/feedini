@@ -485,8 +485,10 @@ Implementation:
   library on the main actor and returns the new article IDs.
 - Merging: items with a known key are left alone (no edits after the fact); items with a tombstone only refresh its
   `lastSeen`; the rest become unread articles with `firstSeen = now`. The first download of a feed (no
-  `lastSuccess` yet) turns items older than `FeedMerge.firstDownloadMaxAge` (7 days) into tombstones, so adding a
-  feed with its whole history doesn't flood the list. A failed feed only records `lastError`.
+  `lastSuccess` yet, and no articles or tombstones of it in the library) turns items older than
+  `FeedMerge.firstDownloadMaxAge` (7 days) into tombstones, so adding a feed with its whole history doesn't flood the
+  list. A feed with articles or tombstones but no download of its own (it came from another device or a backup)
+  isn't downloaded for the first time: tombstones made there would hide its unread articles elsewhere. A failed feed only records `lastError`.
 - `Feed.lastSuccess` is the last full (200) download – tombstones are judged against it, so a feed answering "304
   Not Modified" for days keeps them; `lastChecked` includes 304s (shown in Settings).
 
@@ -678,7 +680,7 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
 
 ## Storage and retention
 
-- One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 2, "library": {…}}`, pretty-printed
+- One file, `~/Library/Application Support/Feedini/library.json`: `{"version": 3, "library": {…}}`, pretty-printed
   with sorted keys and ISO 8601 dates, collections saved as arrays in a stable order (in memory they are
   dictionaries keyed by ID). `LibraryStore.schemaVersion` is bumped with every incompatible change, together with a
   migration in decoding `LibraryStore.File` (shared by loading and restoring a backup; only work on files, like
@@ -689,7 +691,17 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
 - Schema versions: 2 saves only articles – a story saved as a whole in a version 1 file (or backup) has its articles
   saved instead, at the story's save date (an article saved already keeps its own date) – and drops the "+1 new"
   marks of stories (`newArticleIDs`, ignored when reading version 1). Feedini 0.1 refuses a version 2 backup as one
-  from a newer version.
+  from a newer version. 3 derives feed and article IDs (`StableIDMigration`, below); older Feedini versions refuse a
+  version 3 file or backup – say so in the changelog of the release that brings it.
+- Stable IDs (`StableID`, schema 3), so that two devices that download the same feed get the same IDs and libraries
+  merge by ID: `Feed.id` is a UUID (version 8, from SHA-256) of the feed's normalized address
+  (`FeedSubscriber.normalizedAddress`, as `isSame` compares), `Article.id` of the feed's ID and the article's `key`
+  – the defaults of `Feed.init` and `Article.init`, so every new feed, article and saved link (`SavedLink.feedID` +
+  its key) gets one. Folders, stories and topics keep random IDs. `StableIDMigration` (pure, in decoding a file
+  before version 3) rewrites the IDs and every reference: articles, stories and their summaries, tombstones,
+  `pageTextIDs`; feeds of `removedFeeds` keep theirs (no address left). Two feeds with the same address become one
+  (articles with the same key: read or saved when either was, at the earlier date). `LibraryStore.load()` renames
+  the page text files and writes the library at once.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a
   newer Feedini – is moved aside as `library.unreadable-<unix time>.json`, never overwritten, and Feedini starts

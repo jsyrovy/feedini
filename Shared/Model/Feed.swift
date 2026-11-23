@@ -23,12 +23,13 @@ struct Feed: Codable, Sendable, Hashable, Identifiable {
     /// The folder the feed is in, if any.
     var folderID: Folder.ID?
 
+    /// The ID is derived from the address (`StableID.feed`) unless given.
     init(
-        id: UUID = UUID(), title: String, url: URL, siteURL: URL? = nil, language: String? = nil,
+        id: UUID? = nil, title: String, url: URL, siteURL: URL? = nil, language: String? = nil,
         etag: String? = nil, lastModified: String? = nil, lastSuccess: Date? = nil, lastChecked: Date? = nil,
         lastError: String? = nil, folderID: Folder.ID? = nil
     ) {
-        self.id = id
+        self.id = id ?? StableID.feed(url: url)
         self.title = title
         self.url = url
         self.siteURL = siteURL
