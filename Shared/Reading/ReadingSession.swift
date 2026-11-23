@@ -172,6 +172,11 @@ final class ReadingSession {
 
     // MARK: Refresh
 
+    /// The list was left (iOS: back to the sidebar): coming back shows only what is unread then.
+    func leaveList() {
+        resetList()
+    }
+
     /// The list of a new selection: no cursor, nothing kept.
     private func resetList() {
         move(to: nil)

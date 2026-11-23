@@ -235,4 +235,22 @@ struct AppModelTests {
 
         #expect(Set(model.library.articles.values.map(\.key)) == ["example.com/a", "example.com/b"])
     }
+
+    @Test func pullToRefreshWaitsForTheRefresh() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Not started, or without feeds: nothing to wait for.
+        await model.refreshNowAndWait()
+        await model.start()
+        await model.refreshNowAndWait()
+        #expect(model.lastRefresh == nil)
+
+        let url = StubURLProtocol.uniqueURL()
+        StubURLProtocol.stub(url, try .feed("rss2.xml"))
+        #expect(await model.subscribe(to: url.absoluteString) == nil)
+        await model.refreshNowAndWait()
+
+        #expect(model.lastRefresh == referenceDate)
+        #expect(model.library.feeds.first?.lastChecked == referenceDate)
+        await model.stopRefreshing()
+    }
 }

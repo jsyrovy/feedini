@@ -31,6 +31,15 @@ struct ReaderTests {
         model.library.articles[article.id]?.isRead == true
     }
 
+    @Test func leavingTheListShowsOnlyUnreadItemsNextTime() {
+        reader.visit(.story(.loose(lone.id)))
+
+        reader.session.leaveList()
+
+        #expect(reader.cursor == nil)
+        #expect(reader.entries.map(\.title) == ["Story"])
+    }
+
     @Test func visitingReadsButKeepsTheEntryInTheList() {
         reader.visit(.story(.loose(lone.id)))
 

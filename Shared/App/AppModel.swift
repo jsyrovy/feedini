@@ -74,6 +74,8 @@ final class AppModel: LibraryHost {
     @ObservationIgnored private(set) var pageLoader: PageLoader!
     @ObservationIgnored private var scheduler: RefreshScheduler?
     @ObservationIgnored private var entriesCache: EntriesCache?
+    /// Waiting for the end of the next refresh (`refreshNowAndWait`).
+    @ObservationIgnored private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
     /// The latest hand-over to the store; each waits for the previous one, so saves keep their order.
     @ObservationIgnored private var saving: Task<Void, Never>?
 
@@ -170,6 +172,15 @@ final class AppModel: LibraryHost {
         scheduler?.refreshNow()
     }
 
+    /// Refreshes now and returns once it ended (pull to refresh); a refresh that runs already is waited for.
+    func refreshNowAndWait() async {
+        guard scheduler != nil, !library.feeds.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            refreshWaiters.append(continuation)
+            scheduler?.refreshNow()
+        }
+    }
+
     /// Writes pending changes (at quit).
     func flush() async {
         await saving?.value
@@ -177,6 +188,13 @@ final class AppModel: LibraryHost {
     }
 
     private func refresh() async {
+        defer {
+            let waiters = refreshWaiters
+            refreshWaiters = []
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
         guard !library.feeds.isEmpty else { return }
         isRefreshing = true
         await sync?.fetchBeforeRefresh()

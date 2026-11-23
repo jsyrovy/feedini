@@ -94,7 +94,10 @@ Shared/       compiled into both apps
               names, encrypted fields), SyncChanges (pure: the records two libraries differ in), SyncMerge (pure:
               applying fetched records and deletions, conflicts, merging libraries), SyncStateStore (SyncState:
               sync.json), SyncSchema (the zone's version)
-  Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
+  Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept),
+              RelativeTime ("5m", "3h", then the date)
+  UI/         SwiftUI views of both apps: Removal (confirming the removal of feeds or a folder), FolderViews
+              (FolderNameSheet, MoveToFolderMenu, FolderPicker), ListOrderPicker, TextViews (Paragraphs, SummaryText)
   Debug/      Debug builds only: SampleLibrary (made-up library for `-sampleLibrary` on iOS)
   AppIcon.icon
 Feedini/      the Mac app
@@ -121,19 +124,21 @@ Feedini/      the Mac app
               `brew upgrade` command)
   Debug/      Debug builds only (`#if DEBUG`): DebugCommands (the Debug menu: reorganize all as a cold start,
               rewrite summaries, add made-up articles to a "Debug" feed)
-  UI/         MainWindow (NavigationSplitView), Sidebar (+ folders, dragging), FolderViews (FolderNameSheet,
-              MoveToFolderMenu), Removal (confirming the removal of feeds or a folder), StoryListView (keys, status
-              bar), StoryRow / ArticleRow,
+  UI/         MainWindow (NavigationSplitView), Sidebar (+ folders, dragging), StoryListView (keys, status bar),
+              StoryRow / ArticleRow,
               DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
               PageSummaryView), WebPageView (WKWebView), Reader (the main window on top of its
               ReadingSession: keys, the shown page or page text, the sheets, focus), UndoCommands (Edit →
-              Undo / Redo), ListOrderPicker (newest / oldest first), KeyboardNavigation (pure: what a key does),
-              ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime, SettingsView
+              Undo / Redo), KeyboardNavigation (pure: what a key does),
+              ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), SettingsView
               (tabs) + FeedsSettings + GeneralSettings (+ UpdateSettings) + AISettings + SyncSettings + BackupSettings, RestoreSheet, BackupCommands
               (File menu), SaveLinkSheet (+ SaveLinkButton), MenuBarContent (+ MenuBarLabel)
 FeediniMobile/ the iOS app
-  App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, the sample library in Debug)
-  UI/         StoryListScreen (All)
+  App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, refreshing only in the foreground,
+              the sample library in Debug)
+  UI/         RootView (NavigationStack: Route, `-screen` in Debug), SidebarScreen, StoryListScreen (+ EntryRow,
+              swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail, SafariView),
+              SettingsScreen (+ FeedsScreen)
 FeediniTests/ Swift Testing tests of the shared code and the Mac app, in folders named like theirs
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
@@ -815,7 +820,8 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   PID – `make run` kills every Feedini.
 - Checking the iOS app: `xcrun simctl io booted screenshot <file>` works without Screen Recording, so screens can be
   checked by looking at screenshots: `make run-ios ARGS=-sampleLibrary` shows the made-up `SampleLibrary` (Debug
-  only, a temporary store). Taps and swipes can't be driven yet (no UI tests).
+  only, a temporary store), and `-screen list|story|article|saved|settings` opens a screen of it. Taps and swipes
+  can't be driven yet (no UI tests).
 
 ### Test coverage
 

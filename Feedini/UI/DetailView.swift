@@ -124,22 +124,6 @@ struct ArticleDetail: View {
     }
 }
 
-/// Plain text with paragraphs separated by blank lines.
-struct Paragraphs: View {
-    let text: String
-
-    var body: some View {
-        ForEach(Array(text.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
-            if !paragraph.isEmpty {
-                Text(paragraph)
-                    .font(.body)
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-}
-
 /// The text of the source page instead of the feed text (P), or how loading it goes.
 struct PagePreview: View {
     @Environment(AppModel.self) private var model
