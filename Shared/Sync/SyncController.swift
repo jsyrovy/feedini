@@ -66,8 +66,9 @@ final class SyncController: LibrarySync {
     /// The latest hand-over to the state store; each waits for the previous one, so saves keep their order.
     @ObservationIgnored private var persisting: Task<Void, Never>?
 
-    static let deletedMessage = "The Feedini data in iCloud was deleted. Turn sync on to upload this library again."
-    static let signedOutMessage = "Sign in to iCloud to sync."
+    nonisolated static let deletedMessage =
+        "The Feedini data in iCloud was deleted. Turn sync on to upload this library again."
+    nonisolated static let signedOutMessage = "Sign in to iCloud to sync."
 
     init(model: AppModel, stateStore: SyncStateStore = SyncStateStore(), now: @escaping @Sendable () -> Date = { .now })
     {
@@ -77,6 +78,11 @@ final class SyncController: LibrarySync {
     }
 
     var isRunning: Bool { engine != nil }
+
+    /// Syncing can't start (no iCloud account, a build without the entitlement).
+    func setUnavailable(_ reason: String) {
+        status = .unavailable(reason)
+    }
 
     /// Starts syncing with an engine made from the saved state; the first fetch merges the library with the zone's.
     func start(makeEngine: @escaping (SyncState) -> any SyncEngining) async {
@@ -141,8 +147,8 @@ final class SyncController: LibrarySync {
 
     // MARK: LibrarySync
 
-    func libraryChanged(from old: Library, to new: Library) {
-        enqueue(SyncChanges.diff(old: old, new: new))
+    func libraryChanged(from old: Library, to new: Library, articles: Set<Article.ID>?) {
+        enqueue(SyncChanges.diff(old: old, new: new, articles: articles))
     }
 
     func pageTextStored(_ id: Article.ID) {

@@ -32,6 +32,18 @@ struct SyncChangesTests {
         #expect(SyncChanges.diff(old: library, new: new) == SyncChanges(saves: [.article(article.id): [F.readAt]]))
     }
 
+    @Test func onlyTheNamedArticlesAreComparedWhenTheyAreKnown() {
+        let other = Article.stub("Other", feed: feed.id)
+        var old = library
+        old.articles[other.id] = other
+        var new = old
+        new.markRead([article.id, other.id], at: .hours(1))
+
+        let changes = SyncChanges.diff(old: old, new: new, articles: [article.id])
+
+        #expect(changes.saves == [.article(article.id): [F.readAt]])
+    }
+
     @Test func newArticlesSendEveryFieldAndRemovedOnesAreDeleted() {
         let added = Article.stub("New", feed: feed.id)
         var new = library

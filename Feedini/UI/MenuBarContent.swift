@@ -39,6 +39,9 @@ struct MenuBarContent: View {
         if let problem = mac.backups.problem {
             Text("Backup: \(problem)")
         }
+        if let problem = mac.sync.status.problem {
+            Text("Sync: \(problem)")
+        }
         if let release = mac.updates.available {
             Button("Feedini \(release.version.description) Is Available…") { openURL(release.pageURL) }
         }

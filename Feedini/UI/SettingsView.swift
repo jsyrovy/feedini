@@ -13,6 +13,9 @@ struct SettingsView: View {
             Tab("AI", systemImage: "sparkles") {
                 AISettings()
             }
+            Tab("Sync", systemImage: "arrow.triangle.2.circlepath.icloud") {
+                SyncSettings()
+            }
             Tab("Backup", systemImage: "externaldrive.badge.icloud") {
                 BackupSettings()
             }

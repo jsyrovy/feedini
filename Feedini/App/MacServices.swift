@@ -12,16 +12,20 @@ final class MacServices: PlatformServices {
     let aiStatus: AIStatus
     let backups: Backups
     let updates: UpdateChecker
+    let sync: SyncController
     @ObservationIgnored private(set) var assignQueue: AssignQueue!
     @ObservationIgnored private(set) var summaryQueue: SummaryQueue!
     @ObservationIgnored private(set) var pageQueue: PageSummaryQueue!
+    /// Starting or stopping sync after the setting changed (awaited by tests).
+    @ObservationIgnored private(set) var syncSettingTask: Task<Void, Never>?
 
     init(
         preferences: MacPreferences = MacPreferences(), store: LibraryStore = LibraryStore(),
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
         claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator(),
         pageExtractor: (any PageExtracting)? = nil, backupStore: BackupStore = BackupStore(),
-        updates: UpdateChecker = UpdateChecker(), now: @escaping @Sendable () -> Date = { .now }
+        syncStateStore: SyncStateStore = SyncStateStore(), updates: UpdateChecker = UpdateChecker(),
+        now: @escaping @Sendable () -> Date = { .now }
     ) {
         let model = AppModel(
             preferences: preferences.shared, store: store, coordinator: coordinator, subscriber: subscriber,
@@ -31,6 +35,7 @@ final class MacServices: PlatformServices {
         self.updates = updates
         aiStatus = AIStatus(pages: model.pageStatus)
         backups = Backups(store: backupStore, preferences: preferences, now: now)
+        sync = SyncController(model: model, stateStore: syncStateStore, now: now)
         let configuration: @MainActor () -> AIConfiguration = { [preferences] in preferences.aiConfiguration }
         let assignQueue = AssignQueue(
             host: model, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
@@ -65,8 +70,54 @@ final class MacServices: PlatformServices {
             updates.setDaily(preferences.checksForUpdates)
         }
         updates.setDaily(preferences.checksForUpdates)
+        preferences.onSyncChange = { [weak self] in
+            guard let self else { return }
+            syncSettingTask = Task { [previous = syncSettingTask] in
+                await previous?.value
+                await self.syncSettingChanged()
+            }
+        }
+        sync.onTurnedOff = { [weak self] _ in
+            self?.preferences.syncsWithICloud = false
+        }
+        // Signing in to iCloud (after syncing stopped for want of an account) starts it.
+        NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.preferences.syncsWithICloud, !self.sync.isRunning else { return }
+                Task { await self.startSync() }
+            }
+        }
         await model.start()
         writeSummarySettings()
+        if preferences.syncsWithICloud {
+            await startSync()
+        }
+    }
+
+    // MARK: Sync
+
+    /// Starts syncing unless it can't run here, then says why.
+    private func startSync() async {
+        if let problem = await SyncAvailability.problem() {
+            sync.setUnavailable(problem)
+            return
+        }
+        await sync.start { [unowned self] state in CloudSyncEngine(state: state, controller: sync) }
+    }
+
+    private func syncSettingChanged() async {
+        if preferences.syncsWithICloud {
+            await startSync()
+        } else {
+            // Off: the library and the iCloud data stay; turning it on again merges them.
+            await sync.stop(forgetting: true)
+        }
+    }
+
+    /// Writes pending changes of the library and of syncing (at quit).
+    func flush() async {
+        await model.flush()
+        await sync.flush()
     }
 
     /// Puts the summary settings into the library, where the list and other devices read them. Only once the library

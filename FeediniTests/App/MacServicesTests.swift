@@ -85,4 +85,24 @@ struct MacServicesTests {
         model.update { $0 = Library(feeds: [feed]) }
         #expect(services.canBackUpNow)
     }
+
+    @Test func syncIsOffByDefaultAndSaysWhyItCantRunInThisBuild() async {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-sync-\(UUID().uuidString)")
+        let services = MacServices(
+            preferences: .test(), store: .temporary(),
+            syncStateStore: SyncStateStore(fileURL: directory.appending(path: "sync.json")))
+        await services.start()
+        #expect(services.sync.status == .off)
+        #expect(!services.preferences.syncsWithICloud)
+
+        // The test host is signed ad hoc, without the iCloud entitlement.
+        services.preferences.syncsWithICloud = true
+        await services.syncSettingTask?.value
+        #expect(services.sync.status == .unavailable(SyncAvailability.notInThisBuild))
+        #expect(!services.sync.isRunning)
+
+        services.preferences.syncsWithICloud = false
+        await services.syncSettingTask?.value
+        #expect(services.sync.status == .off)
+    }
 }

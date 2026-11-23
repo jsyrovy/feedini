@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Saves pending changes before quitting.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Task {
-            await model.flush()
+            await services.flush()
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

@@ -89,7 +89,7 @@ Shared/       compiled into both apps
               list is shown, the undo history; visiting, M, S, Shift+A, undo)
   Summaries/  SummaryStep (what the list needs: needsSummary, isCurrent) + SingleArticleSummaries, SummarySettings
               (the summary language and choice the list shows, in the library), OutputLanguage (names, choices)
-  Sync/       iCloud sync: SyncController (the state, sending, applying, conflicts; SyncStatus, SyncEngining),
+  Sync/       iCloud sync: CloudSyncEngine (the CKSyncEngine wrapper), SyncController (the state, sending, applying, conflicts; SyncStatus, SyncEngining),
               SyncRecord (+ Library: the records of the library's parts as fields,
               names, encrypted fields), SyncChanges (pure: the records two libraries differ in), SyncMerge (pure:
               applying fetched records and deletions, conflicts, merging libraries), SyncStateStore (SyncState:
@@ -101,8 +101,9 @@ Feedini/      the Mac app
   App/        @main entry (FeediniMain → FeediniApp with the main Window, Settings and MenuBarExtra, or an empty
               TestHostApp under tests), AppDelegate (owns the services, saves at quit, Dock icon only with the window,
               refresh after wake), MacServices (owns the AppModel: the AI queues, backups and restoring, the update
-              check), MacPreferences (the Mac's preferences on top of the shared ones: menu bar, AI, backups,
-              updates), LoginItem (SMAppService)
+              check, sync), MacPreferences (the Mac's preferences on top of the shared ones: menu bar, AI, backups,
+              updates, sync), SyncAvailability (the CloudKit entitlement, the iCloud account), LoginItem
+              (SMAppService)
   AI/         ClaudeLocator (binary lookup), ProcessRunner (subprocess with stdin, timeout, process group),
               ClaudeClient (CLI arguments, envelope, errors), Prompts (system prompts + JSON schemas), AssignStep
               (payload with short IDs), Validation (pure: applying an assign answer), SummaryStep (pure: which
@@ -128,7 +129,7 @@ Feedini/      the Mac app
               ReadingSession: keys, the shown page or page text, the sheets, focus), UndoCommands (Edit →
               Undo / Redo), ListOrderPicker (newest / oldest first), KeyboardNavigation (pure: what a key does),
               ShortcutHelp (pure: the shortcuts by group) + ShortcutsView (the ? sheet), RelativeTime, SettingsView
-              (tabs) + FeedsSettings + GeneralSettings (+ UpdateSettings) + AISettings + BackupSettings, RestoreSheet, BackupCommands
+              (tabs) + FeedsSettings + GeneralSettings (+ UpdateSettings) + AISettings + SyncSettings + BackupSettings, RestoreSheet, BackupCommands
               (File menu), SaveLinkSheet (+ SaveLinkButton), MenuBarContent (+ MenuBarLabel)
 FeediniMobile/ the iOS app
   App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, the sample library in Debug)
@@ -663,11 +664,25 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 ## Sync (in progress)
 
 iCloud sync of the library between the Mac and an iPhone through CloudKit (the plan, in Czech, is `plan/IOS_SYNC.md`
-locally). Built so far: the pure parts and the `SyncController` in `Shared/Sync/`, the hooks in `AppModel`; the
-`CKSyncEngine` wrapper, entitlements and the settings come next.
+locally). Built so far: everything in `Shared/Sync/`, the hooks in `AppModel`, the Mac's settings. Missing: the
+entitlements and team signing (F3 of the plan; until then `SyncAvailability` says "Sync isn't available in this
+build"), the iOS app's sync, a check against the real iCloud.
+
+- Mac: Settings → Sync (`SyncSettings`: "Sync with iCloud", `MacPreferences.syncsWithICloud`, off by default, the
+  state, Delete iCloud Data… with a confirmation), a line in the menu bar menu while it can't sync. `MacServices`
+  starts it after loading when on (`SyncAvailability.problem()`: the CloudKit entitlement, read with
+  `SecTaskCopyValueForEntitlement` – `CKContainer` traps without it –, and the iCloud account), stops it when turned
+  off (forgetting the sync state: turning it on again merges), restarts it on `CKAccountChanged`, and turns the
+  setting off when the zone was deleted elsewhere. Quitting writes the sync state too (`MacServices.flush`).
+- `CloudSyncEngine`: a `CKSyncEngine` over the zone `Library` in the private database of
+  `iCloud.cz.jsyrovy.feedini`; it creates the zone on its first start, turns `CKRecord`s into `SyncRecord`s (content
+  fields in `encryptedValues`, system fields kept as data) before they reach the main actor, sets only the given
+  fields over the zone's record, and maps send failures: `serverRecordChanged` → conflict, `unknownItem` → deleted
+  elsewhere, `zoneNotFound` → create the zone and save again, network and account errors → the engine retries.
 
 - `AppModel.sync` (`LibrarySync`, the `SyncController` while sync runs) gets every local change (`apply` with its
-  old and new library) and stored page text; `applyRemote` applies the zone's changes without sending them back and
+  old and new library; reading and saving name their articles, so J/K doesn't compare all of them) and stored page
+  text; `applyRemote` applies the zone's changes without sending them back and
   tells the reader (`onRemoteChange`: articles read elsewhere stay in the list like those read here). A refresh
   fetches first (`fetchBeforeRefresh`) and skips retention while a fetch is applied or a merge waits
   (`allowsRetention`).
@@ -875,6 +890,6 @@ watchers or 225 stars on GitHub.
 ## Logs
 
 `os.Logger` subsystem `cz.jsyrovy.feedini`, categories `refresh`, `feeds`, `ai` (one line per call with the metrics
-of the answer), `store`, `backup` and `updates`. Watch with
+of the answer), `store`, `backup`, `updates` and `sync`. Watch with
 `/usr/bin/log stream --level info --predicate 'subsystem == "cz.jsyrovy.feedini"'` – in zsh, plain `log` is a shell
 builtin. The test host is also called Feedini; filter by `processID` to see only the running app.

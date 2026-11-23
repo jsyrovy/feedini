@@ -43,6 +43,18 @@ struct PreferencesTests {
         #expect(MacPreferences(shared: Preferences(defaults: defaults)).checksForUpdates)
     }
 
+    @Test func doesNotSyncByDefault() {
+        let preferences = MacPreferences(shared: Preferences(defaults: defaults))
+        var changes = 0
+        preferences.onSyncChange = { changes += 1 }
+        #expect(!preferences.syncsWithICloud)
+
+        preferences.syncsWithICloud = true
+
+        #expect(changes == 1)
+        #expect(MacPreferences(shared: Preferences(defaults: defaults)).syncsWithICloud)
+    }
+
     @Test func savesTheListOrder() {
         #expect(Preferences(defaults: defaults).listOrder == .newestFirst)
 

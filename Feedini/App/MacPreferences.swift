@@ -17,6 +17,7 @@ final class MacPreferences {
     private static let backsUpKey = "backsUp"
     private static let backupFrequencyKey = "backupFrequency"
     private static let checksForUpdatesKey = "checksForUpdates"
+    private static let syncsKey = "syncsWithICloud"
 
     /// The preferences of both apps.
     let shared: Preferences
@@ -125,6 +126,15 @@ final class MacPreferences {
             languageCode: summaryLanguageCode, claudePath: claudePath, singleArticleSummaries: singleArticleSummaries)
     }
 
+    /// Whether the library syncs with other devices through iCloud. Off by default (like backups): turning it on
+    /// uploads the library.
+    var syncsWithICloud: Bool {
+        didSet {
+            defaults.set(syncsWithICloud, forKey: Self.syncsKey)
+            onSyncChange?()
+        }
+    }
+
     /// What the list shows of the summaries (`AppModel.summarySettings`).
     var summarySettings: SummarySettings {
         SummarySettings(language: summaryLanguageCode, singleArticles: singleArticleSummaries)
@@ -138,6 +148,9 @@ final class MacPreferences {
 
     /// Called after `checksForUpdates` changed.
     @ObservationIgnored var onUpdatesChange: (@MainActor () -> Void)?
+
+    /// Called after `syncsWithICloud` changed.
+    @ObservationIgnored var onSyncChange: (@MainActor () -> Void)?
 
     @ObservationIgnored private var defaults: UserDefaults { shared.defaults }
 
@@ -159,6 +172,7 @@ final class MacPreferences {
         backupFrequency =
             defaults.string(forKey: Self.backupFrequencyKey).flatMap(BackupFrequency.init(rawValue:)) ?? .daily
         checksForUpdates = defaults.bool(forKey: Self.checksForUpdatesKey)
+        syncsWithICloud = defaults.bool(forKey: Self.syncsKey)
     }
 }
 

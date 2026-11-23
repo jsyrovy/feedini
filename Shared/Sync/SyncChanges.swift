@@ -26,7 +26,9 @@ struct SyncChanges: Equatable, Sendable {
     }
 
     /// Unchanged collections share their storage, so comparing them costs nothing; only what changed is gone through.
-    static func diff(old: Library, new: Library) -> SyncChanges {
+    /// `articles` names the only articles that may have changed (reading and saving know them), so the others
+    /// aren't compared one by one.
+    static func diff(old: Library, new: Library, articles: Set<Article.ID>? = nil) -> SyncChanges {
         var changes = SyncChanges()
         if old.feeds != new.feeds {
             changes.compare(
@@ -39,7 +41,14 @@ struct SyncChanges: Equatable, Sendable {
                 folderRecords(old), folderRecords(new), id: SyncRecord.ID.folder, record: { $0 },
                 fields: SyncRecord.folderFields)
         }
-        if old.articles != new.articles {
+        if let articles {
+            let pick = { (library: Library) in
+                Dictionary(uniqueKeysWithValues: articles.compactMap { id in library.articles[id].map { (id, $0) } })
+            }
+            changes.compare(
+                pick(old), pick(new), id: SyncRecord.ID.article, record: SyncRecord.init(article:),
+                fields: SyncRecord.articleFields)
+        } else if old.articles != new.articles {
             changes.compare(
                 old.articles, new.articles, id: SyncRecord.ID.article, record: SyncRecord.init(article:),
                 fields: SyncRecord.articleFields)

@@ -17,8 +17,9 @@ protocol PlatformServices: AnyObject {
 /// Keeps the library in sync with other devices through iCloud (`SyncController`).
 @MainActor
 protocol LibrarySync: AnyObject {
-    /// A change made here (not one that came from the zone).
-    func libraryChanged(from old: Library, to new: Library)
+    /// A change made here (not one that came from the zone); `articles` names the only articles it changed when
+    /// that is known (reading and saving).
+    func libraryChanged(from old: Library, to new: Library, articles: Set<Article.ID>?)
     /// A page text was stored here, also again under the same ID (a saved link loaded again).
     func pageTextStored(_ id: Article.ID)
     /// Gets the zone's changes before a refresh, so a tombstone made elsewhere is known before the feed comes back.
@@ -400,7 +401,7 @@ final class AppModel: LibraryHost {
     private func changeReadingState(of ids: [Article.ID], _ change: (inout Library) -> Void) {
         guard !ids.isEmpty else { return }
         let cache = entriesCache
-        apply(change, notifiesReader: false)
+        apply(change, notifiesReader: false, articles: Set(ids))
         if var cache {
             cache.updateReadingState(of: ids, library: library)
             entriesCache = cache
@@ -427,7 +428,10 @@ final class AppModel: LibraryHost {
         return result
     }
 
-    private func apply(_ change: (inout Library) -> Void, notifiesReader: Bool, isRemote: Bool = false) {
+    private func apply(
+        _ change: (inout Library) -> Void, notifiesReader: Bool, isRemote: Bool = false,
+        articles: Set<Article.ID>? = nil
+    ) {
         var library = library
         change(&library)
         let old = self.library
@@ -436,7 +440,7 @@ final class AppModel: LibraryHost {
         if isRemote {
             onRemoteChange?(old, library)
         } else {
-            sync?.libraryChanged(from: old, to: library)
+            sync?.libraryChanged(from: old, to: library, articles: articles)
         }
         if notifiesReader {
             onLibraryChange?()
