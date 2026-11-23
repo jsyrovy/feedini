@@ -85,7 +85,8 @@ private struct ArticleDetail: View {
     let entry: StoryEntry
     let row: ListRow
     @State private var page: URL?
-    @State private var pageText: String?
+    /// The text of the source page instead of the feed text (P on the Mac).
+    @State private var showsPageText = false
 
     var body: some View {
         ScrollView {
@@ -117,12 +118,8 @@ private struct ArticleDetail: View {
                     }
                 }
                 Divider()
-                if article.isSavedLink {
-                    if let pageText {
-                        Paragraphs(text: pageText)
-                    } else {
-                        Text("The text of the page isn't loaded.").foregroundStyle(.secondary)
-                    }
+                if article.isSavedLink || showsPageText {
+                    PageTextSection(article: article, isStored: model.library.pageTextIDs.contains(article.id))
                 } else {
                     Paragraphs(text: article.text.isEmpty ? "No text in the feed." : article.text)
                 }
@@ -144,6 +141,15 @@ private struct ArticleDetail: View {
                 {
                     session.toggleSaved(row)
                 }
+                if article.link != nil {
+                    Spacer()
+                    if article.isSavedLink {
+                        Button("Reload Page", systemImage: "arrow.clockwise") { model.reloadPage(article.id) }
+                            .disabled(model.pageStatus[article.id]?.isRunning == true)
+                    } else {
+                        Toggle("Page Text", systemImage: "doc.plaintext", isOn: $showsPageText)
+                    }
+                }
                 Spacer()
                 if let link = article.link {
                     Button("Open Page", systemImage: "safari") { open(link) }
@@ -153,9 +159,9 @@ private struct ArticleDetail: View {
         .sheet(item: $page) { url in
             SafariView(url: url).ignoresSafeArea()
         }
-        .task(id: article.id) {
-            if article.isSavedLink {
-                pageText = await model.pageText(article.id)
+        .onChange(of: showsPageText) { _, shows in
+            if shows {
+                model.loadPage(article.id)
             }
         }
     }
@@ -170,6 +176,41 @@ private struct ArticleDetail: View {
             page = url
         } else {
             openURL(url)
+        }
+    }
+}
+
+/// The text of the source page – loaded on request, then stored – or how loading it goes. A saved link has only
+/// this text.
+private struct PageTextSection: View {
+    @Environment(AppModel.self) private var model
+    let article: Article
+    /// Passed in, so the text isn't read again on every change of the library.
+    let isStored: Bool
+    @State private var text: String?
+
+    var body: some View {
+        let work = model.pageStatus[article.id]
+        VStack(alignment: .leading, spacing: 14) {
+            if let work, work.isRunning || !isStored {
+                PageLoadStatus(phase: work.phase)
+            }
+            if isStored, let text {
+                if !article.isSavedLink {
+                    Label("Text of the source page", systemImage: "doc.plaintext")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                PageTextBody(text: text, cutNote: "The text is cut off here. Open the page for the rest.")
+            } else if !isStored && work == nil {
+                Text(article.isSavedLink ? "The text of the page isn't loaded." : "Loading page…")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task(id: [isStored, work?.isRunning == true]) {
+            if isStored && work?.isRunning != true {
+                text = await model.pageText(article.id)
+            }
         }
     }
 }

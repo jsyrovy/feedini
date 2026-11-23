@@ -97,7 +97,8 @@ Shared/       compiled into both apps
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept),
               RelativeTime ("5m", "3h", then the date)
   UI/         SwiftUI views of both apps: Removal (confirming the removal of feeds or a folder), FolderViews
-              (FolderNameSheet, MoveToFolderMenu, FolderPicker), ListOrderPicker, TextViews (Paragraphs, SummaryText)
+              (FolderNameSheet, MoveToFolderMenu, FolderPicker), ListOrderPicker, TextViews (Paragraphs, SummaryText,
+              PageLoadStatus, PageTextBody), ImportReport (what an OPML import did)
   Debug/      Debug builds only: SampleLibrary (made-up library for `-sampleLibrary` on iOS)
   AppIcon.icon
 Feedini/      the Mac app
@@ -137,8 +138,9 @@ FeediniMobile/ the iOS app
   App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, refreshing only in the foreground,
               the sample library in Debug)
   UI/         RootView (NavigationStack: Route, `-screen` in Debug), SidebarScreen, StoryListScreen (+ EntryRow,
-              swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail, SafariView),
-              SettingsScreen (+ FeedsScreen)
+              swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail with the page text
+              and Reload Page, SafariView), SaveLinkSheet (PasteButton), SettingsScreen (+ FeedsScreen: adding,
+              removing, folders, OPML import and export)
 FeediniTests/ Swift Testing tests of the shared code and the Mac app, in folders named like theirs
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
               with made-up text but the structure of real ones (RSS 0.91 / 1.0 / 2.0, Atom, long HTML,
@@ -820,8 +822,9 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   PID – `make run` kills every Feedini.
 - Checking the iOS app: `xcrun simctl io booted screenshot <file>` works without Screen Recording, so screens can be
   checked by looking at screenshots: `make run-ios ARGS=-sampleLibrary` shows the made-up `SampleLibrary` (Debug
-  only, a temporary store), and `-screen list|story|article|saved|settings` opens a screen of it. Taps and swipes
-  can't be driven yet (no UI tests).
+  only, a temporary store), `-screen list|story|article|saved|settings` opens a screen of it, and `-saveLink
+  <address>` saves a page and opens it (its text loads in the hidden web view: that works on iOS too, checked in the
+  simulator). Taps and swipes can't be driven yet (no UI tests).
 
 ### Test coverage
 

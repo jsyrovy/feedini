@@ -39,3 +39,37 @@ struct SummaryText: View {
         }
     }
 }
+
+/// Loading a page (also before the work started), or why it failed.
+struct PageLoadStatus: View {
+    let phase: PageStatus.Work.Phase?
+
+    var body: some View {
+        switch phase {
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.secondary)
+        case .loading, .summarizing, nil:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Loading page…")
+            }
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A page's text, with a pointer to the whole page where it was cut.
+struct PageTextBody: View {
+    let text: String
+    var cutNote = "The text is cut off here. Press V for the whole page."
+
+    var body: some View {
+        Paragraphs(text: text)
+        if PageText.isTruncated(text) {
+            Text(cutNote)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+}

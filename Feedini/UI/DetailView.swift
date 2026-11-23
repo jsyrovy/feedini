@@ -156,39 +156,6 @@ struct PagePreview: View {
     }
 }
 
-/// Loading a page (also before the work started), or why it failed.
-struct PageLoadStatus: View {
-    let phase: PageStatus.Work.Phase?
-
-    var body: some View {
-        switch phase {
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.secondary)
-        case .loading, .summarizing, nil:
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Loading page…")
-            }
-            .foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// A page's text, with a pointer to V where it was cut.
-struct PageTextBody: View {
-    let text: String
-
-    var body: some View {
-        Paragraphs(text: text)
-        if PageText.isTruncated(text) {
-            Text("The text is cut off here. Press V for the whole page.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
 /// "Preview" (P) – "Reload Page" on a saved link – and "Summarize Page" (T).
 struct PageButtons: View {
     @Environment(AppModel.self) private var model

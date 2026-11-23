@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings: the feeds, how articles open, the order of the lists and how often feeds are refreshed.
 struct SettingsScreen: View {
@@ -62,6 +63,9 @@ struct FeedsScreen: View {
     @State private var addError: String?
     @State private var removal: Removal?
     @State private var naming: FolderNaming?
+    @State private var isImporting = false
+    @State private var isImportRunning = false
+    @State private var importReport: ImportReport?
 
     var body: some View {
         let library = model.library
@@ -111,7 +115,31 @@ struct FeedsScreen: View {
         .navigationTitle("Feeds")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("New Folder", systemImage: "folder.badge.plus") { naming = FolderNaming() }
+                Menu("More", systemImage: "ellipsis.circle") {
+                    Button("New Folder…", systemImage: "folder.badge.plus") { naming = FolderNaming() }
+                    Button("Import OPML…", systemImage: "square.and.arrow.down") { isImporting = true }
+                        .disabled(isImportRunning)
+                    if !model.library.feeds.isEmpty {
+                        ShareLink(
+                            "Export OPML", item: OPMLExport(data: model.exportOPML()),
+                            preview: SharePreview("Feedini.opml"))
+                    }
+                }
+            }
+        }
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.opmlTypes) { result in
+            if case .success(let url) = result {
+                importOPML(from: url)
+            }
+        }
+        .sheet(item: $importReport) { report in
+            ImportReportScreen(report: report)
+        }
+        .overlay {
+            if isImportRunning {
+                ProgressView("Checking the feeds…")
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
         .removalConfirmation($removal, model: model)
@@ -146,6 +174,28 @@ struct FeedsScreen: View {
         return RelativeTime.updated(checked, now: .now)
     }
 
+    private static let opmlTypes: [UTType] = [UTType(filenameExtension: "opml") ?? .xml, .xml]
+
+    private func importOPML(from url: URL) {
+        let access = url.startAccessingSecurityScopedResource()
+        defer {
+            if access { url.stopAccessingSecurityScopedResource() }
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            importReport = ImportReport(error: "The file couldn't be read.")
+            return
+        }
+        isImportRunning = true
+        Task {
+            do {
+                importReport = ImportReport(result: try await model.importOPML(data))
+            } catch {
+                importReport = ImportReport(error: "This isn't an OPML file.")
+            }
+            isImportRunning = false
+        }
+    }
+
     private func add() {
         let address = address
         guard !address.trimmingCharacters(in: .whitespaces).isEmpty, !isAdding else { return }
@@ -159,5 +209,56 @@ struct FeedsScreen: View {
             }
             isAdding = false
         }
+    }
+}
+
+/// What an OPML import added and what not, with the reason; the errors can be copied.
+private struct ImportReportScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    let report: ImportReport
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let error = report.error {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                } else {
+                    Text(report.added == 1 ? "Added 1 feed." : "Added \(report.added) feeds.")
+                    if !report.skipped.isEmpty {
+                        Section("Not Added") {
+                            ForEach(report.skipped, id: \.address) { item in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title).fontWeight(.medium)
+                                    Text(item.address).font(.caption).foregroundStyle(.secondary)
+                                    Text(item.reason).font(.caption).foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("OPML Import")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+                if let errorReport = report.errorReport {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Copy Errors") { UIPasteboard.general.string = errorReport }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The feeds as an OPML file for the share sheet (Save to Files, AirDrop).
+private struct OPMLExport: Transferable {
+    let data: Data
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: UTType(filenameExtension: "opml") ?? .xml) { $0.data }
+            .suggestedFileName("Feedini.opml")
     }
 }

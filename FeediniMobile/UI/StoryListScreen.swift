@@ -7,6 +7,7 @@ struct StoryListScreen: View {
     @Environment(ReadingSession.self) private var session
     let selection: SidebarSelection
     @State private var isConfirmingMarkAll = false
+    @State private var isSavingLink = false
 
     var body: some View {
         let entries = session.selection == selection ? session.entries : []
@@ -38,6 +39,11 @@ struct StoryListScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refreshNowAndWait() }
         .toolbar {
+            if selection == .saved {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save Link", systemImage: "plus") { isSavingLink = true }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("More", systemImage: "ellipsis.circle") {
                     ListOrderPicker(preferences: model.preferences)
@@ -47,6 +53,10 @@ struct StoryListScreen: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $isSavingLink) {
+            SaveLinkSheet()
+                .presentationDetents([.medium])
         }
         .confirmationDialog(
             "Mark everything here as read?", isPresented: $isConfirmingMarkAll, titleVisibility: .visible

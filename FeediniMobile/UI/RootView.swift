@@ -40,9 +40,19 @@ struct RootView: View {
     }
 
     #if DEBUG
-        /// `-screen saved|story|article|settings` with `-sampleLibrary`: a screen to look at in the simulator.
+        /// `-screen list|story|article|saved|settings` with `-sampleLibrary`: a screen to look at in the simulator;
+        /// `-saveLink <address>` saves a page and opens it (its text loads in the hidden web view).
         private func openDebugScreen() {
             let arguments = ProcessInfo.processInfo.arguments
+            if let index = arguments.firstIndex(of: "-saveLink"), index + 1 < arguments.count {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard let id = try? model.saveLink(arguments[index + 1]).articleID else { return }
+                    session.selection = .saved
+                    path = [.list(.saved), .entry(.story(.savedArticle(id)))]
+                }
+                return
+            }
             guard let index = arguments.firstIndex(of: "-screen"), index + 1 < arguments.count else { return }
             Task {
                 // After the sample library is in.

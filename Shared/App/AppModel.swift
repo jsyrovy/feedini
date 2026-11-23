@@ -362,6 +362,11 @@ final class AppModel: LibraryHost {
         pageLoader.loadPage(id)
     }
 
+    /// A saved link's page loaded again, only its text (on the Mac `MacServices.reloadPage` adds the summary).
+    func reloadPage(_ id: Article.ID) {
+        pageLoader.reload(id)
+    }
+
     /// The user opened the article's source page in the window (`PageLoader.pageOpened`).
     func pageOpened(_ id: Article.ID) {
         pageLoader.pageOpened(id)
