@@ -217,16 +217,16 @@ struct SyncControllerTests {
 
     @Test func signingOutStopsAndForgetsAnotherAccountMergesAgain() async {
         await started()
-        await controller.accountChanged(.switchAccounts) { _ in engine }
+        await controller.accountChanged(.switchAccounts)
         #expect(controller.isRunning)
         #expect(controller.state.needsMerge)
 
-        await controller.accountChanged(.signOut) { _ in engine }
+        await controller.accountChanged(.signOut)
         #expect(controller.status == .unavailable(SyncController.signedOutMessage))
         #expect(!controller.isRunning)
         #expect(!FileManager.default.fileExists(atPath: stateURL.path))
 
-        await controller.accountChanged(.signIn) { _ in engine }
+        await controller.accountChanged(.signIn)
         #expect(controller.isRunning)
     }
 

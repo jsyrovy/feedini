@@ -58,6 +58,8 @@ final class SyncController: LibrarySync {
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private(set) var state = SyncState()
     @ObservationIgnored private var engine: (any SyncEngining)?
+    /// Makes an engine from a state (given at start; another iCloud account needs a new one).
+    @ObservationIgnored private var makeEngine: ((SyncState) -> any SyncEngining)?
     @ObservationIgnored private var isFetching = false
     /// The fields of records being sent: only those are done once saved (a change meanwhile goes out next time).
     @ObservationIgnored private var sending: [SyncRecord.ID: Set<String>] = [:]
@@ -77,8 +79,9 @@ final class SyncController: LibrarySync {
     var isRunning: Bool { engine != nil }
 
     /// Starts syncing with an engine made from the saved state; the first fetch merges the library with the zone's.
-    func start(makeEngine: (SyncState) -> any SyncEngining) async {
+    func start(makeEngine: @escaping (SyncState) -> any SyncEngining) async {
         guard engine == nil else { return }
+        self.makeEngine = makeEngine
         state = await stateStore.load()
         let engine = makeEngine(state)
         self.engine = engine
@@ -290,17 +293,18 @@ final class SyncController: LibrarySync {
         case signIn, signOut, switchAccounts
     }
 
-    func accountChanged(_ change: AccountChange, restart: @escaping (SyncState) -> any SyncEngining) async {
+    func accountChanged(_ change: AccountChange) async {
+        guard let makeEngine else { return }
         switch change {
         case .signIn:
             if engine == nil {
-                await start(makeEngine: restart)
+                await start(makeEngine: makeEngine)
             }
         case .signOut:
             await stop(forgetting: true, status: .unavailable(Self.signedOutMessage))
         case .switchAccounts:
             await stop(forgetting: true)
-            await start(makeEngine: restart)
+            await start(makeEngine: makeEngine)
         }
     }
 
