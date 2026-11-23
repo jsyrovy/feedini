@@ -88,7 +88,11 @@ Shared/       compiled into both apps
   Reading/    ReadingSession (@Observable window state: selection, cursor, expanded stories, articles read while the
               list is shown, the undo history; visiting, M, S, Shift+A, undo)
   Summaries/  SummaryStep (what the list needs: needsSummary, isCurrent) + SingleArticleSummaries, SummarySettings
-              (the summary language and choice the list shows), OutputLanguage (names, choices)
+              (the summary language and choice the list shows, in the library), OutputLanguage (names, choices)
+  Sync/       iCloud sync (pure parts so far): SyncRecord (+ Library: the records of the library's parts as fields,
+              names, encrypted fields), SyncChanges (pure: the records two libraries differ in), SyncMerge (pure:
+              applying fetched records and deletions, conflicts, merging libraries), SyncStateStore (SyncState:
+              sync.json), SyncSchema (the zone's version)
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept)
   Debug/      Debug builds only: SampleLibrary (made-up library for `-sampleLibrary` on iOS)
   AppIcon.icon
@@ -655,6 +659,28 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 - Problems (`BackupError`: iCloud Drive off, no access, not a backup, newer version, other errors with their message)
   show in Settings → Backup and in the menu bar menu until a backup works.
 
+## Sync (in progress)
+
+iCloud sync of the library between the Mac and an iPhone through CloudKit (the plan, in Czech, is `plan/IOS_SYNC.md`
+locally). Built so far: the pure parts in `Shared/Sync/`; the `CKSyncEngine` wrapper, the wiring in `AppModel`,
+entitlements and the settings come next.
+
+- One custom zone; record names `<type>-<uuid>` (`SyncRecord.ID`), `settings` and `meta` single. Content fields go
+  into `encryptedValues` (`Kind.encryptedFields`); IDs, dates and the folder order stay plain.
+- Synced: feeds (not their download state), folders (name, position), articles (content, read and save dates, page
+  summary), page texts, stories, topics, tombstones (only the first `lastSeen`), names of removed feeds and the
+  summary settings (`Library.summarySettings`, written by the Mac from Settings → AI, the summary language resolved).
+  Not synced: download state, AI usage, `pageTextIDs` (follow from the page text records), undo, window state.
+- `SyncChanges.diff(old:new:)` finds what to send after a local change, with the fields that changed (kept in
+  `SyncState.changedFields` until sent). Changes that came from the zone aren't diffed, so they don't go back.
+- `SyncMerge`: an article's content is written once (the first write wins), reading, saving, feeds and folders by the
+  last write, stories, topics and the settings only by the Mac. A deletion by the other device keeps an unread or
+  saved article, a story or topic with an unread article and the settings, and creates them again. Merging libraries
+  (`Mode.merge`): read or saved on either side wins (the earlier date), folders of the same name become the zone's.
+  A conflict when saving takes the zone's record with the fields changed here (not an article's content).
+- Compatibility of versions: fields are only added, unknown fields are kept (`SyncRecord.taking`), unknown record
+  types are ignored (`SyncRecord.ID(name:)` is `nil`), and a zone needing a newer `SyncSchema.version` stops syncing.
+
 ## Update check
 
 `UpdateChecker` (taken over from buddr) asks GitHub for the latest release and tells whether it is newer than the
@@ -686,7 +712,7 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   migration in decoding `LibraryStore.File` (shared by loading and restoring a backup; only work on files, like
   moving the old page texts out, stays in `LibraryStore.load()`). Fields added later are optional when decoding (`usage`, `folders` and
   `removedFeeds` via `decodeIfPresent`; `Feed.folderID`, `Story.summary`, `Topic.language`, `Article.pageSummary`,
-  `Article.savedAt`, `Article.site` as optionals), so older files load without a bump. The version is read before
+  `Article.savedAt`, `Article.site`, `Library.summarySettings` as optionals), so older files load without a bump. The version is read before
   the library, so a file from a newer Feedini isn't decoded for nothing.
 - Schema versions: 2 saves only articles – a story saved as a whole in a version 1 file (or backup) has its articles
   saved instead, at the story's save date (an article saved already keeps its own date) – and drops the "+1 new"

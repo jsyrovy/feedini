@@ -20,8 +20,6 @@ protocol PlatformServices: AnyObject {
 @Observable
 final class AppModel: LibraryHost {
     let preferences: Preferences
-    /// What the list shows of the summaries; the Mac sets it from its settings.
-    var summarySettings = SummarySettings()
     /// The Mac's AI and backups (`MacServices`); `nil` elsewhere.
     @ObservationIgnored weak var services: (any PlatformServices)?
     private(set) var library = Library() {
@@ -74,6 +72,9 @@ final class AppModel: LibraryHost {
 
     /// The work on source pages.
     var pageStatus: PageStatus { pageLoader.status }
+
+    /// What the list shows of the summaries (`Library.summarySettings`; the Mac writes it).
+    var summarySettings: SummarySettings { library.summarySettings ?? SummarySettings() }
 
     /// All stories and loose articles, newest first, with all their articles (`StoryEntry.visible(keeping:)` leaves
     /// out the read ones).

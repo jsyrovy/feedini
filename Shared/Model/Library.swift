@@ -18,6 +18,9 @@ struct Library: Sendable, Equatable {
     /// The articles whose source page text (P / T) is stored. The texts themselves are files of `LibraryStore`, read
     /// only when needed, so they are neither kept in memory nor written again with every change of the library.
     var pageTextIDs: Set<Article.ID> = []
+    /// What decides the summaries the list shows; written on the Mac from Settings → AI (the summary language
+    /// resolved), read by both apps. `nil` until then: the defaults apply.
+    var summarySettings: SummarySettings?
 
     func feed(_ id: Feed.ID) -> Feed? {
         feeds.first { $0.id == id }
@@ -110,7 +113,7 @@ extension Article {
 // that unchanged data gives an unchanged file.
 extension Library: Codable {
     private enum CodingKeys: String, CodingKey {
-        case feeds, folders, articles, stories, topics, tombstones, usage, removedFeeds, pageTexts
+        case feeds, folders, articles, stories, topics, tombstones, usage, removedFeeds, pageTexts, summarySettings
     }
 
     /// A removed feed in the file.
@@ -135,6 +138,7 @@ extension Library: Codable {
             uniquingKeysWith: { _, last in last })
         // Older files kept the texts in the articles (`LibraryStore` moves them out).
         pageTextIDs = Set(try container.decodeIfPresent([Article.ID].self, forKey: .pageTexts) ?? [])
+        summarySettings = try container.decodeIfPresent(SummarySettings.self, forKey: .summarySettings)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -155,6 +159,7 @@ extension Library: Codable {
             Self.sorted(removedFeeds.map { RemovedFeed(id: $0.key, title: $0.value) }) { $0.id.uuidString },
             forKey: .removedFeeds)
         try container.encode(Self.sorted(pageTextIDs) { $0.uuidString }, forKey: .pageTexts)
+        try container.encodeIfPresent(summarySettings, forKey: .summarySettings)
     }
 
     /// Sorted by a key computed once per value (not twice per comparison).

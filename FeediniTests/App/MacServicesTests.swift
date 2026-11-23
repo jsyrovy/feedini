@@ -47,13 +47,16 @@ struct MacServicesTests {
         #expect(model.library.pageTextIDs == [id])
     }
 
-    @Test func theSummarySettingsOfTheListFollowSettingsAI() {
-        #expect(model.summarySettings == services.preferences.summarySettings)
-
+    @Test func theSummarySettingsGoIntoTheLibraryOnceItIsLoaded() async {
         services.preferences.summaryLanguage = "de"
-        services.preferences.singleArticleSummaries = .always
+        #expect(model.library.summarySettings == nil)
+        #expect(model.summarySettings == SummarySettings())
 
-        #expect(model.summarySettings == SummarySettings(language: "de", singleArticles: .always))
+        await services.start()
+        #expect(model.summarySettings == SummarySettings(language: "de", singleArticles: .never))
+
+        services.preferences.singleArticleSummaries = .always
+        #expect(model.library.summarySettings == SummarySettings(language: "de", singleArticles: .always))
     }
 
     @Test func theAIOrganizesNewArticlesOnlyOnceTheModelIsLoaded() async {

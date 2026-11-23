@@ -31,7 +31,6 @@ final class MacServices: PlatformServices {
         self.updates = updates
         aiStatus = AIStatus(pages: model.pageStatus)
         backups = Backups(store: backupStore, preferences: preferences, now: now)
-        model.summarySettings = preferences.summarySettings
         let configuration: @MainActor () -> AIConfiguration = { [preferences] in preferences.aiConfiguration }
         let assignQueue = AssignQueue(
             host: model, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
@@ -49,7 +48,7 @@ final class MacServices: PlatformServices {
         model.services = self
         preferences.onAIChange = { [weak self] in
             guard let self else { return }
-            self.model.summarySettings = self.preferences.summarySettings
+            self.writeSummarySettings()
             self.model.organize(retryingFailed: true)
         }
     }
@@ -67,6 +66,17 @@ final class MacServices: PlatformServices {
         }
         updates.setDaily(preferences.checksForUpdates)
         await model.start()
+        writeSummarySettings()
+    }
+
+    /// Puts the summary settings into the library, where the list and other devices read them. Only once the library
+    /// is loaded: a change before that would be saved over the stored library.
+    private func writeSummarySettings() {
+        guard model.isLoaded else { return }
+        let settings = preferences.summarySettings
+        if model.library.summarySettings != settings {
+            model.update { $0.summarySettings = settings }
+        }
     }
 
     // MARK: AI
@@ -145,6 +155,8 @@ final class MacServices: PlatformServices {
         if settings {
             preferences.apply(contents.settings)
         }
+        // Settings → AI decide on the Mac, not the backup's library.
+        writeSummarySettings()
         Log.store.info(
             "Restored a backup of \(contents.created, privacy: .public) from \(contents.device, privacy: .public)")
         model.startRefreshing()

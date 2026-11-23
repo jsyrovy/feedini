@@ -1,7 +1,7 @@
 import Foundation
 
 /// Which stories with a single article get an AI title and summary (Settings → AI).
-enum SingleArticleSummaries: String, CaseIterable, Sendable {
+enum SingleArticleSummaries: String, CaseIterable, Codable, Sendable {
     /// None: a single article shows its own title and text.
     case never
     /// Articles in another language than the summary language (the summary is a translated gist).
