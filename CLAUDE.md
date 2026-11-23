@@ -89,7 +89,8 @@ Shared/       compiled into both apps
               list is shown, the undo history; visiting, M, S, Shift+A, undo)
   Summaries/  SummaryStep (what the list needs: needsSummary, isCurrent) + SingleArticleSummaries, SummarySettings
               (the summary language and choice the list shows, in the library), OutputLanguage (names, choices)
-  Sync/       iCloud sync (pure parts so far): SyncRecord (+ Library: the records of the library's parts as fields,
+  Sync/       iCloud sync: SyncController (the state, sending, applying, conflicts; SyncStatus, SyncEngining),
+              SyncRecord (+ Library: the records of the library's parts as fields,
               names, encrypted fields), SyncChanges (pure: the records two libraries differ in), SyncMerge (pure:
               applying fetched records and deletions, conflicts, merging libraries), SyncStateStore (SyncState:
               sync.json), SyncSchema (the zone's version)
@@ -662,8 +663,20 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 ## Sync (in progress)
 
 iCloud sync of the library between the Mac and an iPhone through CloudKit (the plan, in Czech, is `plan/IOS_SYNC.md`
-locally). Built so far: the pure parts in `Shared/Sync/`; the `CKSyncEngine` wrapper, the wiring in `AppModel`,
-entitlements and the settings come next.
+locally). Built so far: the pure parts and the `SyncController` in `Shared/Sync/`, the hooks in `AppModel`; the
+`CKSyncEngine` wrapper, entitlements and the settings come next.
+
+- `AppModel.sync` (`LibrarySync`, the `SyncController` while sync runs) gets every local change (`apply` with its
+  old and new library) and stored page text; `applyRemote` applies the zone's changes without sending them back and
+  tells the reader (`onRemoteChange`: articles read elsewhere stay in the list like those read here). A refresh
+  fetches first (`fetchBeforeRefresh`) and skips retention while a fetch is applied or a merge waits
+  (`allowsRetention`).
+- `SyncController` (main actor) owns the `SyncState` and an engine behind `SyncEngining` (a fake in tests). It sends
+  only the fields changed here over the zone's record (`recordToSend`: all fields for a record the zone doesn't
+  have), forgets them once saved (except those changed while sending), applies fetched records (page texts into
+  files), merges on the first fetch and then uploads everything, resolves conflicts and deletions made elsewhere
+  (`sent`), and handles account changes, a deleted zone (turns sync off, `onTurnedOff`), an encrypted data reset
+  (uploads everything) and a zone of a newer version (`needsUpdate`).
 
 - One custom zone; record names `<type>-<uuid>` (`SyncRecord.ID`), `settings` and `meta` single. Content fields go
   into `encryptedValues` (`Kind.encryptedFields`); IDs, dates and the folder order stay plain.

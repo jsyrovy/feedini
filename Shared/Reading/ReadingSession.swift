@@ -38,6 +38,7 @@ final class ReadingSession {
             self?.followArticlesIntoStories()
         }
         model.onRestore = { [weak self] in self?.startOver() }
+        model.onRemoteChange = { [weak self] old, new in self?.keepArticlesReadElsewhere(old, new) }
     }
 
     /// The entries of the list for the current selection, in the chosen order.
@@ -191,6 +192,15 @@ final class ReadingSession {
     private func dropReadEntries() {
         keptArticles = cursor.flatMap { entry($0.entryID) }.map { Set($0.articles.map(\.id)) } ?? []
         unsaved = unsaved.filter { .savedArticle($0.key) == cursor?.entryID }
+    }
+
+    /// Articles read on another device stay in the list like those read here, so rows don't move under the cursor;
+    /// they go when the selection changes or after a refresh.
+    private func keepArticlesReadElsewhere(_ old: Library, _ new: Library) {
+        guard old.articles != new.articles else { return }
+        for (id, article) in new.articles where article.isRead && old.articles[id]?.isRead == false {
+            keptArticles.insert(id)
+        }
     }
 
     /// A removed feed, folder or topic can't stay selected; All is selected instead.

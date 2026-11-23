@@ -14,6 +14,20 @@ protocol PlatformServices: AnyObject {
     func prepareSavedLink(_ id: Article.ID) -> Bool
 }
 
+/// Keeps the library in sync with other devices through iCloud (`SyncController`).
+@MainActor
+protocol LibrarySync: AnyObject {
+    /// A change made here (not one that came from the zone).
+    func libraryChanged(from old: Library, to new: Library)
+    /// A page text was stored here, also again under the same ID (a saved link loaded again).
+    func pageTextStored(_ id: Article.ID)
+    /// Gets the zone's changes before a refresh, so a tombstone made elsewhere is known before the feed comes back.
+    func fetchBeforeRefresh() async
+    /// `false` while the zone's changes are being applied or a merge waits: retention over half a fetch would forget
+    /// stories whose articles haven't come yet, and send that.
+    var allowsRetention: Bool { get }
+}
+
 /// Connects the layers: holds the library on the main actor, saves its changes, runs the refreshes, loads source
 /// pages. Shared by both apps; what only the Mac does comes through `services`.
 @MainActor
@@ -22,6 +36,8 @@ final class AppModel: LibraryHost {
     let preferences: Preferences
     /// The Mac's AI and backups (`MacServices`); `nil` elsewhere.
     @ObservationIgnored weak var services: (any PlatformServices)?
+    /// iCloud sync; `nil` while it is off.
+    @ObservationIgnored weak var sync: (any LibrarySync)?
     private(set) var library = Library() {
         didSet {
             // Comparing unchanged collections is cheap (they share their storage).
@@ -43,6 +59,9 @@ final class AppModel: LibraryHost {
     @ObservationIgnored var onRefresh: (@MainActor () -> Void)?
     /// Called after every change of the library (the reader follows articles into their new stories).
     @ObservationIgnored var onLibraryChange: (@MainActor () -> Void)?
+    /// Called after a change that came from another device, with the library before and after it (the reader keeps
+    /// articles read there in the list, as if read here).
+    @ObservationIgnored var onRemoteChange: (@MainActor (Library, Library) -> Void)?
     /// Called after a backup replaced the library (the reader starts over).
     @ObservationIgnored var onRestore: (@MainActor () -> Void)?
 
@@ -159,6 +178,7 @@ final class AppModel: LibraryHost {
     private func refresh() async {
         guard !library.feeds.isEmpty else { return }
         isRefreshing = true
+        await sync?.fetchBeforeRefresh()
         await refresh(library.feeds)
         isRefreshing = false
         lastRefresh = now()
@@ -171,7 +191,9 @@ final class AppModel: LibraryHost {
         let refreshes = await coordinator.refresh(feeds)
         update { library in
             let added = FeedMerge.merge(refreshes, into: &library, now: now())
-            Retention.prune(&library, now: now())
+            if sync?.allowsRetention ?? true {
+                Retention.prune(&library, now: now())
+            }
             Log.refresh.info("\(added.count) new articles")
         }
     }
@@ -341,6 +363,14 @@ final class AppModel: LibraryHost {
         // Unless the article went away meanwhile; the store deletes the file when loading next time.
         guard library.articles[id] != nil else { return }
         update { $0.pageTextIDs.insert(id) }
+        sync?.pageTextStored(id)
+    }
+
+    /// Stores a page text that came from another device.
+    func storeSyncedPageText(_ text: String, for id: Article.ID) async throws {
+        try await store.storePageText(text, for: id)
+        guard library.articles[id] != nil else { return }
+        applyRemote { $0.pageTextIDs.insert(id) }
     }
 
     // MARK: Changes
@@ -382,6 +412,11 @@ final class AppModel: LibraryHost {
         apply(change, notifiesReader: true)
     }
 
+    /// Applies a change that came from another device: saved, but not sent back.
+    func applyRemote(_ change: (inout Library) -> Void) {
+        apply(change, notifiesReader: true, isRemote: true)
+    }
+
     /// Changes the library and saves it, unless the change fails; returns what the change returns.
     private func change<Result, Failure: Error>(
         _ change: (inout Library) throws(Failure) -> Result
@@ -392,11 +427,17 @@ final class AppModel: LibraryHost {
         return result
     }
 
-    private func apply(_ change: (inout Library) -> Void, notifiesReader: Bool) {
+    private func apply(_ change: (inout Library) -> Void, notifiesReader: Bool, isRemote: Bool = false) {
         var library = library
         change(&library)
-        guard library != self.library else { return }
+        let old = self.library
+        guard library != old else { return }
         self.library = library
+        if isRemote {
+            onRemoteChange?(old, library)
+        } else {
+            sync?.libraryChanged(from: old, to: library)
+        }
         if notifiesReader {
             onLibraryChange?()
         }
