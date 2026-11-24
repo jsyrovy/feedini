@@ -65,8 +65,9 @@ Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a rel
   the test target has none. `CURRENT_PROJECT_VERSION` stays 1; a release sets the build number.
 - Commit: `make` passes `FEEDINI_COMMIT` (the short hash, `-dirty` with uncommitted changes; `release.sh` its own
   from the clean tree); `Config/Info.plist`, merged into the generated Info.plist of both apps, puts it under
-  `FeediniCommit`. `RuntimeEnvironment.versionDescription` ("0.4 (4ceb8b3)") shows it in iOS Settings → Version and
-  the `store` log at start, the Mac's About panel instead of the build number. A build from Xcode has none.
+  `FeediniCommit`. `RuntimeEnvironment.versionDescription` ("0.4 (4ceb8b3)") shows it in Settings → Version (iOS;
+  the Mac above the update check), the `store` log at start and the Mac's About panel instead of the build number. A
+  build from Xcode has none.
 - The app icon (`Shared/AppIcon.icon`, Icon Composer format, both apps; for iOS 18 Xcode adds bitmaps) is a pixel-art top hat (32 × 32 grid) with the RSS
   symbol cut out of its crown: a black hat on cream in the light appearance, a cream hat on charcoal in the dark one
   (`fill-specializations`, `image-name-specializations`). Layers: outline, brim, band, crown, without glass (it
@@ -497,8 +498,8 @@ Implementation:
 - **General** (`GeneralSettings`; `Preferences`, the menu bar and update check in `MacPreferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15),
   where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), open at login (`LoginItem`, the
   system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
-  count in the menu bar (`showsUnreadCount`, on by default), and the update check ("Check for updates daily", "Check
-  Now" and the result, see "Update check"). Values that aren't offered fall back to the default.
+  count in the menu bar (`showsUnreadCount`, on by default), and the update check (the running version, "Check for
+  updates daily", "Check Now" and the result, see "Update check"). Values that aren't offered fall back to the default.
 - **AI** (`AISettings`): the summary language ("System (…)" first, then common languages by English name with
   their own name), which single articles are summarized (Never / In other languages / Always), on / off, the state (ready, organizing, unavailable and why), the path to claude (empty =
   found automatically, the found path is shown as the placeholder), the models and effort, and the last 20 calls
@@ -790,7 +791,8 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   every 24 h (`UpdateChecker.setDaily`); "Check Now" (`checkNow()`) checks once in any case. A check while one runs is
   skipped; a cancelled one (the loop switched off) leaves the previous result. Nothing is persisted: after a restart
   the result is unknown until the next check.
-- Below the checkbox: checking, up to date, a failure (⚠︎ + message), or "Feedini 0.4 is available" with "Download"
+- Above the checkbox the running version with its commit ("Version 0.4 (4ceb8b3)"); below it: checking, up to date
+  ("Feedini is up to date"), a failure (⚠︎ + message), or "Feedini 0.4 is available" with "Download"
   (opens the release page) and, when the Homebrew cask is installed (`HomebrewCask.isInstalled`: `Caskroom/feedini`
   under `/opt/homebrew` or `/usr/local`, looked up once), the `brew upgrade` command, since an update outside Homebrew
   leaves the cask's version behind. The menu bar menu has "Feedini <version> Is Available…" too. No notifications, no

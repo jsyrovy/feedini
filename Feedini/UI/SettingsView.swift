@@ -84,6 +84,8 @@ private struct UpdateSettings: View {
 
     var body: some View {
         Section {
+            LabeledContent("Version", value: RuntimeEnvironment.versionDescription)
+                .textSelection(.enabled)
             HStack {
                 Toggle("Check for updates daily", isOn: $preferences.checksForUpdates)
                 Spacer()
@@ -112,8 +114,9 @@ private struct UpdateSettings: View {
                 Text("Checking for updates…")
             }
             .foregroundStyle(.secondary)
-        case .upToDate(let version):
-            Label("Feedini \(version.description) is up to date", systemImage: "checkmark.circle")
+        case .upToDate:
+            // The version is the row above.
+            Label("Feedini is up to date", systemImage: "checkmark.circle")
                 .foregroundStyle(.secondary)
         case .available(let release):
             VStack(alignment: .leading, spacing: 4) {
