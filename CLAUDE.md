@@ -25,8 +25,9 @@ make clean    # rm -rf build
 Run `make lint test` after every change. `CONFIG=Release make build` builds Release.
 
 CI (`.github/workflows/ci.yml`, GitHub Actions on pushes to `main` and pull requests) runs `make lint`,
-`make coverage`, `CONFIG=Release make build` and `make build-ios` in one job; the steps run even after an earlier one fails, and the
-result bundle is uploaded when something fails. It uses the `xcode-27` runner image (a preview; `macos-26` only has
+`make coverage`, `CONFIG=Release make build` and `make build-ios` in one job, with `SIGNING=none` (no team
+signing there: ad hoc, without entitlements); the steps run even after an earlier one fails, and the result bundle is
+uploaded when something fails. It uses the `xcode-27` runner image (a preview; `macos-26` only has
 Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a release is published (see "Releasing").
 
 ## Toolchain and project
@@ -44,9 +45,21 @@ Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a rel
 - Shared schemes `Feedini` (`xcshareddata/xcschemes/Feedini.xcscheme`; it collects coverage for the app target
   only) and `FeediniMobile` (no tests: the shared code is tested on the Mac).
 - Bundle ID `cz.jsyrovy.feedini`, a regular app (`LSUIElement = NO`), generated Info.plist, App Sandbox off (the app
-  runs the `claude` CLI, which a sandboxed app can't), ad-hoc signing ("Sign to Run Locally", no team) for everything
-  but `make release`, which signs with Developer ID. Hardened runtime is on in Release only (see "Releasing"). App
-  Transport Security keeps its defaults (no exceptions): only HTTPS feeds work.
+  runs the `claude` CLI, which a sandboxed app can't). App Transport Security keeps its defaults (no exceptions):
+  only HTTPS feeds work.
+- Signing: both apps are signed with the team `DZ7S6R9RRN` (automatic, "Apple Development"; the Makefile passes
+  `-allowProvisioningUpdates`, so Xcode makes the development profiles with its account), which CloudKit needs;
+  `make release` signs with Developer ID and its profile. `SIGNING=none make …` (CI) signs ad hoc without
+  entitlements and builds the iOS app without sync (no `CLOUDKIT` condition); the Mac app then says "Sync isn't
+  available in this build" (`SyncAvailability`). The test target stays ad hoc (no hardened runtime in Debug, so the
+  team-signed host loads it). Hardened runtime is on in Release only (see "Releasing").
+- Entitlements (`Config/`, outside the synchronized folders so they aren't copied into the bundle):
+  `Feedini.entitlements` (`com.apple.developer.icloud-services` CloudKit, the container `iCloud.cz.jsyrovy.feedini`,
+  `com.apple.developer.aps-environment`, `com.apple.developer.icloud-container-environment`) and
+  `FeediniMobile.entitlements` (the same with `aps-environment`). The environments are build settings:
+  `FEEDINI_CLOUDKIT_ENVIRONMENT` Development in Debug, Production in Release (so `make install`, `make release` and
+  TestFlight share the data, and a Debug Mac syncs only with a Debug iPhone from Xcode), `FEEDINI_APS_ENVIRONMENT`
+  development (`release.sh` sets production). The iOS app has the background mode `remote-notification`.
 - Version: `MARKETING_VERSION` (`major.minor`) of the app targets, the same in Debug and Release and in both apps;
   the test target has none. `CURRENT_PROJECT_VERSION` stays 1; a release sets the build number.
 - The app icon (`Shared/AppIcon.icon`, Icon Composer format, both apps; for iOS 18 Xcode adds bitmaps) is a pixel-art top hat (32 × 32 grid) with the RSS
@@ -136,7 +149,7 @@ Feedini/      the Mac app
               (File menu), SaveLinkSheet (+ SaveLinkButton), MenuBarContent (+ MenuBarLabel)
 FeediniMobile/ the iOS app
   App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, refreshing only in the foreground,
-              the sample library in Debug)
+              the sample library in Debug), MobileSync (sync on by default, its setting)
   UI/         RootView (NavigationStack: Route, `-screen` in Debug), SidebarScreen, StoryListScreen (+ EntryRow,
               swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail with the page text
               and Reload Page, SafariView), SaveLinkSheet (PasteButton), SettingsScreen (+ FeedsScreen: adding,
@@ -152,6 +165,7 @@ FeediniTests/ Swift Testing tests of the shared code and the Mac app, in folders
               requests), TestLibraryHost + `ClaudeLocator.stub` + `MacServices.test()` (fake claude and pages) +
               `AppModel.test()` (the shared model alone, as on iOS), model
               stubs (`referenceDate`, `Article.stub`, …)
+Config/       entitlements of both apps
 scripts/      release.sh (`make release`) and publish.sh (`make publish`), see "Releasing"
 CHANGELOG.md  one section per released version
 ```
@@ -671,9 +685,9 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 ## Sync (in progress)
 
 iCloud sync of the library between the Mac and an iPhone through CloudKit (the plan, in Czech, is `plan/IOS_SYNC.md`
-locally). Built so far: everything in `Shared/Sync/`, the hooks in `AppModel`, the Mac's settings. Missing: the
-entitlements and team signing (F3 of the plan; until then `SyncAvailability` says "Sync isn't available in this
-build"), the iOS app's sync, a check against the real iCloud.
+locally). Built so far: everything in `Shared/Sync/`, the hooks in `AppModel`, the Mac's settings. The iOS app
+syncs too (`MobileSync`: on by default when signed in to iCloud, never with `-sampleLibrary`; Settings → Sync).
+Missing: a check against the real iCloud (CloudKit Console, both devices), deploying the schema to Production.
 
 - Mac: Settings → Sync (`SyncSettings`: "Sync with iCloud", `MacPreferences.syncsWithICloud`, off by default, the
   state, Delete iCloud Data… with a confirmation), a line in the menu bar menu while it can't sync. `MacServices`
@@ -868,8 +882,10 @@ watchers or 225 stars on GitHub.
   `make publish`, then check the draft on GitHub and publish it. The tag is pushed only after a successful release; if
   it fails, fix, commit and move the unpushed tag (`git tag -f`).
 - `scripts/release.sh` changes nothing in git. It checks the preconditions first (clean tree, tag, dated changelog
-  section, identity, notary profile), then archives (signed with Developer ID right away, so there is no export step;
-  build number = `git rev-list --count HEAD`), checks the signature, notarizes, staples, zips and checks the zip as a
+  section, identity, notary profile, the installed provisioning profile "Feedini Developer ID" of the app with its
+  iCloud container, not expired), then archives (signed manually with Developer ID and that profile right away, so
+  there is no export step; build number = `git rev-list --count HEAD`), checks the signature and the entitlements
+  (CloudKit, Production, push production, no `get-task-allow`), notarizes, staples, zips and checks the zip as a
   download with `syspolicy_check distribution`. A run takes a few minutes, most of it notarization.
 - Output: `build/release/Feedini-<version>.zip`, its `.sha256`, `Feedini-<version>-dSYMs.zip` (for symbolicating
   crash reports) and the archive.
@@ -886,12 +902,14 @@ watchers or 225 stars on GitHub.
   (DZ7S6R9RRN)" (expires 2027-12-05; renew it before, already shipped versions keep working thanks to the timestamp)
   and the `notarytool` keychain profile `notary` (an App Store Connect API team key with the Developer role;
   `NOTARY_PROFILE` overrides the name). Both belong to the team, not to Feedini; the owner keeps backups outside the
-  repo.
-- Hardened runtime: ad-hoc Release builds (`make install`, CI) have it too, so everyday use runs like a release. It
-  stays off in Debug: Xcode leaves it out of the ad-hoc Debug signature, and forced on, library validation rejects
-  the ad-hoc `Feedini.debug.dylib` and test bundle. No entitlements are needed: WebKit runs its content in its own
-  processes, and `claude` is a process of its own with its own signature.
-- A Developer ID build is a different code identity than an ad-hoc one: macOS may ask again for access to iCloud
+  repo. The Developer ID provisioning profile "Feedini Developer ID" (App ID `cz.jsyrovy.feedini` with iCloud /
+  CloudKit and Push Notifications; valid until 2044) is installed in `~/Library/Developer/Xcode/UserData/Provisioning
+  Profiles/`, a copy kept by the owner outside the repo; a new one is made in the developer portal (Profiles →
+  Distribution → Developer ID) after a change of the App ID's capabilities.
+- Hardened runtime: Release builds (`make install`, CI) have it too, so everyday use runs like a release. It stays off
+  in Debug: forced on, library validation rejects the ad-hoc test bundle. No hardened runtime exceptions are needed:
+  WebKit runs its content in its own processes, and `claude` is a process of its own with its own signature.
+- A Developer ID build is a different code identity than a development one: macOS may ask again for access to iCloud
   Drive, and a login item registered by another build may need turning off and on.
 - Pitfall: `syspolicy_check notary-submission` includes a Gatekeeper assessment and rejects every app that is not
   notarized yet, so it can't serve as a check before notarization.

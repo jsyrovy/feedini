@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 /// Settings: the feeds, how articles open, the order of the lists and how often feeds are refreshed.
 struct SettingsScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(MobileSync.self) private var sync
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -33,6 +34,7 @@ struct SettingsScreen: View {
                 } footer: {
                     Text("Feeds are refreshed while Feedini is open.")
                 }
+                SyncSection(sync: sync)
                 Section {
                     LabeledContent("Version", value: Self.version)
                 } footer: {
@@ -260,5 +262,58 @@ private struct OPMLExport: Transferable {
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: UTType(filenameExtension: "opml") ?? .xml) { $0.data }
             .suggestedFileName("Feedini.opml")
+    }
+}
+
+/// Sync with iCloud: on or off, its state, deleting the iCloud data.
+private struct SyncSection: View {
+    @Bindable var sync: MobileSync
+    @State private var isConfirmingDeletion = false
+    @State private var deletionError: String?
+
+    var body: some View {
+        let controller = sync.controller
+        Section {
+            Toggle("Sync with iCloud", isOn: $sync.isOn)
+            LabeledContent("Status", value: status(controller.status))
+            if let problem = controller.status.problem ?? deletionError {
+                Text(problem).font(.footnote).foregroundStyle(.orange)
+            }
+            if controller.isRunning {
+                Button("Delete iCloud Data…", role: .destructive) { isConfirmingDeletion = true }
+            }
+        } header: {
+            Text("Sync")
+        } footer: {
+            Text(
+                "Feeds, what you read and saved, and the stories and summaries from Feedini on the Mac, end-to-end "
+                    + "encrypted with Advanced Data Protection.")
+        }
+        .confirmationDialog(
+            "Delete the Feedini data in iCloud?", isPresented: $isConfirmingDeletion, titleVisibility: .visible
+        ) {
+            Button("Delete iCloud Data", role: .destructive) {
+                Task {
+                    do {
+                        try await controller.deleteICloudData()
+                        sync.isOn = false
+                        deletionError = nil
+                    } catch {
+                        deletionError = error.localizedDescription
+                    }
+                }
+            }
+        } message: {
+            Text("The library stays on this iPhone. Sync turns off here and on your other devices.")
+        }
+    }
+
+    private func status(_ status: SyncStatus) -> String {
+        switch status {
+        case .off: "Off"
+        case .syncing: "Syncing…"
+        case .synced(let date): date.map { "Synced \(RelativeTime.short($0, now: .now))" } ?? "On"
+        case .unavailable, .failed, .needsUpdate: "Not syncing"
+        }
     }
 }

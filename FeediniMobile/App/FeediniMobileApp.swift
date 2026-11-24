@@ -5,12 +5,14 @@ import SwiftUI
 struct FeediniMobileApp: App {
     @State private var model: AppModel
     @State private var session: ReadingSession
+    @State private var sync: MobileSync
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let model = AppModel(store: Self.store)
         _model = State(initialValue: model)
         _session = State(initialValue: ReadingSession(model: model))
+        _sync = State(initialValue: MobileSync(model: model))
     }
 
     var body: some Scene {
@@ -18,13 +20,17 @@ struct FeediniMobileApp: App {
             RootView()
                 .environment(model)
                 .environment(session)
+                .environment(sync)
                 .task {
                     await model.start()
                     #if DEBUG
+                        // Made-up articles never go to iCloud.
                         if Self.showsSampleLibrary {
                             model.update { $0 = SampleLibrary.make(now: .now) }
+                            return
                         }
                     #endif
+                    await sync.apply()
                 }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -36,6 +42,7 @@ struct FeediniMobileApp: App {
                 Task {
                     await model.stopRefreshing()
                     await model.flush()
+                    await sync.controller.flush()
                 }
             default:
                 break

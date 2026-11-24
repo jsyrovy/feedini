@@ -28,6 +28,11 @@
 			path = Feedini;
 			sourceTree = "<group>";
 		};
+		FEED00000000000000000302 /* FeediniTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FeediniTests;
+			sourceTree = "<group>";
+		};
 		FEED00000000000000000303 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shared;
@@ -36,11 +41,6 @@
 		FEED00000000000000000304 /* FeediniMobile */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FeediniMobile;
-			sourceTree = "<group>";
-		};
-		FEED00000000000000000302 /* FeediniTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = FeediniTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -107,8 +107,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				FEED00000000000000000303 /* Shared */,
 				FEED00000000000000000301 /* Feedini */,
+				FEED00000000000000000303 /* Shared */,
 			);
 			name = Feedini;
 			packageProductDependencies = (
@@ -325,13 +325,16 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = Config/Feedini.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = DZ7S6R9RRN;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
+				FEEDINI_APS_ENVIRONMENT = development;
+				FEEDINI_CLOUDKIT_ENVIRONMENT = Development;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Feedini;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
@@ -352,13 +355,16 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = Config/Feedini.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = DZ7S6R9RRN;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
+				FEEDINI_APS_ENVIRONMENT = development;
+				FEEDINI_CLOUDKIT_ENVIRONMENT = Production;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Feedini;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
@@ -409,15 +415,20 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = Config/FeediniMobile.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = DZ7S6R9RRN;
+				FEEDINI_APS_ENVIRONMENT = development;
+				FEEDINI_CLOUDKIT_CONDITION = CLOUDKIT;
+				FEEDINI_CLOUDKIT_ENVIRONMENT = Development;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Feedini;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Jiří Syrový. MIT License.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -431,6 +442,7 @@
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) $(FEEDINI_CLOUDKIT_CONDITION)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -440,15 +452,20 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = Config/FeediniMobile.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = DZ7S6R9RRN;
+				FEEDINI_APS_ENVIRONMENT = development;
+				FEEDINI_CLOUDKIT_CONDITION = CLOUDKIT;
+				FEEDINI_CLOUDKIT_ENVIRONMENT = Production;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Feedini;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Jiří Syrový. MIT License.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -462,6 +479,7 @@
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) $(FEEDINI_CLOUDKIT_CONDITION)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;
 			};

@@ -1,4 +1,3 @@
-import CloudKit
 import Security
 
 /// Whether this build can use CloudKit: `CKContainer` traps without the iCloud entitlement, which ad-hoc builds (CI,
@@ -17,13 +16,6 @@ enum SyncAvailability {
     /// Why syncing can't start now; `nil` when it can.
     static func problem() async -> String? {
         guard hasCloudKitEntitlement else { return notInThisBuild }
-        let status = try? await CKContainer(identifier: CloudSyncEngine.containerIdentifier).accountStatus()
-        switch status {
-        case .available: return nil
-        case .noAccount: return SyncController.signedOutMessage
-        case .restricted: return "iCloud is restricted on this Mac."
-        case .temporarilyUnavailable: return "iCloud is temporarily unavailable."
-        default: return "iCloud can't be reached."
-        }
+        return await CloudSyncEngine.accountProblem()
     }
 }

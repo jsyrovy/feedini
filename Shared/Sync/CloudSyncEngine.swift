@@ -56,6 +56,19 @@ final class CloudSyncEngine: SyncEngining {
         Task { await engine.cancelOperations() }
     }
 
+    /// Why the iCloud account can't sync now; `nil` when it can. Needs the iCloud entitlement (`CKContainer` traps
+    /// without it).
+    nonisolated static func accountProblem() async -> String? {
+        let status = try? await CKContainer(identifier: containerIdentifier).accountStatus()
+        switch status {
+        case .available: return nil
+        case .noAccount: return SyncController.signedOutMessage
+        case .restricted: return "iCloud is restricted on this device."
+        case .temporarilyUnavailable: return "iCloud is temporarily unavailable."
+        default: return "iCloud can't be reached."
+        }
+    }
+
     nonisolated static func recordID(_ id: SyncRecord.ID) -> CKRecord.ID {
         CKRecord.ID(recordName: id.name, zoneID: zoneID)
     }

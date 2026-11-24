@@ -19,6 +19,9 @@ jobs:
     # Xcode 27 as the default /Applications/Xcode.app.
     runs-on: xcode-27
     timeout-minutes: 30
+    env:
+      # No team signing on CI: ad hoc, without the iCloud entitlements.
+      SIGNING: none
     steps:
       - uses: actions/checkout@v7
 

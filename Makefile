@@ -12,18 +12,29 @@ RESULT_BUNDLE := build/Test.xcresult
 IOS_APP       := $(DERIVED_DATA)/Build/Products/$(CONFIG)-iphonesimulator/Feedini.app
 SIMULATOR     ?= iPhone 17
 
+# Builds are signed with the team (Apple Development), which CloudKit needs; Xcode makes the profiles. SIGNING=none
+# (CI) signs ad hoc without entitlements: the Mac app then says sync isn't available in this build, and the iOS app
+# is built without sync (FEEDINI_CLOUDKIT_CONDITION empty).
+SIGNING       ?= team
+ifeq ($(SIGNING),none)
+SIGNING_FLAGS := CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= CODE_SIGN_ENTITLEMENTS= \
+	FEEDINI_CLOUDKIT_CONDITION=
+else
+SIGNING_FLAGS := -allowProvisioningUpdates
+endif
+
 XCODEBUILD    := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIG) \
-	-destination 'platform=macOS,arch=$(ARCH)' -derivedDataPath $(DERIVED_DATA) -quiet
+	-destination 'platform=macOS,arch=$(ARCH)' -derivedDataPath $(DERIVED_DATA) -quiet $(SIGNING_FLAGS)
 
 .PHONY: build build-ios run-ios test coverage run install uninstall release publish format lint clean
 
 build:
 	$(XCODEBUILD) build
 
-# The iOS app for the simulator, unsigned (it shares Shared/ with the Mac app).
+# The iOS app for the simulator (it shares Shared/ with the Mac app).
 build-ios:
 	xcodebuild -project $(PROJECT) -scheme FeediniMobile -configuration $(CONFIG) \
-		-destination 'generic/platform=iOS Simulator' -derivedDataPath $(DERIVED_DATA) -quiet build
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath $(DERIVED_DATA) -quiet $(SIGNING_FLAGS) build
 
 # Builds the iOS app and runs it in the simulator SIMULATOR (booted when needed) with the launch arguments ARGS, e.g.
 # ARGS=-sampleLibrary (Debug only: made-up articles in a temporary library). See it with

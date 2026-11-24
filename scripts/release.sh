@@ -3,13 +3,15 @@
 # stapled. Run it as `make release` on a clean commit tagged v<MARKETING_VERSION>; it changes nothing in git.
 #
 # Output in build/release: Feedini-<version>.zip (the app), its .sha256 and Feedini-<version>-dSYMs.zip.
-# Needs the team's "Developer ID Application" identity in the keychain and notarytool credentials saved as the
-# keychain profile $NOTARY_PROFILE (default "notary"). See "Releasing" in CLAUDE.md.
+# Needs the team's "Developer ID Application" identity in the keychain, its provisioning profile $PROFILE_NAME (with
+# iCloud / CloudKit and push, for sync) installed, and notarytool credentials saved as the keychain profile
+# $NOTARY_PROFILE (default "notary"). See "Releasing" in CLAUDE.md.
 
 set -euo pipefail
 
 TEAM_ID=DZ7S6R9RRN
 NOTARY_PROFILE=${NOTARY_PROFILE:-notary}
+PROFILE_NAME=${PROFILE_NAME:-Feedini Developer ID}
 
 cd "$(dirname "$0")/.."
 
@@ -54,6 +56,23 @@ grep -q "\"Developer ID Application: .* ($TEAM_ID)\"" <<<"$identities" \
 xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null \
     || fail "notarytool can't use the keychain profile '$NOTARY_PROFILE'"
 
+# The installed Developer ID profile of the app with CloudKit (Xcode looks in both folders).
+profile_ok=false
+for file in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"/*.provisionprofile \
+    "$HOME/Library/MobileDevice/Provisioning Profiles"/*.provisionprofile; do
+    [[ -f $file ]] || continue
+    plist=$(security cms -D -i "$file" 2>/dev/null) || continue
+    [[ $(plutil -extract Name raw -o - - <<<"$plist" 2>/dev/null) == "$PROFILE_NAME" ]] || continue
+    [[ $(plutil -extract 'Entitlements.com\.apple\.application-identifier' raw -o - - <<<"$plist") == \
+        "$TEAM_ID.cz.jsyrovy.feedini" ]] || continue
+    expiry=$(plutil -extract ExpirationDate raw -o - - <<<"$plist")
+    [[ $(date -u +%Y-%m-%dT%H:%M:%SZ) < $expiry ]] || fail "the profile '$PROFILE_NAME' expired on $expiry"
+    plutil -extract 'Entitlements.com\.apple\.developer\.icloud-container-identifiers' json -o - - <<<"$plist" \
+        | grep -q 'iCloud.cz.jsyrovy.feedini' || continue
+    profile_ok=true
+done
+$profile_ok || fail "no installed provisioning profile '$PROFILE_NAME' of the app with its iCloud container"
+
 step "Feedini $VERSION ($BUILD) from $TAG ($(git rev-parse --short HEAD))"
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -63,7 +82,8 @@ mkdir -p "$OUT"
 step "Archiving"
 xcodebuild -project Feedini.xcodeproj -scheme Feedini -configuration Release -destination 'generic/platform=macOS' \
     -derivedDataPath "$OUT/DerivedData" -archivePath "$ARCHIVE" -quiet archive \
-    CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGN_IDENTITY="Developer ID Application" DEVELOPMENT_TEAM="$TEAM_ID" \
+    CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" \
+    DEVELOPMENT_TEAM="$TEAM_ID" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" FEEDINI_APS_ENVIRONMENT=production \
     OTHER_CODE_SIGN_FLAGS=--timestamp
 rm -rf "$OUT/DerivedData"
 ditto "$ARCHIVE/Products/Applications/Feedini.app" "$APP"
@@ -76,6 +96,12 @@ signature=$(codesign -dvv "$APP" 2>&1)
 grep -q "^Authority=Developer ID Application: .* ($TEAM_ID)$" <<<"$signature" || fail "not signed with Developer ID"
 grep -q "^CodeDirectory .*flags=.*runtime" <<<"$signature" || fail "the hardened runtime is off"
 grep -q "^Timestamp=" <<<"$signature" || fail "the signature has no secure timestamp"
+entitlements=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -convert json -o - -)
+for expected in '"com.apple.developer.icloud-container-environment":"Production"' \
+    '"com.apple.developer.aps-environment":"production"' '"com.apple.developer.icloud-services":["CloudKit"]'; do
+    [[ $entitlements == *"$expected"* ]] || fail "the entitlements lack $expected: $entitlements"
+done
+[[ $entitlements != *get-task-allow* ]] || fail "the app can be debugged (get-task-allow)"
 archs=$(lipo -archs "$APP/Contents/MacOS/Feedini")
 [[ $archs == *arm64* && $archs == *x86_64* ]] || fail "not a universal binary: $archs"
 

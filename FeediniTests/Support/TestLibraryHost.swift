@@ -47,14 +47,19 @@ extension ClaudeLocator {
 extension MacServices {
     /// The Mac services with their model over a store in a new temporary directory and defaults of their own, not
     /// loaded (no refresh, no AI queues running). Claude calls and source pages go to the given fakes, backups to a
-    /// temporary folder. Keep the services in a local: the model holds them weakly.
+    /// temporary folder, sync state to a temporary file (sync never reaches iCloud). Keep the services in a local: the
+    /// model holds them weakly.
     static func test(
         runner: FakeCommandRunner = FakeCommandRunner([]), extractor: FakePageExtractor = FakePageExtractor(),
         backupStore: BackupStore = .temporary()
     ) -> MacServices {
         MacServices(
             preferences: MacPreferences.test(), store: .temporary(), claudeRunner: runner, claudeLocator: .stub(),
-            pageExtractor: extractor, backupStore: backupStore)
+            pageExtractor: extractor, backupStore: backupStore,
+            syncStateStore: SyncStateStore(
+                fileURL: FileManager.default.temporaryDirectory.appending(
+                    path: "feedini-sync-\(UUID().uuidString).json")),
+            syncProblem: { SyncAvailability.notInThisBuild })
     }
 }
 

@@ -16,6 +16,8 @@ final class MacServices: PlatformServices {
     @ObservationIgnored private(set) var assignQueue: AssignQueue!
     @ObservationIgnored private(set) var summaryQueue: SummaryQueue!
     @ObservationIgnored private(set) var pageQueue: PageSummaryQueue!
+    /// Why syncing can't start now (`SyncAvailability.problem`; tests don't reach iCloud).
+    @ObservationIgnored private let syncProblem: @MainActor () async -> String?
     /// Starting or stopping sync after the setting changed (awaited by tests).
     @ObservationIgnored private(set) var syncSettingTask: Task<Void, Never>?
 
@@ -24,9 +26,11 @@ final class MacServices: PlatformServices {
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
         claudeRunner: any CommandRunning = ProcessRunner(), claudeLocator: ClaudeLocator = ClaudeLocator(),
         pageExtractor: (any PageExtracting)? = nil, backupStore: BackupStore = BackupStore(),
-        syncStateStore: SyncStateStore = SyncStateStore(), updates: UpdateChecker = UpdateChecker(),
-        now: @escaping @Sendable () -> Date = { .now }
+        syncStateStore: SyncStateStore = SyncStateStore(),
+        syncProblem: @escaping @MainActor () async -> String? = { await SyncAvailability.problem() },
+        updates: UpdateChecker = UpdateChecker(), now: @escaping @Sendable () -> Date = { .now }
     ) {
+        self.syncProblem = syncProblem
         let model = AppModel(
             preferences: preferences.shared, store: store, coordinator: coordinator, subscriber: subscriber,
             pageExtractor: pageExtractor, now: now)
@@ -98,7 +102,7 @@ final class MacServices: PlatformServices {
 
     /// Starts syncing unless it can't run here, then says why.
     private func startSync() async {
-        if let problem = await SyncAvailability.problem() {
+        if let problem = await syncProblem() {
             sync.setUnavailable(problem)
             return
         }
