@@ -11,6 +11,8 @@ RESULT_BUNDLE := build/Test.xcresult
 
 IOS_APP       := $(DERIVED_DATA)/Build/Products/$(CONFIG)-iphonesimulator/Feedini.app
 SIMULATOR     ?= iPhone 17
+DEVICE_APP    := $(DERIVED_DATA)/Build/Products/$(CONFIG)-iphoneos/Feedini.app
+PHONES        := hardwareProperties.reality == 'physical' AND hardwareProperties.platform == 'iOS'
 
 # Builds are signed with the team (Apple Development), which CloudKit needs; Xcode makes the profiles. SIGNING=none
 # (CI) signs ad hoc without entitlements: the Mac app then says sync isn't available in this build, and the iOS app
@@ -27,7 +29,7 @@ XCODEBUILD_ANY := xcodebuild -project $(PROJECT) -configuration $(CONFIG) -deriv
 	$(SIGNING_FLAGS)
 XCODEBUILD    := $(XCODEBUILD_ANY) -scheme $(SCHEME) -destination 'platform=macOS,arch=$(ARCH)'
 
-.PHONY: build build-ios run-ios test coverage run install uninstall release publish format lint clean
+.PHONY: build build-ios run-ios run-device test coverage run install uninstall release publish format lint clean
 
 build:
 	$(XCODEBUILD) build
@@ -44,6 +46,27 @@ run-ios: build-ios
 	xcrun simctl bootstatus "$(SIMULATOR)" -b >/dev/null
 	xcrun simctl install "$(SIMULATOR)" "$(IOS_APP)"
 	xcrun simctl launch --terminate-running-process "$(SIMULATOR)" cz.jsyrovy.feedini $(ARGS)
+
+# Builds the iOS app signed with the team, installs it on the iPhone DEVICE (its UDID; default: the only iPhone paired
+# with this Mac, see `xcrun devicectl list devices`) and runs it with the launch arguments ARGS. The iPhone must be
+# unlocked, with Developer Mode on. A Debug build syncs in the CloudKit Development environment: with a Debug Mac
+# (`make run`), not with an installed one (`make install`, Production).
+run-device:
+	@device="$(DEVICE)"; \
+	if [ -z "$$device" ]; then \
+		device=$$(xcrun devicectl list devices --filter "$(PHONES)" --columns udid --hide-default-columns \
+			--hide-headers 2>/dev/null); \
+		count=$$(printf '%s' "$$device" | grep -c .); \
+		if [ "$$count" -ne 1 ]; then \
+			echo "$$count iPhones paired with this Mac; choose one with DEVICE=<udid> (xcrun devicectl list devices)" >&2; \
+			exit 1; \
+		fi; \
+	fi; \
+	echo "iPhone $$device"; \
+	$(XCODEBUILD_ANY) -allowProvisioningDeviceRegistration -scheme FeediniMobile \
+		-destination "platform=iOS,id=$$device" build && \
+	xcrun devicectl device install app --device "$$device" "$(DEVICE_APP)" && \
+	xcrun devicectl device process launch --terminate-existing --device "$$device" cz.jsyrovy.feedini $(ARGS)
 
 test:
 	$(XCODEBUILD) test

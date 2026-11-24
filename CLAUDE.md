@@ -11,6 +11,7 @@ reader without AI that will show what the Mac produced through iCloud sync.
 make build    # xcodebuild Debug build into build/DerivedData
 make build-ios # the iOS app for the simulator (unsigned)
 make run-ios  # build-ios, then install and launch it in the simulator SIMULATOR (default "iPhone 17"); ARGS=-sampleLibrary
+make run-device # the iOS app signed with the team on the iPhone DEVICE (UDID; default the only paired one); ARGS
 make test     # Swift Testing unit tests (hosted by the app)
 make coverage # tests + line coverage report of the app target (result bundle build/Test.xcresult)
 make run      # build, kill a running instance, open the app
@@ -710,9 +711,9 @@ on the iPhone organized on the Mac and back. Missing: deploying the schema to Pr
 - Testing two Mac instances against each other doesn't show propagation: on one Mac they are one CloudKit device and
   don't get each other's changes. A second instance with an empty home (`CFFIXED_USER_HOME`) does get everything on
   its first, full fetch. The iPhone simulator can't sync: without iCloud Keychain (it can't be turned on there) the
-  account is "Temporarily Unavailable" for the encrypted fields. Use a device: `xcodebuild … -destination
-  'platform=iOS,id=<udid>' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build`, `xcrun devicectl
-  device install app` / `process launch` / `capture screenshot`, and `devicectl device copy from --domain-type
+  account is "Temporarily Unavailable" for the encrypted fields. Use a device: `make run-device` (builds, installs
+  and launches; `DEVICE=<udid>` when more iPhones are paired, `xcrun devicectl list devices`; the iPhone unlocked,
+  Developer Mode on), `xcrun devicectl device capture screenshot`, and `devicectl device copy from --domain-type
   appDataContainer --domain-identifier cz.jsyrovy.feedini --source "Library/Application Support/Feedini/library.json"`
   to compare libraries. Launch a Mac test instance with `open -n --env CFFIXED_USER_HOME=<dir> <app> --args
   -syncsWithICloud YES` (Bool settings read with `as? Bool` need `-key '<false/>'`).
