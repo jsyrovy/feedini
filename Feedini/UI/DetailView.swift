@@ -80,14 +80,11 @@ struct ArticleDetail: View {
                 Text(article.title)
                     .font(.title.bold())
                     .textSelection(.enabled)
-                Text(meta)
+                Text(model.library.byline(of: article))
                     .foregroundStyle(.secondary)
                 if article.isSavedLink {
-                    Label(
-                        "Saved link, added \(article.firstSeen.formatted(date: .abbreviated, time: .shortened))",
-                        systemImage: "link"
-                    )
-                    .foregroundStyle(.secondary)
+                    SavedLinkLabel(article: article)
+                        .foregroundStyle(.secondary)
                 }
                 if let link = article.link {
                     HStack {
@@ -115,12 +112,6 @@ struct ArticleDetail: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .id(article.id)
-    }
-
-    private var meta: String {
-        let feed = model.library.sourceTitle(of: article)
-        let date = article.published.map { $0.formatted(date: .abbreviated, time: .shortened) }
-        return [feed, article.author, date].compactMap { $0 }.joined(separator: " · ")
     }
 }
 

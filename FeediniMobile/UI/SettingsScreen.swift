@@ -80,12 +80,7 @@ struct FeedsScreen: View {
                     .autocorrectionDisabled()
                     .onSubmit(add)
                 if !library.folders.isEmpty {
-                    Picker("Folder", selection: $folder) {
-                        Text("No Folder").tag(nil as Folder.ID?)
-                        ForEach(library.folders) { folder in
-                            Text(folder.name).tag(Optional(folder.id))
-                        }
-                    }
+                    FolderPicker(folders: library.folders, selection: $folder)
                 }
                 Button(isAdding ? "Adding…" : "Add Feed", action: add)
                     .disabled(isAdding || address.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -129,7 +124,7 @@ struct FeedsScreen: View {
                 }
             }
         }
-        .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.opmlTypes) { result in
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: ImportReport.opmlTypes) { result in
             if case .success(let url) = result {
                 importOPML(from: url)
             }
@@ -176,24 +171,10 @@ struct FeedsScreen: View {
         return RelativeTime.updated(checked, now: .now)
     }
 
-    private static let opmlTypes: [UTType] = [UTType(filenameExtension: "opml") ?? .xml, .xml]
-
     private func importOPML(from url: URL) {
-        let access = url.startAccessingSecurityScopedResource()
-        defer {
-            if access { url.stopAccessingSecurityScopedResource() }
-        }
-        guard let data = try? Data(contentsOf: url) else {
-            importReport = ImportReport(error: "The file couldn't be read.")
-            return
-        }
         isImportRunning = true
         Task {
-            do {
-                importReport = ImportReport(result: try await model.importOPML(data))
-            } catch {
-                importReport = ImportReport(error: "This isn't an OPML file.")
-            }
+            importReport = await ImportReport.importing(from: url, into: model)
             isImportRunning = false
         }
     }
@@ -222,19 +203,13 @@ private struct ImportReportScreen: View {
     var body: some View {
         NavigationStack {
             List {
-                if let error = report.error {
-                    Label(error, systemImage: "exclamationmark.triangle")
+                if report.error != nil {
+                    Label(report.summary, systemImage: "exclamationmark.triangle")
                 } else {
-                    Text(report.added == 1 ? "Added 1 feed." : "Added \(report.added) feeds.")
+                    Text(report.summary)
                     if !report.skipped.isEmpty {
                         Section("Not Added") {
-                            ForEach(report.skipped, id: \.address) { item in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.title).fontWeight(.medium)
-                                    Text(item.address).font(.caption).foregroundStyle(.secondary)
-                                    Text(item.reason).font(.caption).foregroundStyle(.orange)
-                                }
-                            }
+                            ForEach(report.skipped, id: \.address) { SkippedFeedRow(item: $0) }
                         }
                     }
                 }

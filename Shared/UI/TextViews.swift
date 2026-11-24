@@ -73,3 +73,57 @@ struct PageTextBody: View {
         }
     }
 }
+
+/// A box with an AI summary above the text; with a title, a ✨ label above the content.
+struct SummaryBox<Content: View>: View {
+    var title: String?
+    var spacing: CGFloat = 8
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            if let title {
+                Label(title, systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+/// The summary of an article's source page (T): the TL;DR as a paragraph, the details as bullet points.
+struct PageSummaryText: View {
+    let summary: PageSummary
+
+    var body: some View {
+        Text(summary.tldr)
+            .lineSpacing(3)
+            .textSelection(.enabled)
+        if !summary.details.isEmpty {
+            SummaryText(text: summary.details.map { "- \($0)" }.joined(separator: "\n"))
+        }
+    }
+}
+
+/// "Saved link, added …" under the title of a saved link.
+struct SavedLinkLabel: View {
+    let article: Article
+
+    var body: some View {
+        Label(
+            "Saved link, added \(article.firstSeen.formatted(date: .abbreviated, time: .shortened))",
+            systemImage: "link")
+    }
+}
+
+extension Library {
+    /// The line under an article's title: its feed, author and published date.
+    func byline(of article: Article) -> String {
+        let date = article.published.map { $0.formatted(date: .abbreviated, time: .shortened) }
+        return [sourceTitle(of: article), article.author, date].compactMap { $0 }.joined(separator: " · ")
+    }
+}

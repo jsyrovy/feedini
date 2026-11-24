@@ -94,23 +94,17 @@ private struct ArticleDetail: View {
                 Text(article.title)
                     .font(.title2.bold())
                     .textSelection(.enabled)
-                Text(meta)
+                Text(model.library.byline(of: article))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 if article.isSavedLink {
-                    Label(
-                        "Saved link, added \(article.firstSeen.formatted(date: .abbreviated, time: .shortened))",
-                        systemImage: "link"
-                    )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    SavedLinkLabel(article: article)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
                 if let summary = article.pageSummary {
                     SummaryBox(title: "Page Summary") {
-                        Text(summary.tldr)
-                        if !summary.details.isEmpty {
-                            SummaryText(text: summary.details.map { "- \($0)" }.joined(separator: "\n"))
-                        }
+                        PageSummaryText(summary: summary)
                     }
                 } else if entry.needsSummary, let summary = entry.summary {
                     SummaryBox(title: "Summary") {
@@ -166,11 +160,6 @@ private struct ArticleDetail: View {
         }
     }
 
-    private var meta: String {
-        let date = article.published.map { $0.formatted(date: .abbreviated, time: .shortened) }
-        return [model.library.sourceTitle(of: article), article.author, date].compactMap { $0 }.joined(separator: " · ")
-    }
-
     private func open(_ url: URL) {
         if model.preferences.pageOpening == .window {
             page = url
@@ -212,24 +201,6 @@ private struct PageTextSection: View {
                 text = await model.pageText(article.id)
             }
         }
-    }
-}
-
-/// A box above the text with an AI summary.
-private struct SummaryBox<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: "sparkles")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            content
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 

@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// Feeds: the list with the folder and the state of the last download, adding by address (into a folder), moving
 /// between folders, removing, OPML import and export.
@@ -26,6 +25,7 @@ struct FeedsSettings: View {
                     .disabled(isAdding)
                 // A fixed width: a picker sized to fit grows with the longest folder name.
                 FolderPicker(folders: model.library.folders, selection: $folder)
+                    .labelsHidden()
                     .frame(width: 150)
                     .help("The folder new feeds go into")
                     .disabled(isAdding)
@@ -48,7 +48,9 @@ struct FeedsSettings: View {
                     FolderPicker(
                         folders: model.library.folders,
                         selection: Binding(
-                            get: { feed.folderID }, set: { model.moveFeeds([feed.id], to: $0) }))
+                            get: { feed.folderID }, set: { model.moveFeeds([feed.id], to: $0) })
+                    )
+                    .labelsHidden()
                 }
                 .width(min: 90, ideal: 130)
                 TableColumn("Status") { feed in
@@ -87,7 +89,7 @@ struct FeedsSettings: View {
         }
         .padding()
         .removalConfirmation($removal, model: model) { selection = [] }
-        .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.opmlTypes) { result in
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: ImportReport.opmlTypes) { result in
             guard case .success(let url) = result else { return }
             importOPML(from: url)
         }
@@ -108,8 +110,6 @@ struct FeedsSettings: View {
         model.library.feedsByTitle
     }
 
-    private static let opmlTypes: [UTType] = [UTType(filenameExtension: "opml") ?? .xml, .xml]
-
     private func add() {
         let address = address
         guard !address.trimmingCharacters(in: .whitespaces).isEmpty else { return }
@@ -126,25 +126,9 @@ struct FeedsSettings: View {
     }
 
     private func importOPML(from url: URL) {
-        let access = url.startAccessingSecurityScopedResource()
-        defer {
-            if access { url.stopAccessingSecurityScopedResource() }
-        }
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            importReport = ImportReport(error: error.localizedDescription)
-            return
-        }
         isImportRunning = true
         Task {
-            do {
-                let result = try await model.importOPML(data)
-                importReport = ImportReport(result: result)
-            } catch {
-                importReport = ImportReport(error: "This isn't an OPML file.")
-            }
+            importReport = await ImportReport.importing(from: url, into: model)
             isImportRunning = false
         }
     }
@@ -152,7 +136,7 @@ struct FeedsSettings: View {
     private func export() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Feedini.opml"
-        panel.allowedContentTypes = Self.opmlTypes
+        panel.allowedContentTypes = ImportReport.opmlTypes
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try model.exportOPML().write(to: url, options: .atomic)
@@ -186,20 +170,14 @@ private struct ImportReportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let error = report.error {
-                Label(error, systemImage: "exclamationmark.triangle").font(.headline)
+            if report.error != nil {
+                Label(report.summary, systemImage: "exclamationmark.triangle").font(.headline)
             } else {
-                Text(report.added == 1 ? "Added 1 feed." : "Added \(report.added) feeds.").font(.headline)
+                Text(report.summary).font(.headline)
                 if !report.skipped.isEmpty {
                     Text("Not added:")
-                    List(report.skipped, id: \.address) { item in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title).fontWeight(.medium)
-                            Text(item.address).font(.caption).foregroundStyle(.secondary)
-                            Text(item.reason).font(.caption).foregroundStyle(.orange)
-                        }
-                    }
-                    .frame(minHeight: 160)
+                    List(report.skipped, id: \.address) { SkippedFeedRow(item: $0) }
+                        .frame(minHeight: 160)
                 }
             }
             HStack {

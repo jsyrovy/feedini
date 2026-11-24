@@ -111,7 +111,8 @@ Shared/       compiled into both apps
               RelativeTime ("5m", "3h", then the date)
   UI/         SwiftUI views of both apps: Removal (confirming the removal of feeds or a folder), FolderViews
               (FolderNameSheet, MoveToFolderMenu, FolderPicker), ListOrderPicker, TextViews (Paragraphs, SummaryText,
-              PageLoadStatus, PageTextBody), ImportReport (what an OPML import did)
+              PageLoadStatus, PageTextBody, SummaryBox, PageSummaryText, SavedLinkLabel, `Library.byline`),
+              ImportReport (importing an OPML file and what it did, SkippedFeedRow)
   Debug/      Debug builds only: SampleLibrary (made-up library for `-sampleLibrary` on iOS)
   AppIcon.icon
 Feedini/      the Mac app

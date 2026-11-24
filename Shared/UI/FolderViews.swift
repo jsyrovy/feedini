@@ -104,6 +104,5 @@ struct FolderPicker: View {
                 Text(folder.name).tag(Optional(folder.id))
             }
         }
-        .labelsHidden()
     }
 }

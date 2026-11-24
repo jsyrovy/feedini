@@ -9,7 +9,7 @@ struct SummaryView: View {
 
     var body: some View {
         if let summary = entry.summary {
-            VStack(alignment: .leading, spacing: 6) {
+            SummaryBox(spacing: 6) {
                 SummaryText(text: summary.text)
                 if !entry.isSummaryCurrent && mac.aiStatus.isWorking {
                     Label("Updating summary…", systemImage: "sparkles")
@@ -17,9 +17,6 @@ struct SummaryView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         } else if entry.needsSummary {
             status
                 .font(.callout)
@@ -57,17 +54,9 @@ struct PageSummaryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Page Summary", systemImage: "sparkles")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        SummaryBox(title: "Page Summary") {
             if let summary = article.pageSummary {
-                Text(summary.tldr)
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                if !summary.details.isEmpty {
-                    SummaryText(text: summary.details.map { "- \($0)" }.joined(separator: "\n"))
-                }
+                PageSummaryText(summary: summary)
             }
             if let work = model.pageStatus[article.id], work.summary {
                 status(work.phase, isUpdating: article.pageSummary != nil)
@@ -75,9 +64,6 @@ struct PageSummaryView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder

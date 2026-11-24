@@ -23,8 +23,9 @@ else
 SIGNING_FLAGS := -allowProvisioningUpdates
 endif
 
-XCODEBUILD    := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIG) \
-	-destination 'platform=macOS,arch=$(ARCH)' -derivedDataPath $(DERIVED_DATA) -quiet $(SIGNING_FLAGS)
+XCODEBUILD_ANY := xcodebuild -project $(PROJECT) -configuration $(CONFIG) -derivedDataPath $(DERIVED_DATA) -quiet \
+	$(SIGNING_FLAGS)
+XCODEBUILD    := $(XCODEBUILD_ANY) -scheme $(SCHEME) -destination 'platform=macOS,arch=$(ARCH)'
 
 .PHONY: build build-ios run-ios test coverage run install uninstall release publish format lint clean
 
@@ -33,8 +34,7 @@ build:
 
 # The iOS app for the simulator (it shares Shared/ with the Mac app).
 build-ios:
-	xcodebuild -project $(PROJECT) -scheme FeediniMobile -configuration $(CONFIG) \
-		-destination 'generic/platform=iOS Simulator' -derivedDataPath $(DERIVED_DATA) -quiet $(SIGNING_FLAGS) build
+	$(XCODEBUILD_ANY) -scheme FeediniMobile -destination 'generic/platform=iOS Simulator' build
 
 # Builds the iOS app and runs it in the simulator SIMULATOR (booted when needed) with the launch arguments ARGS, e.g.
 # ARGS=-sampleLibrary (Debug only: made-up articles in a temporary library). See it with
