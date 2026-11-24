@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { await services.start() }
+        // CloudKit tells about changes of other devices by silent pushes (sync); a Mac app has to ask for them.
+        NSApp.registerForRemoteNotifications()
         // After sleep the feeds are refreshed right away instead of at the end of the interval.
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main

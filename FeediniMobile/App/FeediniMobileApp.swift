@@ -39,10 +39,16 @@ struct FeediniMobileApp: App {
             case .active:
                 model.startRefreshing()
             case .background:
+                // Reading and then locking the iPhone is the usual case: changes are sent before iOS suspends
+                // the app, in the time a background task gets.
+                let task = UIApplication.shared.beginBackgroundTask(withName: "Save and sync")
                 Task {
-                    await model.stopRefreshing()
                     await model.flush()
+                    await sync.controller.send()
                     await sync.controller.flush()
+                    UIApplication.shared.endBackgroundTask(task)
+                    // A running refresh may take longer than a background task; it ends while suspended.
+                    await model.stopRefreshing()
                 }
             default:
                 break

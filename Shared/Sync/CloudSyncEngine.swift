@@ -36,6 +36,7 @@ final class CloudSyncEngine: SyncEngining {
         engine?.state.add(pendingRecordZoneChanges: saves + deletes)
     }
 
+    /// Fetches the changes the engine knows of: it learns of them by push, so without push this finds nothing.
     func fetchChanges() async throws {
         try await engine?.fetchChanges()
     }

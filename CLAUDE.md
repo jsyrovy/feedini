@@ -687,7 +687,27 @@ summaries checked for invented facts. Change a prompt by testing it the same way
 iCloud sync of the library between the Mac and an iPhone through CloudKit (the plan, in Czech, is `plan/IOS_SYNC.md`
 locally). Built so far: everything in `Shared/Sync/`, the hooks in `AppModel`, the Mac's settings. The iOS app
 syncs too (`MobileSync`: on by default when signed in to iCloud, never with `-sampleLibrary`; Settings → Sync).
-Missing: a check against the real iCloud (CloudKit Console, both devices), deploying the schema to Production.
+Checked against iCloud (Development) with a Debug Mac and a Debug iPhone: merging, reading both ways, a feed added
+on the iPhone organized on the Mac and back. Missing: deploying the schema to Production.
+
+- Changes of the other device come only by push: `CKSyncEngine.fetchChanges()` fetches only zones a push flagged
+  ("no zone IDs needing to be fetched" otherwise), so `fetchBeforeRefresh` finds nothing without one. The Mac asks
+  for pushes (`NSApp.registerForRemoteNotifications()`), the iOS app has the `remote-notification` background mode.
+  Measured: about 1–2 minutes from a change on the iPhone to the Mac.
+- The iOS app sends pending changes when it goes to the background (`beginBackgroundTask`); otherwise a change made
+  before locking the iPhone waits minutes for iOS to give the suspended app time.
+- Articles that come from another device are organized on the Mac at once (`AppModel.applyRemote` →
+  `organize()`), and a refresh cut short (the iOS app suspended) merges nothing (`Task.isCancelled`), so its
+  failed downloads don't mark every feed as failed.
+- Testing two Mac instances against each other doesn't show propagation: on one Mac they are one CloudKit device and
+  don't get each other's changes. A second instance with an empty home (`CFFIXED_USER_HOME`) does get everything on
+  its first, full fetch. The iPhone simulator can't sync: without iCloud Keychain (it can't be turned on there) the
+  account is "Temporarily Unavailable" for the encrypted fields. Use a device: `xcodebuild … -destination
+  'platform=iOS,id=<udid>' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build`, `xcrun devicectl
+  device install app` / `process launch` / `capture screenshot`, and `devicectl device copy from --domain-type
+  appDataContainer --domain-identifier cz.jsyrovy.feedini --source "Library/Application Support/Feedini/library.json"`
+  to compare libraries. Launch a Mac test instance with `open -n --env CFFIXED_USER_HOME=<dir> <app> --args
+  -syncsWithICloud YES` (Bool settings read with `as? Bool` need `-key '<false/>'`).
 
 - Mac: Settings → Sync (`SyncSettings`: "Sync with iCloud", `MacPreferences.syncsWithICloud`, off by default, the
   state, Delete iCloud Data… with a confirmation), a line in the menu bar menu while it can't sync. `MacServices`

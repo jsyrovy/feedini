@@ -253,4 +253,50 @@ struct AppModelTests {
         #expect(model.library.feeds.first?.lastChecked == referenceDate)
         await model.stopRefreshing()
     }
+
+    @Test func aCancelledRefreshChangesNothing() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = StubURLProtocol.uniqueURL()
+        StubURLProtocol.stub(url, try .feed("rss2.xml"))
+        let feed = Feed(title: "Tech", url: url)
+        model.update { $0 = Library(feeds: [feed], articles: []) }
+
+        let refresh = Task { await model.refresh([feed]) }
+        refresh.cancel()
+        await refresh.value
+
+        #expect(model.library.feeds.first?.lastError == nil)
+        #expect(model.library.feeds.first?.lastChecked == nil)
+        #expect(model.library.articles.isEmpty)
+    }
+
+    @Test func articlesFromAnotherDeviceAreOrganized() async {
+        let services = FakePlatformServices()
+        let model = AppModel.test()
+        model.services = services
+        await model.start()
+        services.organized = 0
+        let feed = Feed.stub("Tech")
+
+        model.applyRemote { $0 = Library(feeds: [feed], articles: [Article.stub(feed: feed.id)]) }
+        #expect(services.organized == 1)
+        // Reading elsewhere organizes nothing.
+        model.applyRemote { $0.markRead(Array($0.articles.keys), at: referenceDate) }
+        #expect(services.organized == 1)
+        await model.stopRefreshing()
+    }
+}
+
+/// Counts what the model asks of the platform.
+@MainActor
+private final class FakePlatformServices: PlatformServices {
+    var organized = 0
+
+    func organize(retryingFailed: Bool) {
+        organized += 1
+    }
+
+    func refreshEnded() {}
+
+    func prepareSavedLink(_ id: Article.ID) -> Bool { false }
 }

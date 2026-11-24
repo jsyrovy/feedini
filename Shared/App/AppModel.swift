@@ -200,6 +200,7 @@ final class AppModel: LibraryHost {
         await sync?.fetchBeforeRefresh()
         await refresh(library.feeds)
         isRefreshing = false
+        guard !Task.isCancelled else { return }
         lastRefresh = now()
         onRefresh?()
         services?.refreshEnded()
@@ -208,6 +209,12 @@ final class AppModel: LibraryHost {
     /// Downloads the feeds and merges them into the library as it is by then.
     func refresh(_ feeds: [Feed]) async {
         let refreshes = await coordinator.refresh(feeds)
+        // A refresh cut short (the iOS app went to the background) changes nothing: its downloads failed for that
+        // reason only, and every feed would show an error.
+        guard !Task.isCancelled else {
+            Log.refresh.info("Refresh cancelled; nothing merged")
+            return
+        }
         update { library in
             let added = FeedMerge.merge(refreshes, into: &library, now: now())
             if sync?.allowsRetention ?? true {
@@ -437,8 +444,13 @@ final class AppModel: LibraryHost {
     }
 
     /// Applies a change that came from another device: saved, but not sent back.
+    /// Articles that came from another device are organized here (on the Mac).
     func applyRemote(_ change: (inout Library) -> Void) {
+        let articles = library.articles.count
         apply(change, notifiesReader: true, isRemote: true)
+        if library.articles.count > articles {
+            organize()
+        }
     }
 
     /// Changes the library and saves it, unless the change fails; returns what the change returns.
