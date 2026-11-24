@@ -7,6 +7,7 @@ import Observation
 final class Preferences {
     private static let refreshMinutesKey = "refreshMinutes"
     private static let pageOpeningKey = "pageOpening"
+    private static let articleViewKey = "articleView"
     private static let collapsedFoldersKey = "collapsedFolders"
     private static let listOrderKey = "listOrder"
 
@@ -17,6 +18,12 @@ final class Preferences {
     /// Where V / Enter opens an article's source page; Shift+V / Shift+Enter uses the other place.
     enum PageOpening: String, CaseIterable, Sendable {
         case window, browser
+    }
+
+    /// What the detail shows on an article the user moves onto: the text from its feed, the text of its source page
+    /// (as P) or the source page itself (as V in the window). The other views load the page on every article.
+    enum ArticleView: String, CaseIterable, Sendable {
+        case feedText, pageText, webPage
     }
 
     /// Minutes between refreshes, one of `refreshMinutesChoices`.
@@ -31,6 +38,14 @@ final class Preferences {
     var pageOpening: PageOpening {
         didSet {
             defaults.set(pageOpening.rawValue, forKey: Self.pageOpeningKey)
+            onChange?()
+        }
+    }
+
+    /// The feed text by default: loading a page on every article is the user's choice.
+    var articleView: ArticleView {
+        didSet {
+            defaults.set(articleView.rawValue, forKey: Self.articleViewKey)
             onChange?()
         }
     }
@@ -60,6 +75,8 @@ final class Preferences {
         refreshMinutes =
             Self.refreshMinutes(defaults.integer(forKey: Self.refreshMinutesKey)) ?? Self.defaultRefreshMinutes
         pageOpening = defaults.string(forKey: Self.pageOpeningKey).flatMap(PageOpening.init(rawValue:)) ?? .window
+        articleView =
+            defaults.string(forKey: Self.articleViewKey).flatMap(ArticleView.init(rawValue:)) ?? .feedText
         collapsedFolders = Set(
             (defaults.stringArray(forKey: Self.collapsedFoldersKey) ?? []).compactMap(UUID.init(uuidString:)))
         listOrder = defaults.string(forKey: Self.listOrderKey).flatMap(ListOrder.init(rawValue:)) ?? .newestFirst

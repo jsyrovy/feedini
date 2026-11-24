@@ -188,8 +188,9 @@ CHANGELOG.md  one section per released version
 - Logic lives in pure types with ~100 % meaningful test coverage; `App/` and `UI/` are wiring and layout, checked by
   running the app (see "Testing").
 - Data comes from the feeds. A web page is loaded only on the user's explicit request, never automatically: the
-  source page opened with V, its text for P (preview) and T (summary), a page saved with Save Link…. Only T (and
-  Shift+S / Save Link… with AI, which prepare it) sends a page's text to the AI.
+  source page opened with V, its text for P (preview) and T (summary), a page saved with Save Link…, or – chosen in
+  Settings ("Show articles as": Page text / Web page; the feed text is the default) – the page of every article the
+  user moves onto. Only T (and Shift+S / Save Link… with AI, which prepare it) sends a page's text to the AI.
 - Privacy: the page loads with the user's cookies and logins (the default website data store), so its text may
   include what the site shows about the user ("Logged in as …"). Choosing the article container (`article`, `main`)
   leaves most of that out, but not reliably.
@@ -225,7 +226,8 @@ CHANGELOG.md  one section per released version
   Settings → AI ("Summarize single articles": never (default), in other languages than the summary language (then it
   is a translation), always). Otherwise a single article shows its own title and excerpt.
 - Most feeds carry only the first lines of an article (a median of 200–330 characters for most of the test feeds).
-  P shows the text of the source page instead, T a TL;DR of it; both only on request, on a single article.
+  P shows the text of the source page instead, T a TL;DR of it; both only on request, on a single article. Settings
+  → General can make the page text or the web page what an article shows (see "Reading model").
 - After closing the window the app keeps running in the menu bar (`.accessory`) and keeps refreshing, so opening it
   shows everything processed. With the window open it is a regular app with a Dock icon.
 - Folders ("Folders" in the UI, not "categories", which would blur with the AI topics) group feeds by hand: one
@@ -277,6 +279,15 @@ list (newest first), detail.
   the other way (Settings → General: "Feedini window" (default) or "Default browser"). On a collapsed story with
   several articles V / Enter expands it (there is no single source page) and Shift+V / Shift+Enter does nothing.
 - In the window the page replaces the feed text in the detail; V / Enter again or Esc returns to the feed text.
+- What an article shows when the cursor moves onto it (click, J/K) is a setting (Settings → General, "Show articles
+  as": `Preferences.articleView`): the feed text (default), the page text (as P) or the web page (as V in the window,
+  always in the window, whatever V / Enter opens). The summary box shows above the feed and page text, not on the web
+  page. It doesn't apply to a story with several articles (no single page) or an article without a link; a saved
+  link shows its page text for Page text too. A page that isn't stored loads only once the cursor has stayed on the
+  article for `Reader.settleDelay` (0.5 s), so J/K doesn't load every page it passes; the detail says "Loading page…"
+  meanwhile. P and V / Enter / Esc switch from the preferred view to the feed text (P again: the page text); T never
+  runs by itself. The web page shown this way keeps the stored page text (only V forgets it), and it takes the
+  keyboard focus only when clicked into (`EscapableWebView`), so J/K keep working.
 - P (preview) shows the text of the source page instead of the feed text (loaded the first time, then stored); P
   again returns to the feed text. A text cut at `PageText.maxLength` ends with a pointer to V. Works without AI. On a
   saved link (no feed text) P loads the page again instead, also from the source page in the window.
@@ -346,7 +357,7 @@ Implementation:
 - `ReadingSession` (shared, main actor, UI state) keeps the selection and the cursor (`ListRow`: a story or an
   article of an expanded story) and narrows every entry it gives out (`entry`, `entries`; Saved shows its articles
   read or not). The Mac's `Reader` owns one and adds the keys, the shown page and the sheets; a cursor move
-  (`onCursorMove`) closes the shown page. Moving onto a
+  (`onCursorMove`) shows the preferred view instead of the shown page. Moving onto a
   row (`visit`) applies `ReadRules` and adds the articles it read to `keptArticles`, so they stay until the sidebar
   selection changes or a requested refresh ends (`AppModel.onRefresh`; then only the visible articles of the entry
   under the cursor stay). M keeps
@@ -356,7 +367,8 @@ Implementation:
   way of opening pages and the shown page; `Reader.handle` carries it out. The story list's `onKeyPress` maps keys
   (plain keys only – with ⌘ / ⌃ / ⌥ they go to the menus); ? is matched as a character, not a key, so it works on
   any keyboard layout. A mapped key is always used up, also when it does nothing: the list's type-to-select would
-  otherwise move onto (and read) a row starting with that letter. A double click opens like V / Enter.
+  otherwise move onto (and read) a row starting with that letter. A double click opens like V / Enter (but never
+  closes a page shown in the window).
 - `ReadingSession.recording` snapshots the `ReadingState` (read and save dates of the articles) before a change and records it in `UndoHistory` (its callers only make changes that change
   something); undo and redo are `Library.restore`, which returns the replaced state for the other stack
   (`AppModel.restore` patches the cached entries like reading and saving). `UndoCommands` replaces Edit → Undo / Redo: while the main
@@ -365,7 +377,10 @@ Implementation:
 - `ShortcutHelp.item(for:)` switches over every `ListKey` (`CaseIterable`), so a new key doesn't compile without
   its line in the help.
 - `Reader.shown` is what the detail shows instead of the feed text: the source page (V) or its text (P), never both.
-  Moving, a new sidebar selection and Shift+A reset it.
+  Moving, a new sidebar selection and Shift+A set it to the preferred view (`showPreferredView`; `nil` without an
+  article under the cursor). `Reader.waitingArticle` is the article whose page waits for the cursor to settle (an
+  injected `sleep`, tested with a signal that ends every wait); a move, P, V or Esc cancel the wait, and only P / V
+  call the `PageLoader` at once. The preferred web page doesn't call `pageOpened`.
 - The source page (`WebPageView`): a `WKWebView` with the default persistent website data store (logins and cookies
   work), JavaScript on, no script message handlers. Link clicks and new windows open in the default browser. Esc in
   the page (`EscapableWebView`) returns to the feed text and focuses the list (`Reader.listFocusRequests`).
@@ -496,7 +511,8 @@ Implementation:
   the failed ones (not those already followed) on the clipboard as text with their feed and site addresses
   (`ImportResult.errorReport`), to pass on to whoever looks into them.
 - **General** (`GeneralSettings`; `Preferences`, the menu bar and update check in `MacPreferences`): refresh interval (`refreshMinutes`: 5 / 15 / 30 / 60, default 15),
-  where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), open at login (`LoginItem`, the
+  where V / Enter opens pages (`pageOpening`: `window` (default) / `browser`), what an article shows (`articleView`:
+  `feedText` (default) / `pageText` / `webPage`, with a note that the others load the page every time), open at login (`LoginItem`, the
   system's login items via `SMAppService.mainApp`; its state is read from the system, not stored) and the unread
   count in the menu bar (`showsUnreadCount`, on by default), and the update check (the running version, "Check for
   updates daily", "Check Now" and the result, see "Update check"). Values that aren't offered fall back to the default.
@@ -678,7 +694,8 @@ summaries checked for invented facts. Change a prompt by testing it the same way
   `settings` (`BackedUpSettings`) and `library`, the same object as `library.json`, so restoring reads it like
   loading does (a newer schema or format is refused). Page texts aren't in it (big, may show what the site knows about
   the user; P / T load them again); page summaries are. Settings of one Mac (the path to claude, collapsed folders,
-  open at login) and the backup settings stay out.
+  open at login) and the backup settings stay out; the others go in (also `articleView`; an optional field, so an older
+  backup restores without it).
 - Nothing touches iCloud Drive until the user turns automatic backups on (off by default) or asks (Back Up Now,
   Restore…), so a possible access prompt comes then. Turning them on or changing the frequency checks at once; then
   after every refresh (also after start and wake). A backup is due after 90 % of the interval (`BackupPlan.isDue`; checks run every 5–60 minutes). The last

@@ -4,6 +4,7 @@
 struct BackedUpSettings: Codable, Sendable, Equatable {
     var refreshMinutes: Int?
     var pageOpening: String?
+    var articleView: String?
     var showsUnreadCount: Bool?
     var aiEnabled: Bool?
     var assignModel: String?
@@ -17,7 +18,7 @@ extension MacPreferences {
     var backedUpSettings: BackedUpSettings {
         BackedUpSettings(
             refreshMinutes: shared.refreshMinutes, pageOpening: shared.pageOpening.rawValue,
-            showsUnreadCount: showsUnreadCount,
+            articleView: shared.articleView.rawValue, showsUnreadCount: showsUnreadCount,
             aiEnabled: aiEnabled, assignModel: assignModel, summaryModel: summaryModel, aiEffort: aiEffort,
             summaryLanguage: summaryLanguage, singleArticleSummaries: singleArticleSummaries.rawValue)
     }
@@ -30,6 +31,9 @@ extension MacPreferences {
         }
         if let opening = settings.pageOpening.flatMap(Preferences.PageOpening.init(rawValue:)) {
             shared.pageOpening = opening
+        }
+        if let view = settings.articleView.flatMap(Preferences.ArticleView.init(rawValue:)) {
+            shared.articleView = view
         }
         if let shows = settings.showsUnreadCount {
             showsUnreadCount = shows

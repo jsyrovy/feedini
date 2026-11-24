@@ -13,13 +13,22 @@ final class Reader {
 
     /// What the detail shows instead of the feed text.
     enum Shown: Equatable {
-        /// The source page in the window (V).
+        /// The source page in the window (V, or the preferred view).
         case page(Article.ID)
-        /// The text of the source page (P).
+        /// The text of the source page (P, or the preferred view).
         case preview(Article.ID)
     }
 
-    private(set) var shown: Shown?
+    /// Set on every move onto an article as `Preferences.articleView` says (`nil`: the feed text). Every change ends
+    /// the wait for the cursor to settle: a wait belongs to what was shown.
+    private(set) var shown: Shown? {
+        didSet { stopWaiting() }
+    }
+    /// The article whose page the preferred view loads once the cursor has stayed on it for `settleDelay`, so
+    /// walking the list with J/K doesn't load the page of every article it passes. The detail shows that it loads.
+    private(set) var waitingArticle: Article.ID?
+    /// The article the preferred view was shown for (`nil`: no article under the cursor).
+    @ObservationIgnored private var viewArticle: Article.ID?
     /// The article whose source page the detail shows.
     var pageArticle: Article.ID? {
         if case .page(let id) = shown { id } else { nil }
@@ -39,10 +48,19 @@ final class Reader {
     /// Whether the main window is the key window, where ⌘Z takes back reading and saving (`UndoCommands`).
     var isMainWindowKey = false
 
-    init(services: MacServices) {
+    /// How long the cursor stays on an article before the preferred view loads its page.
+    static let settleDelay: Duration = .milliseconds(500)
+    @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
+    @ObservationIgnored private var settling: Task<Void, Never>?
+
+    init(
+        services: MacServices,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
         self.services = services
+        self.sleep = sleep
         session = ReadingSession(model: services.model)
-        session.onCursorMove = { [weak self] in self?.shown = nil }
+        session.onCursorMove = { [weak self] in self?.cursorMoved() }
     }
 
     // MARK: The session
@@ -160,6 +178,70 @@ final class Reader {
 
     // MARK: Source pages
 
+    /// The cursor was set, or the list started over. Undo sets it onto the article it is on already (its row, or the
+    /// story row the AI moved it to): then the detail stays as the user left it (a page opened with V, the feed text
+    /// after Esc), and nothing loads again.
+    private func cursorMoved() {
+        let article = cursorArticle?.id
+        guard article == nil || article != viewArticle else { return }
+        viewArticle = article
+        showPreferredView()
+    }
+
+    /// What the detail shows on the article the cursor moved onto (`Preferences.articleView`). A page that isn't
+    /// stored loads once the cursor stays.
+    private func showPreferredView() {
+        let view = preferredView
+        shown = view
+        switch view {
+        case .page(let id):
+            loadWhenSettled(id)
+        case .preview(let id) where !model.library.pageTextIDs.contains(id):
+            loadWhenSettled(id)
+        case .preview, nil:
+            break
+        }
+    }
+
+    /// The feed text, or the page text or source page of the article under the cursor, if it has a link. A saved
+    /// link shows its page text anyway; a story with several articles has no page.
+    private var preferredView: Shown? {
+        guard let article = cursorArticle, article.link != nil else { return nil }
+        switch model.preferences.articleView {
+        case .pageText where !article.isSavedLink:
+            return .preview(article.id)
+        case .feedText, .pageText:
+            return nil
+        case .webPage:
+            // Unlike V, it keeps the stored page text: J/K would otherwise throw away what P, T and Shift+S loaded.
+            return .page(article.id)
+        }
+    }
+
+    /// Loads the page of the preferred view once the cursor has stayed on the article for `settleDelay`.
+    private func loadWhenSettled(_ id: Article.ID) {
+        waitingArticle = id
+        settling = Task { [weak self, sleep] in
+            guard (try? await sleep(Self.settleDelay)) != nil else { return }
+            guard let self, waitingArticle == id else { return }
+            waitingArticle = nil
+            if previewArticle == id {
+                model.loadPage(id)
+            }
+        }
+    }
+
+    private func stopWaiting() {
+        settling?.cancel()
+        settling = nil
+        waitingArticle = nil
+    }
+
+    /// Waits until the page of the preferred view is loading (tests).
+    func waitUntilSettled() async {
+        await settling?.value
+    }
+
     /// Opens the article's source page in the window or in the default browser.
     func open(_ url: URL, inWindow: Bool) {
         guard inWindow else {
@@ -174,11 +256,26 @@ final class Reader {
 
     func closePage() {
         shown = nil
+        focusList()
+    }
+
+    /// Gives the keyboard focus to the story list.
+    func focusList() {
         listFocusRequests += 1
     }
 
-    /// P: the page text instead of the feed text (loaded unless stored), or the feed text again. From the source page
-    /// it goes straight to the text.
+    /// A double click on a row opens it like V / Enter, but never closes the page it shows in the window: a page the
+    /// preferred view waits to load shows at once.
+    func openOnDoubleClick() {
+        guard opensInWindow, let pageArticle, pageArticle == cursorArticle?.id else {
+            handle(.open)
+            return
+        }
+        stopWaiting()
+    }
+
+    /// P: the page text instead of the feed text (loaded unless stored), or the feed text again – also when the page
+    /// text is the preferred view. From the source page it goes straight to the text.
     func togglePreview(_ id: Article.ID) {
         guard previewArticle != id else {
             shown = nil

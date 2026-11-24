@@ -24,7 +24,7 @@ struct SettingsView: View {
     }
 }
 
-/// General: refresh interval and where source pages open.
+/// General: refresh interval, where source pages open and what an article shows.
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
     @Environment(MacServices.self) private var mac
@@ -45,6 +45,18 @@ struct GeneralSettings: View {
             Text("V or Enter opens an article's page this way, Shift+V or Shift+Enter the other way.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Picker("Show articles as:", selection: $preferences.articleView) {
+                Text("Feed text").tag(Preferences.ArticleView.feedText)
+                Text("Page text").tag(Preferences.ArticleView.pageText)
+                Text("Web page").tag(Preferences.ArticleView.webPage)
+            }
+            Text(
+                "What an article shows when you move onto it. Page text and Web page load the article's page each time, "
+                    + "with your cookies and logins. P switches between the page text and the feed text, Esc goes "
+                    + "back from the web page."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
             Section {
                 Toggle("Open at login", isOn: launchAtLogin)
                 if let loginError {

@@ -17,6 +17,7 @@ struct PreferencesTests {
         let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         #expect(preferences.shared.refreshMinutes == 15)
         #expect(preferences.shared.pageOpening == .window)
+        #expect(preferences.shared.articleView == .feedText)
         #expect(preferences.showsUnreadCount)
     }
 
@@ -75,20 +76,24 @@ struct PreferencesTests {
 
         preferences.refreshMinutes = 60
         preferences.pageOpening = .browser
+        preferences.articleView = .webPage
 
-        #expect(changes == 2)
+        #expect(changes == 3)
         let reloaded = Preferences(defaults: defaults)
         #expect(reloaded.refreshMinutes == 60)
         #expect(reloaded.pageOpening == .browser)
+        #expect(reloaded.articleView == .webPage)
     }
 
     @Test func ignoresValuesThatArentOffered() {
         defaults.set(7, forKey: "refreshMinutes")
         defaults.set("tab", forKey: "pageOpening")
         defaults.set("random", forKey: "listOrder")
+        defaults.set("reader", forKey: "articleView")
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.refreshMinutes == 15)
         #expect(preferences.pageOpening == .window)
+        #expect(preferences.articleView == .feedText)
         #expect(preferences.listOrder == .newestFirst)
     }
 
@@ -201,6 +206,7 @@ extension PreferencesTests {
         preferences.claudePath = "/tools/claude"
         preferences.shared.refreshMinutes = 60
         preferences.shared.pageOpening = .browser
+        preferences.shared.articleView = .pageText
         preferences.showsUnreadCount = false
         preferences.aiEnabled = false
         preferences.assignModel = "claude-sonnet-5-5"
@@ -218,7 +224,8 @@ extension PreferencesTests {
 
         restored.apply(
             BackedUpSettings(
-                refreshMinutes: 7, pageOpening: "tab", assignModel: "", summaryModel: "", aiEffort: "extreme",
+                refreshMinutes: 7, pageOpening: "tab", articleView: "reader", assignModel: "", summaryModel: "",
+                aiEffort: "extreme",
                 summaryLanguage: "not a language", singleArticleSummaries: "sometimes"))
         #expect(restored.backedUpSettings == settings)
         restored.apply(BackedUpSettings())

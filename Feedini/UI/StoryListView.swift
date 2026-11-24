@@ -36,7 +36,7 @@ struct StoryListView: View {
                 }
             } primaryAction: { rows in
                 if rows.first != nil {
-                    reader.handle(.open)
+                    reader.openOnDoubleClick()
                 }
             }
             // A new order keeps the cursor on its row, which moves to the other end of the list.

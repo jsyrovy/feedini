@@ -27,7 +27,8 @@ final class ReadingSession {
     private(set) var unsaved: [Article.ID: Date] = [:]
     /// Reading and saving for undo; it lives as long as the app, not the window.
     private(set) var history = UndoHistory()
-    /// Called when the cursor moves to another row or the list starts over (the Mac closes the page it shows).
+    /// Called whenever the cursor is set – onto another row, onto its own row (undo), or to none when the list starts
+    /// over –, not when it follows an article into its story (the Mac shows the preferred view of the article).
     @ObservationIgnored var onCursorMove: (@MainActor () -> Void)?
 
     init(model: AppModel) {

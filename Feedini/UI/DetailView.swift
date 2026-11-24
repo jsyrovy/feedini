@@ -122,6 +122,7 @@ struct ArticleDetail: View {
 /// The text of the source page instead of the feed text (P), or how loading it goes.
 struct PagePreview: View {
     @Environment(AppModel.self) private var model
+    @Environment(Reader.self) private var reader
     let article: Article
     /// Passed in, so the preview isn't drawn again on every change of the library.
     let isStored: Bool
@@ -131,7 +132,8 @@ struct PagePreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !isStored {
-                PageLoadStatus(phase: model.pageStatus[article.id]?.phase)
+                // An earlier failure doesn't show while the preferred view waits to load the page again.
+                PageLoadStatus(phase: reader.waitingArticle == article.id ? nil : model.pageStatus[article.id]?.phase)
             } else if let text {
                 Label("Text of the source page · P shows the feed text", systemImage: "doc.plaintext")
                     .font(.caption)
@@ -263,7 +265,7 @@ struct OpenButtons: View {
     }
 }
 
-/// An article's source page in the window, loaded only on the user's request.
+/// An article's source page in the window, loaded on the user's request (V) or as the preferred view.
 struct SourcePage: View {
     @Environment(Reader.self) private var reader
     let article: Article
@@ -286,7 +288,13 @@ struct SourcePage: View {
             .padding(8)
             .background(.bar)
             Divider()
-            WebPageView(url: url) { reader.closePage() }
+            if reader.waitingArticle == article.id {
+                // The preferred view loads the page once the cursor stays on the article.
+                PageLoadStatus(phase: nil)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                WebPageView(url: url, onEscape: { reader.closePage() }, onRefusedFocus: { reader.focusList() })
+            }
         }
     }
 }
