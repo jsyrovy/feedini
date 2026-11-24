@@ -97,6 +97,22 @@ struct PreferencesTests {
         #expect(preferences.listOrder == .newestFirst)
     }
 
+    @Test func anArticleShowsTheViewsItHas() {
+        let feed = Feed.stub()
+        let article = Article.stub(feed: feed.id)
+        var noLink = Article.stub(feed: feed.id)
+        noLink.link = nil
+        let link = Article.stub(feed: SavedLink.feedID)
+
+        #expect(Preferences.ArticleView.choices(for: article) == [.feedText, .pageText, .webPage])
+        #expect(Preferences.ArticleView.choices(for: noLink) == [.feedText])
+        #expect(Preferences.ArticleView.choices(for: link) == [.pageText, .webPage])
+        #expect(Preferences.ArticleView.webPage.shown(for: article) == .webPage)
+        #expect(Preferences.ArticleView.webPage.shown(for: noLink) == .feedText)
+        #expect(Preferences.ArticleView.feedText.shown(for: link) == .pageText)
+        #expect(Preferences.ArticleView.webPage.shown(for: link) == .webPage)
+    }
+
     @Test func aiDefaultsToHaikuWithLowEffort() {
         let preferences = MacPreferences(shared: Preferences(defaults: defaults))
         let configuration = preferences.aiConfiguration

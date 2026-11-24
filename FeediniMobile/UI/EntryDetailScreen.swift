@@ -3,6 +3,7 @@ import SwiftUI
 
 /// An opened row: a story with several articles (its summary and articles) or an article. Opening it reads it.
 struct EntryDetailScreen: View {
+    @Environment(AppModel.self) private var model
     @Environment(ReadingSession.self) private var session
     let row: ListRow
 
@@ -12,7 +13,8 @@ struct EntryDetailScreen: View {
                 if case .story = row, entry.isMultiArticle {
                     StoryDetail(entry: entry)
                 } else if let article = entry.singleArticle(at: row) {
-                    ArticleDetail(article: article, entry: entry, row: row)
+                    ArticleDetail(
+                        article: article, entry: entry, row: row, preferredView: model.preferences.articleView)
                 }
             } else {
                 ContentUnavailableView("Gone", systemImage: "tray", description: Text("This item isn't here anymore."))
@@ -75,8 +77,8 @@ private struct StoryDetail: View {
     }
 }
 
-/// An article: title, source, the TL;DR of its page or the summary of its story, the text from the feed, and the
-/// source page in Feedini (Safari) or the browser.
+/// An article: title, source, the TL;DR of its page or the summary of its story and the text from the feed or its
+/// page – or the page itself –, switched in the navigation bar; and the source page in Safari or the browser.
 private struct ArticleDetail: View {
     @Environment(AppModel.self) private var model
     @Environment(ReadingSession.self) private var session
@@ -85,10 +87,79 @@ private struct ArticleDetail: View {
     let entry: StoryEntry
     let row: ListRow
     @State private var page: URL?
-    /// The text of the source page instead of the feed text (P on the Mac).
-    @State private var showsPageText = false
+    /// What the detail shows: at first what Settings say, then what the switch says.
+    @State private var shown: Preferences.ArticleView
+    /// The views the switch offers.
+    private let views: [Preferences.ArticleView]
+
+    init(article: Article, entry: StoryEntry, row: ListRow, preferredView: Preferences.ArticleView) {
+        self.article = article
+        self.entry = entry
+        self.row = row
+        views = Preferences.ArticleView.choices(for: article)
+        _shown = State(initialValue: preferredView.shown(for: article))
+    }
 
     var body: some View {
+        content
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if views.count > 1 {
+                    ToolbarItem(placement: .principal) {
+                        Picker("Show", selection: $shown) {
+                            ForEach(views, id: \.self) { view in
+                                Image(systemName: view.symbol)
+                                    .accessibilityLabel(view.title)
+                                    .tag(view)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
+                    }
+                }
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button(
+                        article.isRead ? "Mark as Unread" : "Mark as Read",
+                        systemImage: article.isRead ? "circle" : "checkmark.circle"
+                    ) {
+                        session.toggleRead(row)
+                    }
+                    Spacer()
+                    Button(
+                        article.isSaved ? "Unsave" : "Save", systemImage: article.isSaved ? "bookmark.fill" : "bookmark"
+                    ) {
+                        session.toggleSaved(row)
+                    }
+                    if article.isSavedLink {
+                        Spacer()
+                        Button("Reload Page", systemImage: "arrow.clockwise") { model.reloadPage(article.id) }
+                            .disabled(model.pageStatus[article.id]?.isRunning == true)
+                    }
+                    Spacer()
+                    if let link = article.link {
+                        Button("Open Page", systemImage: "safari") { open(link) }
+                    }
+                }
+            }
+            .sheet(item: $page) { url in
+                SafariView(url: url).ignoresSafeArea()
+            }
+            .task(id: shown) {
+                if shown == .pageText && !article.isSavedLink {
+                    model.loadPage(article.id)
+                }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
+        if shown == .webPage, let link = article.link {
+            WebPageView(url: link)
+        } else {
+            text
+        }
+    }
+
+    private var text: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Text(article.title)
@@ -112,7 +183,7 @@ private struct ArticleDetail: View {
                     }
                 }
                 Divider()
-                if article.isSavedLink || showsPageText {
+                if shown == .pageText {
                     PageTextSection(article: article, isStored: model.library.pageTextIDs.contains(article.id))
                 } else {
                     Paragraphs(text: article.text.isEmpty ? "No text in the feed." : article.text)
@@ -120,43 +191,6 @@ private struct ArticleDetail: View {
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button(
-                    article.isRead ? "Mark as Unread" : "Mark as Read",
-                    systemImage: article.isRead ? "circle" : "checkmark.circle"
-                ) {
-                    session.toggleRead(row)
-                }
-                Spacer()
-                Button(article.isSaved ? "Unsave" : "Save", systemImage: article.isSaved ? "bookmark.fill" : "bookmark")
-                {
-                    session.toggleSaved(row)
-                }
-                if article.link != nil {
-                    Spacer()
-                    if article.isSavedLink {
-                        Button("Reload Page", systemImage: "arrow.clockwise") { model.reloadPage(article.id) }
-                            .disabled(model.pageStatus[article.id]?.isRunning == true)
-                    } else {
-                        Toggle("Page Text", systemImage: "doc.plaintext", isOn: $showsPageText)
-                    }
-                }
-                Spacer()
-                if let link = article.link {
-                    Button("Open Page", systemImage: "safari") { open(link) }
-                }
-            }
-        }
-        .sheet(item: $page) { url in
-            SafariView(url: url).ignoresSafeArea()
-        }
-        .onChange(of: showsPageText) { _, shows in
-            if shows {
-                model.loadPage(article.id)
-            }
         }
     }
 
@@ -169,8 +203,8 @@ private struct ArticleDetail: View {
     }
 }
 
-/// The text of the source page – loaded on request, then stored – or how loading it goes. A saved link has only
-/// this text.
+/// The text of the source page – loaded on request or as the preferred view, then stored – or how loading it goes. A
+/// saved link has only this text.
 private struct PageTextSection: View {
     @Environment(AppModel.self) private var model
     let article: Article
@@ -199,7 +233,29 @@ private struct PageTextSection: View {
         .task(id: [isStored, work?.isRunning == true]) {
             if isStored && work?.isRunning != true {
                 text = await model.pageText(article.id)
+                if text == nil && !article.isSavedLink {
+                    // Its file was gone: load the page again.
+                    model.loadPage(article.id)
+                }
             }
+        }
+    }
+}
+
+extension Preferences.ArticleView {
+    var title: String {
+        switch self {
+        case .feedText: "Feed Text"
+        case .pageText: "Page Text"
+        case .webPage: "Web Page"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .feedText: "text.alignleft"
+        case .pageText: "doc.plaintext"
+        case .webPage: "globe"
         }
     }
 }

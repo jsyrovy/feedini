@@ -89,3 +89,23 @@ extension Preferences {
         minutes.flatMap { refreshMinutesChoices.contains($0) ? $0 : nil }
     }
 }
+
+extension Preferences.ArticleView {
+    /// The views an article can switch between on iOS: a saved link has no feed text, an article without a link no
+    /// page.
+    static func choices(for article: Article) -> [Self] {
+        if article.link == nil {
+            [.feedText]
+        } else if article.isSavedLink {
+            [.pageText, .webPage]
+        } else {
+            allCases
+        }
+    }
+
+    /// What an opened article shows first on iOS: this view, or the first one it has.
+    func shown(for article: Article) -> Self {
+        let choices = Self.choices(for: article)
+        return choices.contains(self) ? self : choices[0]
+    }
+}

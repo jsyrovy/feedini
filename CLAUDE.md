@@ -158,8 +158,9 @@ FeediniMobile/ the iOS app
   App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, refreshing only in the foreground,
               every 5 minutes without a setting, the sample library in Debug), MobileSync (sync on by default, its setting)
   UI/         RootView (NavigationStack: Route, `-screen` in Debug), SidebarScreen, StoryListScreen (+ EntryRow,
-              swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail with the page text
-              and Reload Page, SafariView), SaveLinkSheet (PasteButton), SettingsScreen (+ FeedsScreen: adding,
+              swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail: feed text, page text
+              or web page switched in the navigation bar, Reload Page, SafariView), WebPageView (WKWebView),
+              SaveLinkSheet (PasteButton), SettingsScreen (+ FeedsScreen: adding,
               removing, folders, OPML import and export)
 FeediniTests/ Swift Testing tests of the shared code and the Mac app, in folders named like theirs
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
@@ -285,9 +286,19 @@ list (newest first), detail.
   page. It doesn't apply to a story with several articles (no single page) or an article without a link; a saved
   link shows its page text for Page text too. A page that isn't stored loads only once the cursor has stayed on the
   article for `Reader.settleDelay` (0.5 s), so J/K doesn't load every page it passes; the detail says "Loading page…"
-  meanwhile. P and V / Enter / Esc switch from the preferred view to the feed text (P again: the page text); T never
-  runs by itself. The web page shown this way keeps the stored page text (only V forgets it), and it takes the
-  keyboard focus only when clicked into (`EscapableWebView`), so J/K keep working.
+  meanwhile (also after an earlier failure: moving onto the article tries again). P switches the preferred page text
+  to the feed text and back; Esc and the key that opens pages in the window (V / Enter, or Shift+V / Shift+Enter with
+  "Default browser") switch the preferred web page to the feed text, and that key opens the web page from the page
+  text (as V, forgetting the text). A double click on the row never closes its page, it shows a waiting one at once
+  (`Reader.openOnDoubleClick`). T never runs by itself. When undo moves the cursor onto the article it is on already
+  (its row, or the story row the AI moved it to), the detail stays as the user left it (`Reader.cursorMoved`); on
+  another article it shows the preferred view. The web page shown this way keeps the stored page text (only V forgets
+  it), and it takes the keyboard focus only when clicked into (`EscapableWebView`: a refused focus goes back to the
+  list), so J/K keep working. On iOS the setting (Settings → "Show Articles As") is what an opened article shows
+  first, without a delay (a tap is an explicit request); a segmented switch in its navigation bar (feed text, page
+  text, web page; a saved link has no feed text, an article without a link no switch;
+  `Preferences.ArticleView.choices(for:)`) changes it. The web page is a `WKWebView` of the app (`WebPageView`, links
+  open in the browser), not Safari's view; "Open Page" opens the page as "Open Pages In" says.
 - P (preview) shows the text of the source page instead of the feed text (loaded the first time, then stored); P
   again returns to the feed text. A text cut at `PageText.maxLength` ends with a pointer to V. Works without AI. On a
   saved link (no feed text) P loads the page again instead, also from the source page in the window.
@@ -898,7 +909,8 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   PID – `make run` kills every Feedini.
 - Checking the iOS app: `xcrun simctl io booted screenshot <file>` works without Screen Recording, so screens can be
   checked by looking at screenshots: `make run-ios ARGS=-sampleLibrary` shows the made-up `SampleLibrary` (Debug
-  only, a temporary store), `-screen list|story|article|saved|settings` opens a screen of it, and `-saveLink
+  only, a temporary store), `-screen list|story|article|saved|settings` opens a screen of it (`-articleView
+  pageText|webPage` sets that preference for the launch; the sample links don't load), and `-saveLink
   <address>` saves a page and opens it (its text loads in the hidden web view: that works on iOS too, checked in the
   simulator). Taps and swipes can't be driven yet (no UI tests).
 

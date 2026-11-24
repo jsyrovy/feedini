@@ -23,11 +23,18 @@ struct SettingsScreen: View {
                         Text("Feedini").tag(Preferences.PageOpening.window)
                         Text("Browser").tag(Preferences.PageOpening.browser)
                     }
+                    Picker("Show Articles As", selection: $preferences.articleView) {
+                        ForEach(Preferences.ArticleView.allCases, id: \.self) { view in
+                            Text(view.title).tag(view)
+                        }
+                    }
                     ListOrderPicker(preferences: preferences)
                 } header: {
                     Text("Reading")
                 } footer: {
-                    Text("Feeds are refreshed when Feedini opens, then every 5 minutes. Pull down to refresh.")
+                    Text(
+                        "Page Text and Web Page load the article's page each time you open one. Feeds are refreshed "
+                            + "when Feedini opens, then every 5 minutes. Pull down to refresh.")
                 }
                 SyncSection(sync: sync)
                 Section {
