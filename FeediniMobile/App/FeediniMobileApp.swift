@@ -30,7 +30,7 @@ struct FeediniMobileApp: App {
                             return
                         }
                     #endif
-                    await sync.apply()
+                    sync.apply()
                 }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -43,9 +43,9 @@ struct FeediniMobileApp: App {
                 // the app, in the time a background task gets.
                 let task = UIApplication.shared.beginBackgroundTask(withName: "Save and sync")
                 Task {
-                    await model.flush()
-                    await sync.controller.send()
-                    await sync.controller.flush()
+                    async let saved: Void = model.flush()
+                    await sync.sendAndFlush()
+                    await saved
                     UIApplication.shared.endBackgroundTask(task)
                     // A running refresh may take longer than a background task; it ends while suspended.
                     await model.stopRefreshing()

@@ -29,10 +29,15 @@ struct SyncState: Codable, Equatable, Sendable {
     func changedFields(of id: SyncRecord.ID) -> Set<String> {
         changedFields[id.name] ?? []
     }
+
+    mutating func setChangedFields(_ fields: Set<String>, of id: SyncRecord.ID) {
+        changedFields[id.name] = fields.isEmpty ? nil : fields
+    }
 }
 
-/// Saves the `SyncState` as `sync.json` next to the library, debounced like the library (the engine reports state
-/// changes often), atomically; `flush()` writes at once.
+/// Saves the `SyncState` as `sync.state` next to the library, debounced like the library (the engine reports state
+/// changes often), atomically; `flush()` writes at once. The file is zlib-compressed JSON: the system fields of the
+/// records (about 2.4 KB each) shrink to a tenth, and the file is written again after every send.
 actor SyncStateStore {
     let fileURL: URL
     private let debounce: Duration
@@ -49,16 +54,17 @@ actor SyncStateStore {
         self.sleep = sleep
     }
 
-    /// `sync.json` next to `library.json`.
+    /// `sync.state` next to `library.json`.
     static var defaultFileURL: URL {
-        LibraryStore.defaultFileURL.deletingLastPathComponent().appending(path: "sync.json")
+        LibraryStore.defaultFileURL.deletingLastPathComponent().appending(path: "sync.state")
     }
 
     /// The saved state; a new one when there is none or it can't be read (syncing then starts over with a merge).
     func load() -> SyncState {
         guard let data = try? Data(contentsOf: fileURL) else { return SyncState() }
         do {
-            return try JSONDecoder().decode(SyncState.self, from: data)
+            let json = try (data as NSData).decompressed(using: .zlib) as Data
+            return try JSONDecoder().decode(SyncState.self, from: json)
         } catch {
             Log.sync.error("The sync state couldn't be read: \(error.localizedDescription, privacy: .public)")
             return SyncState()
@@ -99,7 +105,8 @@ actor SyncStateStore {
         do {
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(state).write(to: fileURL, options: .atomic)
+            let json = try JSONEncoder().encode(state)
+            try ((json as NSData).compressed(using: .zlib) as Data).write(to: fileURL, options: .atomic)
         } catch {
             Log.sync.error("Saving the sync state failed: \(error.localizedDescription, privacy: .public)")
         }

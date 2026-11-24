@@ -25,6 +25,11 @@ struct Folder: Codable, Sendable, Hashable, Identifiable {
         guard name.count > length else { return name }
         return name.prefix(length - 1).trimmingCharacters(in: .whitespaces) + "…"
     }
+
+    /// Names are compared ignoring case.
+    func isNamed(_ name: String) -> Bool {
+        self.name.caseInsensitiveCompare(name) == .orderedSame
+    }
 }
 
 /// Why a folder name can't be used.
@@ -69,7 +74,7 @@ extension Library {
     }
 
     private func folder(named name: String) -> Folder? {
-        folders.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        folders.first { $0.isNamed(name) }
     }
 
     /// Adds a folder at the end.

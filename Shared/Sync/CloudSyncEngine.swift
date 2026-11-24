@@ -160,7 +160,7 @@ final class CloudSyncEngine: SyncEngining {
                 }
             case .accountChange(let change):
                 switch change.changeType {
-                case .signIn: await controller.accountChanged(.signIn)
+                case .signIn: break  // only a stopped engine waits for that: `SyncSwitch` starts syncing
                 case .signOut: await controller.accountChanged(.signOut)
                 case .switchAccounts: await controller.accountChanged(.switchAccounts)
                 @unknown default: break

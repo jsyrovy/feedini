@@ -57,6 +57,21 @@ struct Article: Codable, Sendable, Hashable, Identifiable {
         guard let published else { return firstSeen }
         return min(published, firstSeen)
     }
+
+    /// Takes in what was done with the same article elsewhere (another device, a feed merged into this one): read or
+    /// saved when either was, at the earlier date, and the newer page summary.
+    mutating func merge(_ other: Article) {
+        readAt = Self.earlier(readAt, other.readAt)
+        savedAt = Self.earlier(savedAt, other.savedAt)
+        if let summary = other.pageSummary, summary.date > pageSummary?.date ?? .distantPast {
+            pageSummary = summary
+        }
+    }
+
+    private static func earlier(_ lhs: Date?, _ rhs: Date?) -> Date? {
+        guard let lhs, let rhs else { return lhs ?? rhs }
+        return min(lhs, rhs)
+    }
 }
 
 /// What the AI wrote about an article's source page: the gist, and for longer texts the details.

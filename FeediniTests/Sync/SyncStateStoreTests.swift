@@ -6,7 +6,7 @@ import Testing
 struct SyncStateStoreTests {
     private let directory = FileManager.default.temporaryDirectory.appending(
         path: "feedini-sync-\(UUID().uuidString)", directoryHint: .isDirectory)
-    private var fileURL: URL { directory.appending(path: "sync.json") }
+    private var fileURL: URL { directory.appending(path: "sync.state") }
     private let sleeper = ManualSleeper()
 
     private func store() -> SyncStateStore {

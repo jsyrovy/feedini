@@ -27,20 +27,7 @@ struct SyncRecord: Equatable, Sendable {
         case meta = "Meta"
 
         /// The prefix of the record name: names must be unique in the zone across types.
-        var prefix: String {
-            switch self {
-            case .feed: "feed"
-            case .folder: "folder"
-            case .article: "article"
-            case .pageText: "pagetext"
-            case .story: "story"
-            case .topic: "topic"
-            case .tombstone: "tombstone"
-            case .removedFeed: "removedfeed"
-            case .settings: "settings"
-            case .meta: "meta"
-            }
-        }
+        var prefix: String { rawValue.lowercased() }
 
         /// Settings and meta are single records without an ID.
         var isSingle: Bool { self == .settings || self == .meta }
@@ -63,6 +50,22 @@ struct SyncRecord: Equatable, Sendable {
             case .removedFeed: [Field.title]
             case .settings: [Field.summaryLanguage]
             case .meta: []
+            }
+        }
+
+        /// The fields of a record of this type, for a record sent as a whole.
+        var allFields: Set<String> {
+            switch self {
+            case .feed: SyncRecord.feedFields
+            case .folder: SyncRecord.folderFields
+            case .article: SyncRecord.articleFields
+            case .pageText: [Field.text]
+            case .story: SyncRecord.storyFields
+            case .topic: SyncRecord.topicFields
+            case .tombstone: SyncRecord.tombstoneFields
+            case .removedFeed: [Field.title]
+            case .settings: SyncRecord.settingsFields
+            case .meta: [Field.minimumVersion]
             }
         }
     }
@@ -182,7 +185,7 @@ struct SyncRecord: Equatable, Sendable {
 
     /// A Codable value stored as JSON (summaries).
     func decoded<Value: Decodable>(_ type: Value.Type, _ field: String) -> Value? {
-        data(field).flatMap { try? SyncRecord.decoder.decode(type, from: $0) }
+        data(field).flatMap { try? LibraryStore.decoder.decode(type, from: $0) }
     }
 
     static var encoder: JSONEncoder {
@@ -190,12 +193,6 @@ struct SyncRecord: Equatable, Sendable {
         encoder.outputFormatting = .sortedKeys
         encoder.dateEncodingStrategy = .iso8601
         return encoder
-    }
-
-    static var decoder: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
     }
 }
 

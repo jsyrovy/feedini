@@ -270,19 +270,30 @@ struct AppModelTests {
         #expect(model.library.articles.isEmpty)
     }
 
-    @Test func articlesFromAnotherDeviceAreOrganized() async {
+    @Test func articlesFromAnotherDeviceAreOrganizedOnceTheFetchEnded() async {
         let services = FakePlatformServices()
         let model = AppModel.test()
         model.services = services
         await model.start()
+        let controller = SyncController(
+            model: model,
+            stateStore: SyncStateStore(
+                fileURL: FileManager.default.temporaryDirectory.appending(path: "sync-\(UUID().uuidString)")))
+        await controller.start { _ in FakeSyncEngine() }
         services.organized = 0
         let feed = Feed.stub("Tech")
 
-        model.applyRemote { $0 = Library(feeds: [feed], articles: [Article.stub(feed: feed.id)]) }
+        controller.willFetch()
+        await controller.fetched(
+            [
+                FetchedRecord(record: SyncRecord(feed: feed), systemFields: Data()),
+                FetchedRecord(record: SyncRecord(article: Article.stub(feed: feed.id)), systemFields: Data()),
+            ], deletions: [])
+        // Not over half a fetch: its stories may still come.
+        #expect(services.organized == 0)
+        controller.didFetch()
         #expect(services.organized == 1)
-        // Reading elsewhere organizes nothing.
-        model.applyRemote { $0.markRead(Array($0.articles.keys), at: referenceDate) }
-        #expect(services.organized == 1)
+        await controller.stop(forgetting: true)
         await model.stopRefreshing()
     }
 }

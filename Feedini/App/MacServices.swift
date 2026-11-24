@@ -13,13 +13,11 @@ final class MacServices: PlatformServices {
     let backups: Backups
     let updates: UpdateChecker
     let sync: SyncController
+    /// Starts and stops `sync` as `MacPreferences.syncsWithICloud` says.
+    @ObservationIgnored private(set) var syncSwitch: SyncSwitch!
     @ObservationIgnored private(set) var assignQueue: AssignQueue!
     @ObservationIgnored private(set) var summaryQueue: SummaryQueue!
     @ObservationIgnored private(set) var pageQueue: PageSummaryQueue!
-    /// Why syncing can't start now (`SyncAvailability.problem`; tests don't reach iCloud).
-    @ObservationIgnored private let syncProblem: @MainActor () async -> String?
-    /// Starting or stopping sync after the setting changed (awaited by tests).
-    @ObservationIgnored private(set) var syncSettingTask: Task<Void, Never>?
 
     init(
         preferences: MacPreferences = MacPreferences(), store: LibraryStore = LibraryStore(),
@@ -30,7 +28,6 @@ final class MacServices: PlatformServices {
         syncProblem: @escaping @MainActor () async -> String? = { await SyncAvailability.problem() },
         updates: UpdateChecker = UpdateChecker(), now: @escaping @Sendable () -> Date = { .now }
     ) {
-        self.syncProblem = syncProblem
         let model = AppModel(
             preferences: preferences.shared, store: store, coordinator: coordinator, subscriber: subscriber,
             pageExtractor: pageExtractor, now: now)
@@ -40,6 +37,10 @@ final class MacServices: PlatformServices {
         aiStatus = AIStatus(pages: model.pageStatus)
         backups = Backups(store: backupStore, preferences: preferences, now: now)
         sync = SyncController(model: model, stateStore: syncStateStore, now: now)
+        // Tests don't reach iCloud: they pass their own `syncProblem`.
+        syncSwitch = SyncSwitch(
+            controller: sync, isOn: { preferences.syncsWithICloud },
+            turnOff: { preferences.syncsWithICloud = false }, problem: syncProblem)
         let configuration: @MainActor () -> AIConfiguration = { [preferences] in preferences.aiConfiguration }
         let assignQueue = AssignQueue(
             host: model, runner: claudeRunner, locator: claudeLocator, status: aiStatus, configuration: configuration)
@@ -75,47 +76,11 @@ final class MacServices: PlatformServices {
         }
         updates.setDaily(preferences.checksForUpdates)
         preferences.onSyncChange = { [weak self] in
-            guard let self else { return }
-            syncSettingTask = Task { [previous = syncSettingTask] in
-                await previous?.value
-                await self.syncSettingChanged()
-            }
-        }
-        sync.onTurnedOff = { [weak self] _ in
-            self?.preferences.syncsWithICloud = false
-        }
-        // Signing in to iCloud (after syncing stopped for want of an account) starts it.
-        NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.preferences.syncsWithICloud, !self.sync.isRunning else { return }
-                Task { await self.startSync() }
-            }
+            self?.syncSwitch.apply()
         }
         await model.start()
         writeSummarySettings()
-        if preferences.syncsWithICloud {
-            await startSync()
-        }
-    }
-
-    // MARK: Sync
-
-    /// Starts syncing unless it can't run here, then says why.
-    private func startSync() async {
-        if let problem = await syncProblem() {
-            sync.setUnavailable(problem)
-            return
-        }
-        await sync.start { [unowned self] state in CloudSyncEngine(state: state, controller: sync) }
-    }
-
-    private func syncSettingChanged() async {
-        if preferences.syncsWithICloud {
-            await startSync()
-        } else {
-            // Off: the library and the iCloud data stay; turning it on again merges them.
-            await sync.stop(forgetting: true)
-        }
+        syncSwitch.apply()
     }
 
     /// Writes pending changes of the library and of syncing (at quit).

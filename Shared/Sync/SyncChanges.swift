@@ -41,16 +41,16 @@ struct SyncChanges: Equatable, Sendable {
                 folderRecords(old), folderRecords(new), id: SyncRecord.ID.folder, record: { $0 },
                 fields: SyncRecord.folderFields)
         }
-        if let articles {
-            let pick = { (library: Library) in
-                Dictionary(uniqueKeysWithValues: articles.compactMap { id in library.articles[id].map { (id, $0) } })
-            }
+        let (oldArticles, newArticles) =
+            articles.map { ids in
+                let pick = { (library: Library) in
+                    Dictionary(uniqueKeysWithValues: ids.compactMap { id in library.articles[id].map { (id, $0) } })
+                }
+                return (pick(old), pick(new))
+            } ?? (old.articles, new.articles)
+        if oldArticles != newArticles {
             changes.compare(
-                pick(old), pick(new), id: SyncRecord.ID.article, record: SyncRecord.init(article:),
-                fields: SyncRecord.articleFields)
-        } else if old.articles != new.articles {
-            changes.compare(
-                old.articles, new.articles, id: SyncRecord.ID.article, record: SyncRecord.init(article:),
+                oldArticles, newArticles, id: SyncRecord.ID.article, record: SyncRecord.init(article:),
                 fields: SyncRecord.articleFields)
         }
         if old.stories != new.stories {
@@ -74,7 +74,7 @@ struct SyncChanges: Equatable, Sendable {
         }
         if old.removedFeeds != new.removedFeeds {
             for (id, title) in new.removedFeeds where old.removedFeeds[id] != title {
-                changes.saves[.removedFeed(id)] = [SyncRecord.Field.title]
+                changes.saves[.removedFeed(id)] = SyncRecord.Kind.removedFeed.allFields
             }
             for id in old.removedFeeds.keys where new.removedFeeds[id] == nil {
                 changes.deletes.insert(.removedFeed(id))
@@ -82,7 +82,7 @@ struct SyncChanges: Equatable, Sendable {
         }
         if old.pageTextIDs != new.pageTextIDs {
             for id in new.pageTextIDs.subtracting(old.pageTextIDs) {
-                changes.saves[.pageText(id)] = [SyncRecord.Field.text]
+                changes.saves[.pageText(id)] = SyncRecord.Kind.pageText.allFields
             }
             for id in old.pageTextIDs.subtracting(new.pageTextIDs) {
                 changes.deletes.insert(.pageText(id))
@@ -104,8 +104,8 @@ struct SyncChanges: Equatable, Sendable {
             })
     }
 
-    /// Records of values that are new or differ (only values that aren't equal are turned into records), and of
-    /// those that are gone.
+    /// Records of values that are new (every field) or differ (only values that aren't equal are turned into records),
+    /// and of those that are gone.
     private mutating func compare<Key: Hashable, Value: Equatable>(
         _ old: [Key: Value], _ new: [Key: Value], id: (Key) -> SyncRecord.ID, record: (Value) -> SyncRecord,
         fields: Set<String>
@@ -113,7 +113,7 @@ struct SyncChanges: Equatable, Sendable {
         for (key, value) in new {
             let before = old[key]
             guard before != value else { continue }
-            let changed = Self.changedFields(before.map(record), record(value), among: fields)
+            let changed = before.map { Self.changedFields(record($0), record(value), among: fields) } ?? fields
             if !changed.isEmpty {
                 saves[id(key)] = changed
             }

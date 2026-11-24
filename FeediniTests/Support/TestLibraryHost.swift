@@ -59,7 +59,7 @@ extension MacServices {
             syncStateStore: SyncStateStore(
                 fileURL: FileManager.default.temporaryDirectory.appending(
                     path: "feedini-sync-\(UUID().uuidString).json")),
-            syncProblem: { SyncAvailability.notInThisBuild })
+            syncProblem: { SyncController.notInThisBuild })
     }
 }
 

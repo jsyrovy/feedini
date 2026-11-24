@@ -14,21 +14,6 @@ protocol PlatformServices: AnyObject {
     func prepareSavedLink(_ id: Article.ID) -> Bool
 }
 
-/// Keeps the library in sync with other devices through iCloud (`SyncController`).
-@MainActor
-protocol LibrarySync: AnyObject {
-    /// A change made here (not one that came from the zone); `articles` names the only articles it changed when
-    /// that is known (reading and saving).
-    func libraryChanged(from old: Library, to new: Library, articles: Set<Article.ID>?)
-    /// A page text was stored here, also again under the same ID (a saved link loaded again).
-    func pageTextStored(_ id: Article.ID)
-    /// Gets the zone's changes before a refresh, so a tombstone made elsewhere is known before the feed comes back.
-    func fetchBeforeRefresh() async
-    /// `false` while the zone's changes are being applied or a merge waits: retention over half a fetch would forget
-    /// stories whose articles haven't come yet, and send that.
-    var allowsRetention: Bool { get }
-}
-
 /// Connects the layers: holds the library on the main actor, saves its changes, runs the refreshes, loads source
 /// pages. Shared by both apps; what only the Mac does comes through `services`.
 @MainActor
@@ -38,7 +23,7 @@ final class AppModel: LibraryHost {
     /// The Mac's AI and backups (`MacServices`); `nil` elsewhere.
     @ObservationIgnored weak var services: (any PlatformServices)?
     /// iCloud sync; `nil` while it is off.
-    @ObservationIgnored weak var sync: (any LibrarySync)?
+    @ObservationIgnored weak var sync: SyncController?
     private(set) var library = Library() {
         didSet {
             // Comparing unchanged collections is cheap (they share their storage).
@@ -197,7 +182,7 @@ final class AppModel: LibraryHost {
         }
         guard !library.feeds.isEmpty else { return }
         isRefreshing = true
-        await sync?.fetchBeforeRefresh()
+        await sync?.fetch()
         await refresh(library.feeds)
         isRefreshing = false
         guard !Task.isCancelled else { return }
@@ -444,13 +429,8 @@ final class AppModel: LibraryHost {
     }
 
     /// Applies a change that came from another device: saved, but not sent back.
-    /// Articles that came from another device are organized here (on the Mac).
     func applyRemote(_ change: (inout Library) -> Void) {
-        let articles = library.articles.count
         apply(change, notifiesReader: true, isRemote: true)
-        if library.articles.count > articles {
-            organize()
-        }
     }
 
     /// Changes the library and saves it, unless the change fails; returns what the change returns.

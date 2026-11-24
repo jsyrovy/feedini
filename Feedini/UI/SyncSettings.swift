@@ -44,7 +44,6 @@ struct SyncSettings: View {
                 Task {
                     do {
                         try await sync.deleteICloudData()
-                        preferences.syncsWithICloud = false
                         deletionError = nil
                     } catch {
                         deletionError = error.localizedDescription

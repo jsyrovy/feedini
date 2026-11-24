@@ -45,8 +45,7 @@ enum StableIDMigration {
         return feedIDs
     }
 
-    /// Articles that end up with the same ID (the same key in merged feeds) become one: read or saved when either
-    /// was, at the earlier date.
+    /// Articles that end up with the same ID (the same key in merged feeds) become one (`Article.merge`).
     private static func migrateArticles(
         _ library: inout Library, feedIDs: [Feed.ID: Feed.ID]
     ) -> [Article.ID: Article.ID] {
@@ -61,9 +60,7 @@ enum StableIDMigration {
             articleIDs[article.id] = id
             article.id = id
             if var first = articles[id] {
-                first.readAt = earlier(first.readAt, article.readAt)
-                first.savedAt = earlier(first.savedAt, article.savedAt)
-                first.pageSummary = first.pageSummary ?? article.pageSummary
+                first.merge(article)
                 articles[id] = first
             } else {
                 articles[id] = article
@@ -71,11 +68,6 @@ enum StableIDMigration {
         }
         library.articles = articles
         return articleIDs
-    }
-
-    private static func earlier(_ lhs: Date?, _ rhs: Date?) -> Date? {
-        guard let lhs, let rhs else { return lhs ?? rhs }
-        return min(lhs, rhs)
     }
 
     private static func unique(_ ids: [Article.ID]) -> [Article.ID] {

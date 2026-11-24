@@ -42,16 +42,16 @@ struct FetchedRecord: Sendable {
     var systemFields: Data
 }
 
-/// Keeps the library and the iCloud zone in step: sends the changes made here (`LibrarySync`), applies the zone's
+/// Keeps the library and the iCloud zone in step: sends the changes made here (`AppModel.sync`), applies the zone's
 /// (`SyncMerge`), resolves conflicts, keeps `SyncState`. The engine reports to it with records already turned into
 /// `SyncRecord`s, so everything here runs on the main actor without CloudKit and is tested with a fake engine.
 @MainActor
 @Observable
-final class SyncController: LibrarySync {
+final class SyncController {
     private(set) var status = SyncStatus.off
-    /// Called when syncing turned itself off (the zone was deleted elsewhere), with the reason; the platform turns
-    /// its setting off.
-    @ObservationIgnored var onTurnedOff: (@MainActor (String) -> Void)?
+    /// Called when syncing turned off by itself (the zone was deleted, here or elsewhere; `status` says why); the
+    /// platform turns its setting off.
+    @ObservationIgnored var onTurnedOff: (@MainActor () -> Void)?
 
     @ObservationIgnored private unowned let model: AppModel
     @ObservationIgnored private let stateStore: SyncStateStore
@@ -65,10 +65,14 @@ final class SyncController: LibrarySync {
     @ObservationIgnored private var sending: [SyncRecord.ID: Set<String>] = [:]
     /// The latest hand-over to the state store; each waits for the previous one, so saves keep their order.
     @ObservationIgnored private var persisting: Task<Void, Never>?
+    /// `SyncRecord.tombstoneKeys` with the tombstones it was made from, for sending many tombstones.
+    @ObservationIgnored private var tombstoneKeys:
+        (tombstones: [Tombstone.Key: Tombstone], keys: [UUID: Tombstone.Key])?
 
     nonisolated static let deletedMessage =
         "The Feedini data in iCloud was deleted. Turn sync on to upload this library again."
     nonisolated static let signedOutMessage = "Sign in to iCloud to sync."
+    nonisolated static let notInThisBuild = "Sync isn't available in this build."
 
     init(model: AppModel, stateStore: SyncStateStore = SyncStateStore(), now: @escaping @Sendable () -> Date = { .now })
     {
@@ -118,14 +122,16 @@ final class SyncController: LibrarySync {
         self.status = status
     }
 
-    /// Delete iCloud Data…: deletes the zone, forgets the state and stops; the library stays.
+    /// Delete iCloud Data…: deletes the zone, forgets the state and stops (`onTurnedOff`); the library stays.
     func deleteICloudData() async throws {
         try await engine?.deleteZone()
         await stop(forgetting: true)
         Log.sync.info("Deleted the iCloud data")
+        onTurnedOff?()
     }
 
-    /// Fetches the zone's changes now.
+    /// Fetches the zone's changes now (also before every refresh, so a tombstone made elsewhere is known before the
+    /// feed comes back).
     func fetch() async {
         guard let engine else { return }
         do {
@@ -145,20 +151,21 @@ final class SyncController: LibrarySync {
         }
     }
 
-    // MARK: LibrarySync
+    // MARK: Changes here
 
+    /// A change made here (not one that came from the zone); `articles` names the only articles it changed when that
+    /// is known (reading and saving).
     func libraryChanged(from old: Library, to new: Library, articles: Set<Article.ID>?) {
         enqueue(SyncChanges.diff(old: old, new: new, articles: articles))
     }
 
+    /// A page text was stored here, also again under the same ID (a saved link loaded again).
     func pageTextStored(_ id: Article.ID) {
-        enqueue(SyncChanges(saves: [.pageText(id): [SyncRecord.Field.text]]))
+        enqueue(SyncChanges(saves: [.pageText(id): SyncRecord.Kind.pageText.allFields]))
     }
 
-    func fetchBeforeRefresh() async {
-        await fetch()
-    }
-
+    /// `false` while the zone's changes are being applied or a merge waits: retention over half a fetch would forget
+    /// stories whose articles haven't come yet, and send that.
     var allowsRetention: Bool { !isFetching && !state.needsMerge }
 
     // MARK: Events of the engine
@@ -189,9 +196,7 @@ final class SyncController: LibrarySync {
                 follow.add(
                     SyncMerge.apply(fetched.record, to: &library, pending: state.changedFields(of: id), mode: mode))
             }
-            for id in deletions {
-                follow.add(SyncMerge.delete(id, from: &library))
-            }
+            follow.add(SyncMerge.delete(deletions, from: &library))
         }
         for id in deletions {
             state.systemFields[id.name] = nil
@@ -206,16 +211,19 @@ final class SyncController: LibrarySync {
         Log.sync.info("Fetched \(records.count) records and \(deletions.count) deletions")
     }
 
-    /// A fetch ended: a pending merge is done, and the whole library goes up (records the zone has already are
-    /// resolved as conflicts).
+    /// A fetch ended: a pending merge is done, and what the zone doesn't have goes up (what differs in the records it
+    /// has was queued by the merge). Articles that came are organized now, once the whole fetch is in the library.
     func didFetch() {
         isFetching = false
         guard engine != nil else { return }
         if state.needsMerge {
             state.needsMerge = false
-            enqueue(SyncMerge.everything(in: model.library))
+            var missing = SyncMerge.everything(in: model.library)
+            missing.saves = missing.saves.filter { id, _ in id == .meta || state.systemFields[id.name] == nil }
+            enqueue(missing)
         }
         succeeded()
+        model.organize()
     }
 
     /// The record to send for a pending change, the system fields of the zone's record and the fields to set
@@ -223,13 +231,15 @@ final class SyncController: LibrarySync {
     func recordToSend(_ id: SyncRecord.ID) async -> (record: SyncRecord, systemFields: Data?, fields: Set<String>)? {
         let pageText: String? =
             if id.kind == .pageText, let uuid = id.uuid { await model.pageText(uuid) } else { nil }
-        guard let record = SyncRecord.make(id, from: model.library, pageText: pageText) else {
+        let library = model.library
+        let tombstoneKeys = id.kind == .tombstone ? tombstoneKeys(in: library) : nil
+        guard let record = SyncRecord.make(id, from: library, pageText: pageText, tombstoneKeys: tombstoneKeys) else {
             state.changedFields[id.name] = nil
             return nil
         }
         let systemFields = state.systemFields[id.name]
         let changed = state.changedFields(of: id)
-        let fields = systemFields == nil || changed.isEmpty ? SyncMerge.allFields(of: id.kind) : changed
+        let fields = systemFields == nil || changed.isEmpty ? id.kind.allFields : changed
         sending[id] = fields
         return (record, systemFields, fields)
     }
@@ -243,22 +253,32 @@ final class SyncController: LibrarySync {
         guard engine != nil else { return }
         for (id, systemFields) in saved {
             state.systemFields[id.name] = systemFields
-            let remaining = state.changedFields(of: id).subtracting(sending.removeValue(forKey: id) ?? [])
-            state.changedFields[id.name] = remaining.isEmpty ? nil : remaining
+            state.setChangedFields(
+                state.changedFields(of: id).subtracting(sending.removeValue(forKey: id) ?? []), of: id)
         }
         for id in deleted {
             state.systemFields[id.name] = nil
             state.changedFields[id.name] = nil
         }
         var follow = SyncChanges()
+        var resolved: [SyncRecord] = []
         for conflict in conflicts {
-            follow.add(resolve(conflict))
+            let (record, toSend) = resolve(conflict)
+            resolved += record.map { [$0] } ?? []
+            follow.add(toSend)
         }
         for id in missing {
             sending[id] = nil
             state.systemFields[id.name] = nil
-            // Kept here (unread, saved, in use): created again; else the deletion wins here too.
-            model.applyRemote { follow.add(SyncMerge.delete(id, from: &$0)) }
+        }
+        if !resolved.isEmpty || !missing.isEmpty {
+            model.applyRemote { library in
+                for record in resolved {
+                    SyncMerge.apply(record, to: &library)
+                }
+                // Kept here (unread, saved, in use): created again; else the deletion wins here too.
+                follow.add(SyncMerge.delete(missing, from: &library))
+            }
         }
         enqueue(follow)
         if let failure = failures.first {
@@ -272,20 +292,19 @@ final class SyncController: LibrarySync {
         }
     }
 
-    /// The zone's record wins except for the fields changed here (`SyncMerge.resolve`); the result is applied here
-    /// and sent again over the zone's record.
-    private func resolve(_ conflict: FetchedRecord) -> SyncChanges {
+    /// The zone's record wins except for the fields changed here (`SyncMerge.resolve`): returns the record to apply
+    /// here (none for a page text, sent again as it is) and the fields to send again over the zone's record.
+    private func resolve(_ conflict: FetchedRecord) -> (record: SyncRecord?, toSend: SyncChanges) {
         let id = conflict.record.id
         sending[id] = nil
         state.systemFields[id.name] = conflict.systemFields
-        guard id.kind != .pageText else { return SyncChanges(saves: [id: [SyncRecord.Field.text]]) }
+        guard id.kind != .pageText else { return (nil, SyncChanges(saves: [id: id.kind.allFields])) }
         let changed = state.changedFields(of: id)
         let local = SyncRecord.make(id, from: model.library) ?? conflict.record
         let resolved = SyncMerge.resolve(server: conflict.record, local: local, changed: changed)
-        model.applyRemote { SyncMerge.apply(resolved, to: &$0) }
-        let toSend = changed.subtracting(id.kind == .article ? SyncRecord.articleContentFields : [])
-        state.changedFields[id.name] = toSend.isEmpty ? nil : toSend
-        return toSend.isEmpty ? SyncChanges() : SyncChanges(saves: [id: toSend])
+        let toSend = changed.subtracting(SyncMerge.keptOnConflict(id.kind))
+        state.setChangedFields(toSend, of: id)
+        return (resolved, toSend.isEmpty ? SyncChanges() : SyncChanges(saves: [id: toSend]))
     }
 
     func stateChanged(_ serialization: Data) {
@@ -293,19 +312,15 @@ final class SyncController: LibrarySync {
         persist()
     }
 
-    /// The iCloud account changed: signed out, syncing stops (the library stays); another account starts over with
-    /// a merge; signing in starts.
+    /// The iCloud account changed while syncing: signed out, syncing stops (the library stays); another account
+    /// starts over with a merge. Signing in after that starts syncing through `SyncSwitch`.
     enum AccountChange: Sendable {
-        case signIn, signOut, switchAccounts
+        case signOut, switchAccounts
     }
 
     func accountChanged(_ change: AccountChange) async {
         guard let makeEngine else { return }
         switch change {
-        case .signIn:
-            if engine == nil {
-                await start(makeEngine: makeEngine)
-            }
         case .signOut:
             await stop(forgetting: true, status: .unavailable(Self.signedOutMessage))
         case .switchAccounts:
@@ -323,7 +338,7 @@ final class SyncController: LibrarySync {
             return
         }
         await stop(forgetting: true, status: .failed(Self.deletedMessage))
-        onTurnedOff?(Self.deletedMessage)
+        onTurnedOff?()
     }
 
     // MARK: State
@@ -344,6 +359,15 @@ final class SyncController: LibrarySync {
     private func fail(_ error: any Error) {
         Log.sync.error("Syncing failed: \(error.localizedDescription, privacy: .public)")
         status = .failed(error.localizedDescription)
+    }
+
+    private func tombstoneKeys(in library: Library) -> [UUID: Tombstone.Key] {
+        if let tombstoneKeys, tombstoneKeys.tombstones == library.tombstones {
+            return tombstoneKeys.keys
+        }
+        let keys = SyncRecord.tombstoneKeys(in: library)
+        tombstoneKeys = (library.tombstones, keys)
+        return keys
     }
 
     private func persist() {

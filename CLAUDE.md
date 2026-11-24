@@ -106,7 +106,7 @@ Shared/       compiled into both apps
               SyncRecord (+ Library: the records of the library's parts as fields,
               names, encrypted fields), SyncChanges (pure: the records two libraries differ in), SyncMerge (pure:
               applying fetched records and deletions, conflicts, merging libraries), SyncStateStore (SyncState:
-              sync.json), SyncSchema (the zone's version)
+              sync.state), SyncSwitch (on / off as the platform's setting says), SyncSchema (the zone's version)
   Support/    OneShotSignal (an awaitable one-time event), ConcurrentMap (`concurrentMap(limit:)`, order kept),
               RelativeTime ("5m", "3h", then the date)
   UI/         SwiftUI views of both apps: Removal (confirming the removal of feeds or a folder), FolderViews
@@ -691,13 +691,13 @@ Checked against iCloud (Development) with a Debug Mac and a Debug iPhone: mergin
 on the iPhone organized on the Mac and back. Missing: deploying the schema to Production.
 
 - Changes of the other device come only by push: `CKSyncEngine.fetchChanges()` fetches only zones a push flagged
-  ("no zone IDs needing to be fetched" otherwise), so `fetchBeforeRefresh` finds nothing without one. The Mac asks
+  ("no zone IDs needing to be fetched" otherwise), so the fetch before a refresh finds nothing without one. The Mac asks
   for pushes (`NSApp.registerForRemoteNotifications()`), the iOS app has the `remote-notification` background mode.
   Measured: about 1–2 minutes from a change on the iPhone to the Mac.
 - The iOS app sends pending changes when it goes to the background (`beginBackgroundTask`); otherwise a change made
   before locking the iPhone waits minutes for iOS to give the suspended app time.
-- Articles that come from another device are organized on the Mac at once (`AppModel.applyRemote` →
-  `organize()`), and a refresh cut short (the iOS app suspended) merges nothing (`Task.isCancelled`), so its
+- Articles that come from another device are organized on the Mac once the fetch ended (`SyncController.didFetch`
+  → `organize()`; not over half a fetch, whose stories may still come), and a refresh cut short (the iOS app suspended) merges nothing (`Task.isCancelled`), so its
   failed downloads don't mark every feed as failed.
 - Testing two Mac instances against each other doesn't show propagation: on one Mac they are one CloudKit device and
   don't get each other's changes. A second instance with an empty home (`CFFIXED_USER_HOME`) does get everything on
@@ -709,33 +709,42 @@ on the iPhone organized on the Mac and back. Missing: deploying the schema to Pr
   to compare libraries. Launch a Mac test instance with `open -n --env CFFIXED_USER_HOME=<dir> <app> --args
   -syncsWithICloud YES` (Bool settings read with `as? Bool` need `-key '<false/>'`).
 
+- `SyncSwitch` (both apps) starts and stops syncing as the platform's setting says, in order: after loading and
+  after every change of the setting it starts unless it can't run here (`problem`, then the status says why), stops
+  when turned off (forgetting the sync state: turning it on again merges), starts after signing in to iCloud
+  (`CKAccountChanged`), and turns the setting off when syncing turned off by itself (`onTurnedOff`: Delete iCloud
+  Data…, the zone deleted elsewhere – that status stays).
 - Mac: Settings → Sync (`SyncSettings`: "Sync with iCloud", `MacPreferences.syncsWithICloud`, off by default, the
-  state, Delete iCloud Data… with a confirmation), a line in the menu bar menu while it can't sync. `MacServices`
-  starts it after loading when on (`SyncAvailability.problem()`: the CloudKit entitlement, read with
-  `SecTaskCopyValueForEntitlement` – `CKContainer` traps without it –, and the iCloud account), stops it when turned
-  off (forgetting the sync state: turning it on again merges), restarts it on `CKAccountChanged`, and turns the
-  setting off when the zone was deleted elsewhere. Quitting writes the sync state too (`MacServices.flush`).
+  state, Delete iCloud Data… with a confirmation), a line in the menu bar menu while it can't sync. Its `problem` is
+  `SyncAvailability.problem()`: the CloudKit entitlement, read with `SecTaskCopyValueForEntitlement` (`CKContainer`
+  traps without it), and the iCloud account. Quitting writes the sync state too (`MacServices.flush`). iOS:
+  `MobileSync` (on by default; `CloudSyncEngine.accountProblem`, or "not in this build" without `CLOUDKIT`).
 - `CloudSyncEngine`: a `CKSyncEngine` over the zone `Library` in the private database of
   `iCloud.cz.jsyrovy.feedini`; it creates the zone on its first start, turns `CKRecord`s into `SyncRecord`s (content
   fields in `encryptedValues`, system fields kept as data) before they reach the main actor, sets only the given
   fields over the zone's record, and maps send failures: `serverRecordChanged` → conflict, `unknownItem` → deleted
   elsewhere, `zoneNotFound` → create the zone and save again, network and account errors → the engine retries.
 
-- `AppModel.sync` (`LibrarySync`, the `SyncController` while sync runs) gets every local change (`apply` with its
+- `AppModel.sync` (the `SyncController` while sync runs) gets every local change (`apply` with its
   old and new library; reading and saving name their articles, so J/K doesn't compare all of them) and stored page
   text; `applyRemote` applies the zone's changes without sending them back and
   tells the reader (`onRemoteChange`: articles read elsewhere stay in the list like those read here). A refresh
-  fetches first (`fetchBeforeRefresh`) and skips retention while a fetch is applied or a merge waits
+  fetches first (`SyncController.fetch`) and skips retention while a fetch is applied or a merge waits
   (`allowsRetention`).
 - `SyncController` (main actor) owns the `SyncState` and an engine behind `SyncEngining` (a fake in tests). It sends
   only the fields changed here over the zone's record (`recordToSend`: all fields for a record the zone doesn't
   have), forgets them once saved (except those changed while sending), applies fetched records (page texts into
-  files), merges on the first fetch and then uploads everything, resolves conflicts and deletions made elsewhere
-  (`sent`), and handles account changes, a deleted zone (turns sync off, `onTurnedOff`), an encrypted data reset
+  files), merges on the first fetch and then uploads what the zone doesn't have (what differs in the records it has
+  is queued by the merge), resolves conflicts and deletions made elsewhere (`sent`, applied in one change), and handles account changes, a deleted zone (turns sync off, `onTurnedOff`), an encrypted data reset
   (uploads everything) and a zone of a newer version (`needsUpdate`).
 
 - One custom zone; record names `<type>-<uuid>` (`SyncRecord.ID`), `settings` and `meta` single. Content fields go
-  into `encryptedValues` (`Kind.encryptedFields`); IDs, dates and the folder order stay plain.
+  into `encryptedValues` (`Kind.encryptedFields`); IDs, dates and the folder order stay plain. A tombstone's record
+  ID is a hash of its key (`StableID.article`), so lookups by ID go through `SyncRecord.tombstoneKeys`, made once
+  per batch (`SyncController` keeps it while the tombstones don't change).
+- `SyncStateStore` writes `sync.state`, zlib-compressed JSON: the system fields of a record take about 2.4 KB
+  (NSKeyedArchiver), which compress to a tenth (3.3 MB → 0.2 MB for 1000 records), and the state is written again
+  after every send (debounced).
 - Synced: feeds (not their download state), folders (name, position), articles (content, read and save dates, page
   summary), page texts, stories, topics, tombstones (only the first `lastSeen`), names of removed feeds and the
   summary settings (`Library.summarySettings`, written by the Mac from Settings → AI, the summary language resolved).
@@ -745,7 +754,8 @@ on the iPhone organized on the Mac and back. Missing: deploying the schema to Pr
 - `SyncMerge`: an article's content is written once (the first write wins), reading, saving, feeds and folders by the
   last write, stories, topics and the settings only by the Mac. A deletion by the other device keeps an unread or
   saved article, a story or topic with an unread article and the settings, and creates them again. Merging libraries
-  (`Mode.merge`): read or saved on either side wins (the earlier date), folders of the same name become the zone's.
+  (`Mode.merge`): read or saved on either side wins (the earlier date) and the newer page summary (`Article.merge`,
+  also used by `StableIDMigration`), folders of the same name become the zone's.
   A conflict when saving takes the zone's record with the fields changed here (not an article's content).
 - Compatibility of versions: fields are only added, unknown fields are kept (`SyncRecord.taking`), unknown record
   types are ignored (`SyncRecord.ID(name:)` is `nil`), and a zone needing a newer `SyncSchema.version` stops syncing.
@@ -795,7 +805,7 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   its key) gets one. Folders, stories and topics keep random IDs. `StableIDMigration` (pure, in decoding a file
   before version 3) rewrites the IDs and every reference: articles, stories and their summaries, tombstones,
   `pageTextIDs`; feeds of `removedFeeds` keep theirs (no address left). Two feeds with the same address become one
-  (articles with the same key: read or saved when either was, at the earlier date). `LibraryStore.load()` renames
+  (articles with the same key: `Article.merge`). `LibraryStore.load()` renames
   the page text files and writes the library at once.
 - `LibraryStore` is an actor: `save(_:)` debounces (2 s from the first change, the latest library wins), writes are
   atomic, `flush()` writes a pending change at once (at quit). A file that can't be read – damaged, or saved by a

@@ -73,22 +73,41 @@ enum SyncMerge {
     /// creates again (`recreates`).
     @discardableResult
     static func delete(_ id: SyncRecord.ID, from library: inout Library) -> SyncChanges {
-        if recreates(id, in: library) {
-            return SyncChanges(saves: [id: allFields(of: id.kind)])
+        delete([id], from: &library)
+    }
+
+    /// Applies deletions by the other device (`delete(_:from:)`).
+    @discardableResult
+    static func delete(_ ids: some Collection<SyncRecord.ID>, from library: inout Library) -> SyncChanges {
+        var changes = SyncChanges()
+        var tombstones: [UUID] = []
+        for id in ids {
+            if recreates(id, in: library) {
+                changes.save(id, fields: id.kind.allFields)
+                continue
+            }
+            guard let uuid = id.uuid else { continue }
+            switch id.kind {
+            case .feed: library.removeFeed(uuid)
+            case .folder: library.removeFolder(uuid)
+            case .article: library.removeArticles([uuid])
+            case .pageText: library.pageTextIDs.remove(uuid)
+            case .story: library.stories[uuid] = nil
+            case .topic: library.topics[uuid] = nil
+            case .tombstone: tombstones.append(uuid)
+            case .removedFeed: library.removedFeeds[uuid] = nil
+            case .settings, .meta: break
+            }
         }
-        guard let uuid = id.uuid else { return SyncChanges() }
-        switch id.kind {
-        case .feed: library.removeFeed(uuid)
-        case .folder: library.removeFolder(uuid)
-        case .article: library.removeArticles([uuid])
-        case .pageText: library.pageTextIDs.remove(uuid)
-        case .story: library.stories[uuid] = nil
-        case .topic: library.topics[uuid] = nil
-        case .tombstone: library.tombstones = library.tombstones.filter { SyncRecord.ID.tombstone($0.key) != id }
-        case .removedFeed: library.removedFeeds[uuid] = nil
-        case .settings, .meta: break
+        if !tombstones.isEmpty {
+            let keys = SyncRecord.tombstoneKeys(in: library)
+            for uuid in tombstones {
+                if let key = keys[uuid] {
+                    library.tombstones[key] = nil
+                }
+            }
         }
-        return SyncChanges()
+        return changes
     }
 
     /// Whether a record the other device deleted stays and is created again: an unread or saved article, a story or
@@ -115,35 +134,22 @@ enum SyncMerge {
     /// except an article's content (the first write wins) and a tombstone (its first sighting stays). The result is
     /// saved again and applied here too.
     static func resolve(server: SyncRecord, local: SyncRecord, changed: Set<String>) -> SyncRecord {
-        let kept: Set<String> =
-            switch server.id.kind {
-            case .article: SyncRecord.articleContentFields
-            case .tombstone: SyncRecord.tombstoneFields
-            default: []
-            }
-        return server.taking(changed.subtracting(kept), from: local)
+        server.taking(changed.subtracting(keptOnConflict(server.id.kind)), from: local)
     }
 
-    /// The fields of a record type, for a record sent as a whole.
-    static func allFields(of kind: SyncRecord.Kind) -> Set<String> {
+    /// The fields in which the zone's record wins a conflict whatever was changed here.
+    static func keptOnConflict(_ kind: SyncRecord.Kind) -> Set<String> {
         switch kind {
-        case .feed: SyncRecord.feedFields
-        case .folder: SyncRecord.folderFields
-        case .article: SyncRecord.articleFields
-        case .pageText: [SyncRecord.Field.text]
-        case .story: SyncRecord.storyFields
-        case .topic: SyncRecord.topicFields
+        case .article: SyncRecord.articleContentFields
         case .tombstone: SyncRecord.tombstoneFields
-        case .removedFeed: [SyncRecord.Field.title]
-        case .settings: SyncRecord.settingsFields
-        case .meta: [SyncRecord.Field.minimumVersion]
+        default: []
         }
     }
 
     /// Every record of the library, for a first upload (after merging, or after the zone was reset).
     static func everything(in library: Library) -> SyncChanges {
         var changes = SyncChanges.diff(old: Library(), new: library)
-        changes.saves[.meta] = allFields(of: .meta)
+        changes.saves[.meta] = SyncRecord.Kind.meta.allFields
         return changes
     }
 
@@ -162,8 +168,7 @@ enum SyncMerge {
         library.folders.removeAll { $0.id == uuid }
         library.folders.insert(folder, at: min(max(position, 0), library.folders.count))
         var changes = SyncChanges()
-        let name = folder.name.lowercased()
-        for twin in library.folders where twin.id != uuid && twin.name.lowercased() == name {
+        for twin in library.folders where twin.id != uuid && twin.isNamed(folder.name) {
             let moved = library.feeds.filter { $0.folderID == twin.id }.map(\.id)
             library.moveFeeds(moved, to: uuid)
             for id in moved {
@@ -185,9 +190,7 @@ enum SyncMerge {
         guard var article = effective.article() else { return SyncChanges() }
         var changes = SyncChanges()
         if mode == .merge, let local {
-            article.readAt = earlier(article.readAt, local.readAt)
-            article.savedAt = earlier(article.savedAt, local.savedAt)
-            article.pageSummary = newer(article.pageSummary, local.pageSummary)
+            article.merge(local)
             let sent = SyncRecord(article: article)
             let differing = SyncRecord.articleStateFields.union([SyncRecord.Field.pageSummary])
                 .filter { sent[$0] != record[$0] }
@@ -197,15 +200,5 @@ enum SyncMerge {
         }
         library.articles[uuid] = article
         return changes
-    }
-
-    private static func earlier(_ lhs: Date?, _ rhs: Date?) -> Date? {
-        guard let lhs, let rhs else { return lhs ?? rhs }
-        return min(lhs, rhs)
-    }
-
-    private static func newer(_ lhs: PageSummary?, _ rhs: PageSummary?) -> PageSummary? {
-        guard let lhs, let rhs else { return lhs ?? rhs }
-        return rhs.date > lhs.date ? rhs : lhs
     }
 }

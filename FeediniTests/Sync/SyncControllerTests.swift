@@ -55,7 +55,8 @@ struct SyncControllerTests {
 
         #expect(controller.allowsRetention)
         #expect(!controller.state.needsMerge)
-        #expect(Set(engine.pending.saves.keys) == [.feed(feed.id), .article(article.id), .meta])
+        // The zone has the article as the merge left it: only what it doesn't have goes up.
+        #expect(Set(engine.pending.saves.keys) == [.feed(feed.id), .meta])
         #expect(controller.status == .synced(referenceDate))
     }
 
@@ -177,7 +178,7 @@ struct SyncControllerTests {
         engine.fails = true
         await controller.send()
         #expect(controller.status == .failed("The network is down."))
-        await controller.fetchBeforeRefresh()
+        await controller.fetch()
         #expect(engine.fetches == 2)
     }
 
@@ -225,9 +226,6 @@ struct SyncControllerTests {
         #expect(controller.status == .unavailable(SyncController.signedOutMessage))
         #expect(!controller.isRunning)
         #expect(!FileManager.default.fileExists(atPath: stateURL.path))
-
-        await controller.accountChanged(.signIn)
-        #expect(controller.isRunning)
     }
 
     @Test func aDeletedZoneTurnsSyncOffAndAResetUploadsEverything() async {
@@ -235,10 +233,10 @@ struct SyncControllerTests {
         await controller.zoneDeleted(encryptedDataReset: true)
         #expect(engine.pending.saves.keys.contains(.article(article.id)))
 
-        var reason: String?
-        controller.onTurnedOff = { reason = $0 }
+        var turnedOff = false
+        controller.onTurnedOff = { turnedOff = true }
         await controller.zoneDeleted(encryptedDataReset: false)
-        #expect(reason == SyncController.deletedMessage)
+        #expect(turnedOff)
         #expect(!controller.isRunning)
         #expect(controller.status == .failed(SyncController.deletedMessage))
     }

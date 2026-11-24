@@ -296,7 +296,6 @@ private struct SyncSection: View {
                 Task {
                     do {
                         try await controller.deleteICloudData()
-                        sync.isOn = false
                         deletionError = nil
                     } catch {
                         deletionError = error.localizedDescription

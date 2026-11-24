@@ -122,7 +122,7 @@ struct SyncRecordTests {
         #expect(SyncRecord.Kind.folder.encryptedFields == [F.name])
         #expect(SyncRecord.Kind.meta.encryptedFields.isEmpty)
         for kind in SyncRecord.Kind.allCases {
-            #expect(kind.encryptedFields.isSubset(of: SyncMerge.allFields(of: kind)))
+            #expect(kind.encryptedFields.isSubset(of: kind.allFields))
         }
     }
 

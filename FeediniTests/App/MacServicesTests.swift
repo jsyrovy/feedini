@@ -91,19 +91,19 @@ struct MacServicesTests {
         let directory = FileManager.default.temporaryDirectory.appending(path: "feedini-sync-\(UUID().uuidString)")
         let services = MacServices(
             preferences: .test(), store: .temporary(),
-            syncStateStore: SyncStateStore(fileURL: directory.appending(path: "sync.json")),
-            syncProblem: { SyncAvailability.notInThisBuild })
+            syncStateStore: SyncStateStore(fileURL: directory.appending(path: "sync.state")),
+            syncProblem: { SyncController.notInThisBuild })
         await services.start()
         #expect(services.sync.status == .off)
         #expect(!services.preferences.syncsWithICloud)
 
         services.preferences.syncsWithICloud = true
-        await services.syncSettingTask?.value
-        #expect(services.sync.status == .unavailable(SyncAvailability.notInThisBuild))
+        await services.syncSwitch.task?.value
+        #expect(services.sync.status == .unavailable(SyncController.notInThisBuild))
         #expect(!services.sync.isRunning)
 
         services.preferences.syncsWithICloud = false
-        await services.syncSettingTask?.value
+        await services.syncSwitch.task?.value
         #expect(services.sync.status == .off)
     }
 }

@@ -178,8 +178,11 @@ extension SyncRecord {
     // MARK: From the library
 
     /// The record of the library's part with the ID as it is now; `nil` when the library doesn't have it (anymore).
-    /// A page text record needs its text, which is in a file: `pageText`.
-    static func make(_ id: ID, from library: Library, pageText: String? = nil) -> SyncRecord? {
+    /// A page text record needs its text, which is in a file: `pageText`. A tombstone is found through
+    /// `tombstoneKeys` (made here when not given).
+    static func make(
+        _ id: ID, from library: Library, pageText: String? = nil, tombstoneKeys: [UUID: Tombstone.Key]? = nil
+    ) -> SyncRecord? {
         guard let uuid = id.uuid else {
             switch id.kind {
             case .settings: return library.summarySettings.map(SyncRecord.init(settings:))
@@ -203,11 +206,20 @@ extension SyncRecord {
         case .topic:
             return library.topics[uuid].map(SyncRecord.init(topic:))
         case .tombstone:
-            return library.tombstones.values.first { ID.tombstone($0.id) == id }.map(SyncRecord.init(tombstone:))
+            let key = (tombstoneKeys ?? Self.tombstoneKeys(in: library))[uuid]
+            return key.flatMap { library.tombstones[$0] }.map(SyncRecord.init(tombstone:))
         case .removedFeed:
             return library.removedFeeds[uuid].map { SyncRecord(removedFeed: uuid, title: $0) }
         case .settings, .meta:
             return nil
         }
+    }
+
+    /// The library's tombstones by the UUID of their record. That UUID is a hash of the key, so finding a tombstone by
+    /// it hashes every tombstone: made once for many lookups.
+    static func tombstoneKeys(in library: Library) -> [UUID: Tombstone.Key] {
+        Dictionary(
+            library.tombstones.keys.compactMap { key in ID.tombstone(key).uuid.map { ($0, key) } },
+            uniquingKeysWith: { first, _ in first })
     }
 }
