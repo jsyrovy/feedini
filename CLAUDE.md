@@ -63,6 +63,10 @@ Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a rel
   development (`release.sh` sets production). The iOS app has the background mode `remote-notification`.
 - Version: `MARKETING_VERSION` (`major.minor`) of the app targets, the same in Debug and Release and in both apps;
   the test target has none. `CURRENT_PROJECT_VERSION` stays 1; a release sets the build number.
+- Commit: `make` passes `FEEDINI_COMMIT` (the short hash, `-dirty` with uncommitted changes; `release.sh` its own
+  from the clean tree); `Config/Info.plist`, merged into the generated Info.plist of both apps, puts it under
+  `FeediniCommit`. `RuntimeEnvironment.versionDescription` ("0.4 (4ceb8b3)") shows it in iOS Settings → Version and
+  the `store` log at start, the Mac's About panel instead of the build number. A build from Xcode has none.
 - The app icon (`Shared/AppIcon.icon`, Icon Composer format, both apps; for iOS 18 Xcode adds bitmaps) is a pixel-art top hat (32 × 32 grid) with the RSS
   symbol cut out of its crown: a black hat on cream in the light appearance, a cream hat on charcoal in the dark one
   (`fill-specializations`, `image-name-specializations`). Layers: outline, brim, band, crown, without glass (it
@@ -77,8 +81,8 @@ Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a rel
 Shared/       compiled into both apps
   App/        AppModel (library on the main actor, saving, refreshing, feeds, folders, saved links, source pages,
               the cached entries; PlatformServices: what the Mac adds), LibraryHost (what the page loader and the AI
-              queues change the library through), Preferences (the shared ones, UserDefaults), RuntimeEnvironment,
-              Log (os.Logger categories)
+              queues change the library through), Preferences (the shared ones, UserDefaults), RuntimeEnvironment
+              (tests, the version and commit), Log (os.Logger categories)
   Model/      Feed, Article, Story (+ Summary), Topic, Tombstone (Codable, Sendable), Library (all of them, read
               state, removing feeds), Folder (+ Library's folder operations, SidebarDrag: dragging feeds and
               folders), Saved (Library's saving of articles, names of removed feeds), SavedLink (pages saved by
@@ -167,7 +171,7 @@ FeediniTests/ Swift Testing tests of the shared code and the Mac app, in folders
               requests), TestLibraryHost + `ClaudeLocator.stub` + `MacServices.test()` (fake claude and pages) +
               `AppModel.test()` (the shared model alone, as on iOS), model
               stubs (`referenceDate`, `Article.stub`, …)
-Config/       entitlements of both apps
+Config/       entitlements of both apps, Info.plist (the commit, merged into the generated ones)
 scripts/      release.sh (`make release`) and publish.sh (`make publish`), see "Releasing"
 CHANGELOG.md  one section per released version
 ```

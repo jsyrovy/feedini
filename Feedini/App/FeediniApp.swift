@@ -28,6 +28,12 @@ struct FeediniApp: App {
                 .environment(appDelegate.reader)
         }
         .commands {
+            // "Version 0.4 (4ceb8b3)": the commit the app was built from instead of the build number, when known.
+            CommandGroup(replacing: .appInfo) {
+                Button("About Feedini") {
+                    NSApp.orderFrontStandardAboutPanel(options: RuntimeEnvironment.commit.map { [.version: $0] } ?? [:])
+                }
+            }
             CommandGroup(after: .newItem) {
                 SaveLinkButton(reader: appDelegate.reader)
             }

@@ -31,7 +31,7 @@ struct SettingsScreen: View {
                 }
                 SyncSection(sync: sync)
                 Section {
-                    LabeledContent("Version", value: Self.version)
+                    LabeledContent("Version", value: RuntimeEnvironment.versionDescription)
                 } footer: {
                     Text("Feedini for the Mac organizes articles into stories and summarizes them with AI.")
                 }
@@ -44,10 +44,6 @@ struct SettingsScreen: View {
                 }
             }
         }
-    }
-
-    private static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     }
 }
 

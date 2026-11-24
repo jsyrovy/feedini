@@ -139,6 +139,7 @@ final class AppModel: LibraryHost {
     /// Loads the library and starts refreshing.
     func start() async {
         guard !isLoaded else { return }
+        Log.store.info("Feedini \(RuntimeEnvironment.versionDescription, privacy: .public)")
         let result = await store.load()
         library = result.library
         loadProblem = result.problem

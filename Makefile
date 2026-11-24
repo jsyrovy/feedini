@@ -25,8 +25,12 @@ else
 SIGNING_FLAGS := -allowProvisioningUpdates
 endif
 
+# The commit the app is built from, with "-dirty" when the tree has changes (untracked files too: the synchronized
+# folders pick them up); the apps show it next to the version (Config/Info.plist, RuntimeEnvironment.commit).
+COMMIT        := $(shell git rev-parse --short HEAD 2>/dev/null)$(if $(shell git status --porcelain 2>/dev/null),-dirty)
+
 XCODEBUILD_ANY := xcodebuild -project $(PROJECT) -configuration $(CONFIG) -derivedDataPath $(DERIVED_DATA) -quiet \
-	$(SIGNING_FLAGS)
+	$(SIGNING_FLAGS) FEEDINI_COMMIT=$(COMMIT)
 XCODEBUILD    := $(XCODEBUILD_ANY) -scheme $(SCHEME) -destination 'platform=macOS,arch=$(ARCH)'
 
 .PHONY: build build-ios run-ios run-device test coverage run install uninstall release publish format lint clean

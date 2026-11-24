@@ -43,6 +43,7 @@ VERSION=$(plutil -extract 0.buildSettings.MARKETING_VERSION raw -o - - <<<"$sett
 [[ $VERSION =~ ^[0-9]+\.[0-9]+$ ]] || fail "MARKETING_VERSION '$VERSION' is not major.minor"
 TAG=v$VERSION
 BUILD=$(git rev-list --count HEAD)
+COMMIT=$(git rev-parse --short HEAD)
 ZIP=$OUT/Feedini-$VERSION.zip
 
 [[ $(git rev-parse -q --verify "refs/tags/$TAG^{commit}") == "$(git rev-parse HEAD)" ]] \
@@ -73,7 +74,7 @@ for file in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"/*.pro
 done
 $profile_ok || fail "no installed provisioning profile '$PROFILE_NAME' of the app with its iCloud container"
 
-step "Feedini $VERSION ($BUILD) from $TAG ($(git rev-parse --short HEAD))"
+step "Feedini $VERSION ($BUILD) from $TAG ($COMMIT)"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
@@ -84,7 +85,7 @@ xcodebuild -project Feedini.xcodeproj -scheme Feedini -configuration Release -de
     -derivedDataPath "$OUT/DerivedData" -archivePath "$ARCHIVE" -quiet archive \
     CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" \
     DEVELOPMENT_TEAM="$TEAM_ID" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" FEEDINI_APS_ENVIRONMENT=production \
-    OTHER_CODE_SIGN_FLAGS=--timestamp
+    OTHER_CODE_SIGN_FLAGS=--timestamp FEEDINI_COMMIT="$COMMIT"
 rm -rf "$OUT/DerivedData"
 ditto "$ARCHIVE/Products/Applications/Feedini.app" "$APP"
 
