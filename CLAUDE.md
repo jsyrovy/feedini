@@ -150,7 +150,7 @@ Feedini/      the Mac app
               (File menu), SaveLinkSheet (+ SaveLinkButton), MenuBarContent (+ MenuBarLabel)
 FeediniMobile/ the iOS app
   App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, refreshing only in the foreground,
-              the sample library in Debug), MobileSync (sync on by default, its setting)
+              every 5 minutes without a setting, the sample library in Debug), MobileSync (sync on by default, its setting)
   UI/         RootView (NavigationStack: Route, `-screen` in Debug), SidebarScreen, StoryListScreen (+ EntryRow,
               swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail with the page text
               and Reload Page, SafariView), SaveLinkSheet (PasteButton), SettingsScreen (+ FeedsScreen: adding,
@@ -231,7 +231,7 @@ Three columns: sidebar (All, Saved, topics by unread count, folders with their f
 list (newest first), detail.
 
 - A story shows only its visible articles: the unread ones and those read while the list is shown (until the sidebar
-  selection changes or a refresh ends). Read articles show neither in the list nor in the detail. Everything on the
+  selection changes or a requested refresh ends, see "Refresh"). Read articles show neither in the list nor in the detail. Everything on the
   card and in the detail comes from the visible articles: the title, the number of articles, the sources, the
   accent bar, expanding, the keys. A story with one visible article behaves like an article (V, P, T, S, no
   expanding). A story with several has an AI title, a summary and source labels; its articles are collapsed in the
@@ -243,7 +243,7 @@ list (newest first), detail.
   remembered across launches, not in backups). It reverses the whole list, Saved (by save date) too; the articles
   inside a story stay newest first. The cursor stays on its row.
 - A read item doesn't vanish from the current list (no jumping under the cursor); it goes away when the sidebar
-  selection changes or on refresh. So does a read article from its story card, except in the entry under the
+  selection changes or on a requested refresh (not a scheduled one). So does a read article from its story card, except in the entry under the
   cursor, where nothing changes.
 - A story is in a feed (or folder) only with a visible article of it; the unread counts count stories with unread
   articles, in the feeds and folders of those articles.
@@ -342,7 +342,8 @@ Implementation:
   read or not). The Mac's `Reader` owns one and adds the keys, the shown page and the sheets; a cursor move
   (`onCursorMove`) closes the shown page. Moving onto a
   row (`visit`) applies `ReadRules` and adds the articles it read to `keptArticles`, so they stay until the sidebar
-  selection changes or a refresh ends (then only the visible articles of the entry under the cursor stay). M keeps
+  selection changes or a requested refresh ends (`AppModel.onRefresh`; then only the visible articles of the entry
+  under the cursor stay). M keeps
   the articles it reads too, and so does showing the row of an undone step. Shift+A doesn't keep anything: the list
   empties.
 - `KeyboardNavigation.action` decides what a key does from the cursor, the rows, the expanded stories, the default
@@ -505,10 +506,15 @@ Implementation:
 
 ## Refresh
 
-- `RefreshScheduler` (main actor) refreshes at start and then `interval` after each refresh finished (Settings →
-  General: 5 / 15 / 30 / 60 min, default 15), so refreshes never overlap. `refreshNow()` cuts the wait short and is
-  ignored while a refresh runs; `setInterval(_:)` restarts the current wait with the new length. Tested with
-  `ManualSleeper`.
+- `RefreshScheduler` (main actor) refreshes at start and then `interval` after each refresh finished (Mac: Settings →
+  General, 5 / 15 / 30 / 60 min, default 15; iOS: a fixed 5 min, `FeediniMobileApp.refreshInterval`, no setting: it
+  refreshes only while open), so refreshes never overlap. `refreshNow()` cuts the wait short and is ignored while a
+  refresh runs; `setInterval(_:)` restarts the current wait with the new length. Tested with `ManualSleeper`.
+- Every refresh has a `RefreshScheduler.Trigger`: `requested` for `start()` and `refreshNow()` (launch, the iOS app
+  coming to the front, the Mac waking, R / Refresh / pull to refresh), `scheduled` after a wait. Only a requested
+  refresh runs `Retention.prune` and drops the articles read while the list is shown (`AppModel.onRefresh`); a
+  scheduled one only adds new articles, so the list doesn't change under the reader every few minutes. A refresh
+  asked for while a scheduled one runs makes that one requested (`AppModel.refreshNow`).
 - `RefreshCoordinator.refresh` (`@concurrent`) downloads all feeds (`FeedFetcher.fetchAll`) and parses them into
   `FeedRefresh` values (`updated` / `notModified` / `failed(message)`); `FeedMerge.merge` (pure) applies them to the
   library on the main actor and returns the new article IDs.
@@ -831,7 +837,7 @@ running app (`CFBundleShortVersionString`). Updates are only reported, never ins
   0.13 s (in the store actor, off the main actor), decoding 0.06 s; building all list entries 49 ms, filtering
   + rows + counts 2 ms, marking read + comparing the library 1 ms. Enough for "unread forever"; SQLite isn't needed.
   Reading only patches the cached entries (`StoryList.updateReadingState`), so J/K never rebuilds the list.
-- `Retention.prune` (pure): unread articles stay forever. Read articles go once their story (or the article alone,
+- `Retention.prune` (pure, run by requested refreshes only, see "Refresh"): unread articles stay forever. Read articles go once their story (or the article alone,
   without a story) has no article younger than `attachWindow` (72 h); each leaves a `Tombstone` (feed + key). A
   tombstone goes once it hasn't been seen in its feed for `tombstoneMargin` (3 days) before the feed's last
   successful download, so a feed that can't be downloaded keeps them. Topics without stories go too.

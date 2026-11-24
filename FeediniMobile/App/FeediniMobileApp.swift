@@ -1,15 +1,19 @@
 import SwiftUI
 
-/// The iOS app: a plain reader of the shared model, without AI. Feeds are refreshed while it is in the foreground.
+/// The iOS app: a plain reader of the shared model, without AI. Feeds are refreshed while it is in the foreground:
+/// when it comes to the front, then every `refreshInterval`, and on pull to refresh.
 @main
 struct FeediniMobileApp: App {
+    /// Fixed (no setting): the app refreshes only while open, which is rarely longer than a few minutes.
+    static let refreshInterval = Duration.seconds(5 * 60)
+
     @State private var model: AppModel
     @State private var session: ReadingSession
     @State private var sync: MobileSync
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        let model = AppModel(store: Self.store)
+        let model = AppModel(store: Self.store, refreshInterval: Self.refreshInterval)
         _model = State(initialValue: model)
         _session = State(initialValue: ReadingSession(model: model))
         _sync = State(initialValue: MobileSync(model: model))

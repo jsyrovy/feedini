@@ -254,6 +254,51 @@ struct AppModelTests {
         await model.stopRefreshing()
     }
 
+    @Test func onlyARequestedRefreshForgetsReadArticlesAndDropsThemFromTheList() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = StubURLProtocol.uniqueURL()
+        StubURLProtocol.stub(url, try .feed("rss2.xml"))
+        let feed = Feed(title: "Tech", url: url)
+        // Read and older than the attach window: retention forgets it.
+        let old = Article.stub(feed: feed.id, hours: -100, read: true)
+        model.update { $0 = Library(feeds: [feed], articles: [old]) }
+        var listsDropped = 0
+        model.onRefresh = { listsDropped += 1 }
+
+        await model.refresh(.scheduled)
+
+        #expect(model.lastRefresh == referenceDate)
+        #expect(model.library.articles.count > 1)
+        #expect(model.library.articles[old.id] != nil)
+        #expect(listsDropped == 0)
+
+        await model.refresh(.requested)
+
+        #expect(model.library.articles[old.id] == nil)
+        #expect(listsDropped == 1)
+    }
+
+    @Test func aRefreshAskedForWhileAScheduledOneRunsCountsAsRequested() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = StubURLProtocol.uniqueURL()
+        StubURLProtocol.stub(url, try .feed("rss2.xml"), delay: .milliseconds(200))
+        let feed = Feed(title: "Tech", url: url)
+        let old = Article.stub(feed: feed.id, hours: -100, read: true)
+        model.update { $0 = Library(feeds: [feed], articles: [old]) }
+        var listsDropped = 0
+        model.onRefresh = { listsDropped += 1 }
+
+        let refresh = Task { await model.refresh(.scheduled) }
+        while !model.isRefreshing {
+            await Task.yield()
+        }
+        model.refreshNow()
+        await refresh.value
+
+        #expect(model.library.articles[old.id] == nil)
+        #expect(listsDropped == 1)
+    }
+
     @Test func aCancelledRefreshChangesNothing() async throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = StubURLProtocol.uniqueURL()

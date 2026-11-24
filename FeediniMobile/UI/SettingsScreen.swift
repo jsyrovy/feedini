@@ -24,15 +24,10 @@ struct SettingsScreen: View {
                         Text("Browser").tag(Preferences.PageOpening.browser)
                     }
                     ListOrderPicker(preferences: preferences)
-                    Picker("Refresh Every", selection: $preferences.refreshMinutes) {
-                        ForEach(Preferences.refreshMinutesChoices, id: \.self) { minutes in
-                            Text(minutes == 60 ? "1 hour" : "\(minutes) minutes").tag(minutes)
-                        }
-                    }
                 } header: {
                     Text("Reading")
                 } footer: {
-                    Text("Feeds are refreshed while Feedini is open.")
+                    Text("Feeds are refreshed when Feedini opens, then every 5 minutes. Pull down to refresh.")
                 }
                 SyncSection(sync: sync)
                 Section {

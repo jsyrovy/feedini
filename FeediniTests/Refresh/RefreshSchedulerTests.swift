@@ -9,12 +9,13 @@ struct RefreshSchedulerTests {
 
     @MainActor
     final class Counter {
-        var refreshes = 0
+        var triggers: [RefreshScheduler.Trigger] = []
+        var refreshes: Int { triggers.count }
     }
 
     private func scheduler(_ minutes: Int = 15) -> RefreshScheduler {
-        RefreshScheduler(interval: .seconds(minutes * 60), sleep: sleeper.sleep(for:)) { [counter] in
-            counter.refreshes += 1
+        RefreshScheduler(interval: .seconds(minutes * 60), sleep: sleeper.sleep(for:)) { [counter] trigger in
+            counter.triggers.append(trigger)
         }
     }
 
@@ -32,7 +33,7 @@ struct RefreshSchedulerTests {
         scheduler.start()
         await scheduler.stop()
 
-        #expect(counter.refreshes == 2)
+        #expect(counter.triggers == [.requested, .scheduled])
     }
 
     @Test func refreshNowCutsTheWaitShort() async {
@@ -45,14 +46,14 @@ struct RefreshSchedulerTests {
         #expect(await sleeps.next() == .seconds(900))
         await scheduler.stop()
 
-        #expect(counter.refreshes == 2)
+        #expect(counter.triggers == [.requested, .requested])
     }
 
     @Test func refreshNowDoesNothingWhileARefreshRunsOrWhenStopped() async {
         let gate = OneShotSignal()
         let entered = OneShotSignal()
-        let scheduler = RefreshScheduler(interval: .seconds(60), sleep: sleeper.sleep(for:)) { [counter] in
-            counter.refreshes += 1
+        let scheduler = RefreshScheduler(interval: .seconds(60), sleep: sleeper.sleep(for:)) { [counter] trigger in
+            counter.triggers.append(trigger)
             entered.fire()
             await gate.wait()
         }
@@ -84,7 +85,7 @@ struct RefreshSchedulerTests {
         #expect(await sleeps.next() == .seconds(300))
         await scheduler.stop()
 
-        #expect(counter.refreshes == 2)
+        #expect(counter.triggers == [.requested, .scheduled])
         #expect(scheduler.interval == .seconds(300))
     }
 

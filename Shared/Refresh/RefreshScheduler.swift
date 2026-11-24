@@ -5,8 +5,14 @@
 /// off the main actor.
 @MainActor
 final class RefreshScheduler {
+    /// What started a refresh: `start()` and `refreshNow()` (launch, the app coming to the front, R, pull to refresh)
+    /// or the end of a wait.
+    enum Trigger: Sendable {
+        case requested, scheduled
+    }
+
     private(set) var interval: Duration
-    private let refresh: @MainActor () async -> Void
+    private let refresh: @MainActor (Trigger) async -> Void
     private let sleep: @Sendable (Duration) async throws -> Void
     /// The latest loop; once cancelled, it may still be finishing its refresh.
     private var loop: Task<Void, Never>?
@@ -16,7 +22,7 @@ final class RefreshScheduler {
     init(
         interval: Duration,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-        refresh: @escaping @MainActor () async -> Void
+        refresh: @escaping @MainActor (Trigger) async -> Void
     ) {
         self.interval = interval
         self.sleep = sleep
@@ -25,14 +31,14 @@ final class RefreshScheduler {
 
     /// Starts with a refresh right away. Does nothing if already running.
     func start() {
-        run(refreshingFirst: true)
+        run(first: .requested)
     }
 
     /// Refreshes right away if waiting between refreshes.
     func refreshNow() {
         guard isSleeping, loop?.isCancelled == false else { return }
         loop?.cancel()
-        run(refreshingFirst: true)
+        run(first: .requested)
     }
 
     /// A new interval applies to the current wait at once: it starts again with the new length.
@@ -41,7 +47,7 @@ final class RefreshScheduler {
         self.interval = interval
         guard isSleeping, loop?.isCancelled == false else { return }
         loop?.cancel()
-        run(refreshingFirst: false)
+        run(first: nil)
     }
 
     /// Stops and waits for the loop to end.
@@ -50,18 +56,19 @@ final class RefreshScheduler {
         await loop?.value
     }
 
-    private func run(refreshingFirst: Bool) {
+    /// Runs the loop, starting with a refresh of the given trigger (`nil`: with a wait).
+    private func run(first: Trigger?) {
         guard loop?.isCancelled != false else { return }
         loop = Task { [weak self, previous = loop] in
             // A cancelled loop may still be ending; two loops never run at once.
             await previous?.value
-            var refreshes = refreshingFirst
+            var trigger = first
             while !Task.isCancelled {
                 guard let self else { return }
-                if refreshes {
-                    await self.refresh()
+                if let trigger {
+                    await self.refresh(trigger)
                 }
-                refreshes = true
+                trigger = .scheduled
                 guard !Task.isCancelled else { return }
                 self.isSleeping = true
                 try? await self.sleep(self.interval)

@@ -41,7 +41,8 @@ final class AppModel: LibraryHost {
     /// Why the saved library couldn't be used, if it couldn't.
     private(set) var loadProblem: String?
 
-    /// Called after every refresh (the reader drops read entries from the list then).
+    /// Called after a requested refresh (`RefreshScheduler.Trigger`): the reader drops read entries from the list then.
+    /// A scheduled one leaves the list as it is, only adding new articles.
     @ObservationIgnored var onRefresh: (@MainActor () -> Void)?
     /// Called after every change of the library (the reader follows articles into their new stories).
     @ObservationIgnored var onLibraryChange: (@MainActor () -> Void)?
@@ -58,6 +59,11 @@ final class AppModel: LibraryHost {
     /// Loads source pages (P, Save Link); on the Mac also for their summaries.
     @ObservationIgnored private(set) var pageLoader: PageLoader!
     @ObservationIgnored private var scheduler: RefreshScheduler?
+    /// A fixed time between refreshes (the iOS app); `nil`: `Preferences.refreshMinutes`.
+    @ObservationIgnored private let refreshInterval: Duration?
+    /// Whether the running refresh was requested, or asked for while it ran (`refreshNow`): only then are read
+    /// articles forgotten (`Retention`) and dropped from the list.
+    @ObservationIgnored private var refreshRequested = false
     @ObservationIgnored private var entriesCache: EntriesCache?
     /// Waiting for the end of the next refresh (`refreshNowAndWait`).
     @ObservationIgnored private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
@@ -67,9 +73,11 @@ final class AppModel: LibraryHost {
     init(
         preferences: Preferences = Preferences(), store: LibraryStore = LibraryStore(),
         coordinator: RefreshCoordinator = RefreshCoordinator(), subscriber: FeedSubscriber = FeedSubscriber(),
-        pageExtractor: (any PageExtracting)? = nil, now: @escaping @Sendable () -> Date = { .now }
+        pageExtractor: (any PageExtracting)? = nil, refreshInterval: Duration? = nil,
+        now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.preferences = preferences
+        self.refreshInterval = refreshInterval
         self.now = now
         self.store = store
         self.coordinator = coordinator
@@ -135,12 +143,15 @@ final class AppModel: LibraryHost {
         library = result.library
         loadProblem = result.problem
         isLoaded = true
-        let scheduler = RefreshScheduler(interval: .seconds(preferences.refreshMinutes * 60)) { [weak self] in
-            await self?.refresh()
+        let scheduler = RefreshScheduler(interval: refreshInterval ?? .seconds(preferences.refreshMinutes * 60)) {
+            [weak self] trigger in
+            await self?.refresh(trigger)
         }
-        preferences.onChange = { [weak self, weak scheduler] in
-            guard let self else { return }
-            scheduler?.setInterval(.seconds(self.preferences.refreshMinutes * 60))
+        if refreshInterval == nil {
+            preferences.onChange = { [weak self, weak scheduler] in
+                guard let self else { return }
+                scheduler?.setInterval(.seconds(self.preferences.refreshMinutes * 60))
+            }
         }
         scheduler.start()
         self.scheduler = scheduler
@@ -153,7 +164,11 @@ final class AppModel: LibraryHost {
         services?.organize(retryingFailed: retryingFailed)
     }
 
+    /// Refreshes now; a refresh that runs already counts as requested.
     func refreshNow() {
+        if isRefreshing {
+            refreshRequested = true
+        }
         scheduler?.refreshNow()
     }
 
@@ -162,7 +177,7 @@ final class AppModel: LibraryHost {
         guard scheduler != nil, !library.feeds.isEmpty else { return }
         await withCheckedContinuation { continuation in
             refreshWaiters.append(continuation)
-            scheduler?.refreshNow()
+            refreshNow()
         }
     }
 
@@ -172,8 +187,11 @@ final class AppModel: LibraryHost {
         await store.flush()
     }
 
-    private func refresh() async {
+    /// One refresh of the loop: fetches the sync zone, downloads the feeds, merges them.
+    func refresh(_ trigger: RefreshScheduler.Trigger) async {
+        refreshRequested = trigger == .requested
         defer {
+            refreshRequested = false
             let waiters = refreshWaiters
             refreshWaiters = []
             for waiter in waiters {
@@ -187,11 +205,14 @@ final class AppModel: LibraryHost {
         isRefreshing = false
         guard !Task.isCancelled else { return }
         lastRefresh = now()
-        onRefresh?()
+        if refreshRequested {
+            onRefresh?()
+        }
         services?.refreshEnded()
     }
 
-    /// Downloads the feeds and merges them into the library as it is by then.
+    /// Downloads the feeds and merges them into the library as it is by then; a requested refresh also forgets read
+    /// articles (`Retention`). A scheduled one keeps them, so that the list keeps the articles read while it is shown.
     func refresh(_ feeds: [Feed]) async {
         let refreshes = await coordinator.refresh(feeds)
         // A refresh cut short (the iOS app went to the background) changes nothing: its downloads failed for that
@@ -202,7 +223,7 @@ final class AppModel: LibraryHost {
         }
         update { library in
             let added = FeedMerge.merge(refreshes, into: &library, now: now())
-            if sync?.allowsRetention ?? true {
+            if refreshRequested, sync?.allowsRetention ?? true {
                 Retention.prune(&library, now: now())
             }
             Log.refresh.info("\(added.count) new articles")
