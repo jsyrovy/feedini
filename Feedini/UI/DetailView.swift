@@ -46,6 +46,9 @@ struct StoryDetail: View {
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             UnreadDot(isUnread: !article.isRead)
+                            if article.isSaved {
+                                SavedMark().font(.caption)
+                            }
                             if let source = model.library.sourceTitle(of: article) {
                                 SourceLabel(title: source).font(.caption)
                             }
@@ -86,11 +89,12 @@ struct ArticleDetail: View {
                     SavedLinkLabel(article: article)
                         .foregroundStyle(.secondary)
                 }
-                if let link = article.link {
-                    HStack {
+                HStack {
+                    if let link = article.link {
                         OpenButtons(url: link)
                         PageButtons(article: article)
                     }
+                    SaveButton(article: article)
                 }
                 // The page summary replaces the AI gist of the feed text: it is more complete.
                 if PageSummaryView.isShown(for: article, status: model.pageStatus) {
@@ -174,6 +178,28 @@ struct PageButtons: View {
             .disabled(!mac.canSummarizePage(article.id))
     }
 
+}
+
+/// "Save" (S): shows whether the article is saved – the list may be scrolled elsewhere – and saves it or removes it
+/// from Saved, as S does on its row (the detail shows the row under the cursor).
+struct SaveButton: View {
+    @Environment(Reader.self) private var reader
+    let article: Article
+
+    var body: some View {
+        Toggle(
+            article.isSaved ? "Saved" : "Save", systemImage: article.isSaved ? "bookmark.fill" : "bookmark",
+            isOn: Binding(
+                get: { article.isSaved },
+                set: { _ in
+                    if let cursor = reader.cursor {
+                        reader.toggleSaved(cursor)
+                    }
+                })
+        )
+        .toggleStyle(.button)
+        .help(article.isSaved ? "S: remove from Saved" : "S: save for later")
+    }
 }
 
 /// The text of a saved link's page: it has no feed text. Its page loading (again) or why that failed shows above it,

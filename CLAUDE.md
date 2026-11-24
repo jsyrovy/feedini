@@ -141,7 +141,7 @@ Feedini/      the Mac app
               rewrite summaries, add made-up articles to a "Debug" feed)
   UI/         MainWindow (NavigationSplitView), Sidebar (+ folders, dragging), StoryListView (keys, status bar),
               StoryRow / ArticleRow,
-              DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons, SourcePage), SummaryView (+
+              DetailView (StoryDetail, ArticleDetail + PagePreview + PageButtons + SaveButton, SourcePage), SummaryView (+
               PageSummaryView), WebPageView (WKWebView), Reader (the main window on top of its
               ReadingSession: keys, the shown page or page text, the sheets, focus), UndoCommands (Edit →
               Undo / Redo), KeyboardNavigation (pure: what a key does),
@@ -250,7 +250,8 @@ list (newest first), detail.
 - S saves the article under the cursor for later, S again removes it from Saved. Only articles are saved: an
   article row, a story with one article or a loose article; on the row of a story with several articles S does
   nothing (like P, T and Shift+V). Saved articles have a bookmark in every list, and so does the row of a story with
-  a saved article.
+  a saved article. The detail of an article has a Save / Saved toggle doing what S does (`SaveButton`, also without a
+  link), and a story's detail marks its saved articles.
 - Saved (in the sidebar under All, with the number of saved articles, not in the menu bar count) shows every saved
   article, read or not, most recently saved first: saving happens on items that moving onto them already read. A
   saved article is shown on its own, as itself: its title, the feed text, the TL;DR of its page – never the title or

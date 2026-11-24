@@ -83,7 +83,8 @@ struct StoryRow: View {
     private func meta(sources: [String]) -> String {
         let age = RelativeTime.short(entry.date, now: .now)
         guard entry.isMultiArticle else {
-            return [sources.first, age].compactMap { $0 }.joined(separator: " · ")
+            // The age first: a long feed name is cut, never the age.
+            return [age, sources.first].compactMap { $0 }.joined(separator: " · ")
         }
         var parts: [String] = []
         if sources.count > 1 {
@@ -111,10 +112,11 @@ struct ArticleRow: View {
                         SavedMark()
                     }
                     PageSummaryMark(article: article.id)
+                    // The age first, as in `StoryRow`: a long feed name is cut, never the age.
+                    Text(RelativeTime.short(article.date, now: .now))
                     if let source = model.library.sourceTitle(of: article) {
                         SourceLabel(title: source)
                     }
-                    Text(RelativeTime.short(article.date, now: .now))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
