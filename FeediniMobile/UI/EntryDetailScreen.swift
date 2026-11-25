@@ -101,11 +101,13 @@ private struct StoryDetail: View {
                             Text(article.title)
                                 .font(.body.weight(article.isRead ? .regular : .semibold))
                             Text(
-                                [model.library.sourceTitle(of: article), RelativeTime.short(article.date, now: .now)]
+                                // The age first: a long feed name is cut, never the age.
+                                [RelativeTime.short(article.date, now: .now), model.library.sourceTitle(of: article)]
                                     .compactMap { $0 }.joined(separator: " · ")
                             )
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         }
                     }
                 }

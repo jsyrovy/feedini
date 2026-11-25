@@ -86,11 +86,12 @@ struct StoryRow: View {
             // The age first: a long feed name is cut, never the age.
             return [age, sources.first].compactMap { $0 }.joined(separator: " · ")
         }
-        var parts: [String] = []
+        // The age first here too, so it is always in the same place.
+        var parts = [age]
         if sources.count > 1 {
             parts.append("\(sources.count) sources")
         }
-        parts += ["\(entry.articles.count) articles", age]
+        parts.append("\(entry.articles.count) articles")
         return parts.joined(separator: " · ")
     }
 }

@@ -250,6 +250,8 @@ list (newest first), detail.
 - Moving onto an item (click, arrows, J/K) marks it read. A collapsed story is marked read as a whole (the summary
   covered all its visible articles); in an expanded story articles are marked one by one, and the story is read when
   all its articles are. M toggles read / unread (on a collapsed story: all its visible articles).
+- Rows show the age first, then the number of articles and the sources (both apps), so a long feed name is cut,
+  never the age.
 - The list is newest first; View → Sort or the toolbar's sort menu turns it to oldest first (`Preferences.listOrder`,
   remembered across launches, not in backups). It reverses the whole list, Saved (by save date) too; the articles
   inside a story stay newest first. The cursor stays on its row.

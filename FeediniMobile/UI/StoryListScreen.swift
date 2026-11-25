@@ -168,6 +168,7 @@ struct EntryRow: View {
         let count = entry.articles.count > 1 ? "\(entry.articles.count) articles" : nil
         let source = sources.count > 2 ? "\(sources[0]) +\(sources.count - 1)" : sources.joined(separator: ", ")
         let age = RelativeTime.short(entry.date, now: .now)
-        return [count, source, age].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        // The age first, as on the Mac: a long feed name is cut, never the age.
+        return [age, count, source].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
