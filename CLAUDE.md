@@ -317,7 +317,8 @@ list (newest first), detail.
   its story), read it like opening it, and replace the detail in place, so Back returns to the list at once. iOS
   opens rows with `ReadingSession.open`, not `visit`: nothing is expanded there, so a story's row reads every article
   it shows, also after one of its articles was opened and when the cursor is on it already. A detail reads when it
-  is opened or moved to with ˄ / ˅, not when it shows again (Back from an article of the story).
+  is opened or moved to with ˄ / ˅, not when it shows again (Back from an article of the story), and shows what it
+  reads as read from its first frame (no flipping icon or dots).
 - P (preview) shows the text of the source page instead of the feed text (loaded the first time, then stored); P
   again returns to the feed text. A text cut at `PageText.maxLength` ends with a pointer to V. Works without AI. On a
   saved link (no feed text) P loads the page again instead, also from the source page in the window.

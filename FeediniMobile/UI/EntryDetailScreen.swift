@@ -21,19 +21,21 @@ struct EntryDetailScreen: View {
         let shown = session.following(row)
         let entries = session.entries
         let steps = DetailSteps(previous: shown.neighbor(-1, in: entries), next: shown.neighbor(1, in: entries)) {
+            // Read in the same change, so the next row never shows as unread for a moment.
             row = $0
+            session.open($0)
         }
         let entry = session.entry(shown.entryID)
         // Not a `Group`: it would hand `onAppear` to each branch, and a branch shown after a library change ("Gone")
         // would open the row again.
         ZStack {
             if let entry, case .story = shown, entry.isMultiArticle {
-                StoryDetail(entry: entry, steps: steps)
+                StoryDetail(entry: entry, steps: steps, isOpening: !isOpened)
                     .id(shown)
             } else if let entry, let article = entry.singleArticle(at: shown) {
                 ArticleDetail(
                     article: article, entry: entry, row: shown, preferredView: model.preferences.articleView,
-                    steps: steps
+                    steps: steps, isOpening: !isOpened
                 )
                 // The article, not the row: it keeps what it shows when it moves into a story.
                 .id(article.id)
@@ -48,7 +50,6 @@ struct EntryDetailScreen: View {
                 session.open(shown)
             }
         }
-        .onChange(of: row) { session.open(row) }
     }
 }
 
@@ -91,6 +92,8 @@ private struct StoryDetail: View {
     @Environment(ReadingSession.self) private var session
     let entry: StoryEntry
     let steps: DetailSteps
+    /// Shown before the screen opens (reads) the story: its articles show as read already, so nothing flips.
+    let isOpening: Bool
 
     var body: some View {
         List {
@@ -115,10 +118,10 @@ private struct StoryDetail: View {
                 ForEach(entry.articles) { article in
                     EntryLink(row: .article(entry.id, article.id), link: article.link) {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            UnreadDot(isRead: article.isRead)
+                            UnreadDot(isRead: article.isRead || isOpening)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(article.title)
-                                    .font(.body.weight(article.isRead ? .regular : .semibold))
+                                    .font(.body.weight(article.isRead || isOpening ? .regular : .semibold))
                                 Text(
                                     // The age first: a long feed name is cut, never the age.
                                     [
@@ -140,7 +143,7 @@ private struct StoryDetail: View {
         .toolbar {
             // Where an article has it too; next / previous at the right, where they are in an article.
             ToolbarItem(placement: .topBarTrailing) {
-                ReadButton(isRead: entry.isRead) { session.toggleRead(.story(entry.id)) }
+                ReadButton(isRead: entry.isRead || isOpening) { session.toggleRead(.story(entry.id)) }
             }
             if #available(iOS 26, *) {
                 ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -165,18 +168,22 @@ private struct ArticleDetail: View {
     let entry: StoryEntry
     let row: ListRow
     let steps: DetailSteps
+    /// Shown before the screen opens (reads) the article: it shows as read already, so the button doesn't flip.
+    let isOpening: Bool
     /// The text the detail shows: at first what Settings say, then what the switch says.
     @State private var shown: Preferences.ArticleView
     /// The views the switch offers.
     private let views: [Preferences.ArticleView]
 
     init(
-        article: Article, entry: StoryEntry, row: ListRow, preferredView: Preferences.ArticleView, steps: DetailSteps
+        article: Article, entry: StoryEntry, row: ListRow, preferredView: Preferences.ArticleView, steps: DetailSteps,
+        isOpening: Bool
     ) {
         self.article = article
         self.entry = entry
         self.row = row
         self.steps = steps
+        self.isOpening = isOpening
         views = Preferences.ArticleView.choices(for: article)
         _shown = State(initialValue: preferredView.shown(for: article))
     }
@@ -192,7 +199,7 @@ private struct ArticleDetail: View {
                         Button("Reload Page", systemImage: "arrow.clockwise") { model.reloadPage(article.id) }
                             .disabled(model.pageStatus[article.id]?.isRunning == true)
                     }
-                    ReadButton(isRead: article.isRead) { session.toggleRead(row) }
+                    ReadButton(isRead: article.isRead || isOpening) { session.toggleRead(row) }
                 }
                 // Saving on the left, the switch, next / previous at the right in every detail. Reload Page is up
                 // with Mark as Read (a saved link shows its page text always).
