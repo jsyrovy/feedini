@@ -11,11 +11,13 @@ reader without AI that will show what the Mac produced through iCloud sync.
 make build    # xcodebuild Debug build into build/DerivedData
 make build-ios # the iOS app for the simulator (unsigned)
 make run-ios  # build-ios, then install and launch it in the simulator SIMULATOR (default "iPhone 17"); ARGS=-sampleLibrary
-make run-device # the iOS app signed with the team on the iPhone DEVICE (UDID; default the only paired one); ARGS
+make run-device # Debug iOS app signed with the team on the iPhone DEVICE (UDID; default the only paired one); ARGS;
+               # syncs in CloudKit Development (test data, with `make run`)
+make install-device # the same as Release: syncs in Production (the real data, with `make install`)
 make test     # Swift Testing unit tests (hosted by the app)
 make coverage # tests + line coverage report of the app target (result bundle build/Test.xcresult)
 make run      # build, kill a running instance, open the app
-make install  # Release build into ~/Applications (INSTALL_DIR=…), restart it; make uninstall removes it
+make install  # Release build into ~/Applications (INSTALL_DIR=…), restart it; make uninstall removes it; Production
 make release  # signed, notarized zip in build/release from a commit tagged v<version> (see "Releasing")
 make publish  # that zip as a draft GitHub release of the pushed tag
 make format   # xcrun swift-format, in place
@@ -58,8 +60,10 @@ Xcode 26). `.github/workflows/homebrew.yml` updates the Homebrew cask when a rel
   `Feedini.entitlements` (`com.apple.developer.icloud-services` CloudKit, the container `iCloud.cz.jsyrovy.feedini`,
   `com.apple.developer.aps-environment`, `com.apple.developer.icloud-container-environment`) and
   `FeediniMobile.entitlements` (the same with `aps-environment`). The environments are build settings:
-  `FEEDINI_CLOUDKIT_ENVIRONMENT` Development in Debug, Production in Release (so `make install`, `make release` and
-  TestFlight share the data, and a Debug Mac syncs only with a Debug iPhone from Xcode), `FEEDINI_APS_ENVIRONMENT`
+  `FEEDINI_CLOUDKIT_ENVIRONMENT` Development in Debug, Production in Release (so `make install`,
+  `make install-device`, `make release` and TestFlight share the real data, and a Debug Mac from `make run` syncs only
+  with a Debug iPhone from `make run-device`; moving one iPhone between them, delete the app first: its library and
+  sync state belong to the other environment), `FEEDINI_APS_ENVIRONMENT`
   development (`release.sh` sets production). The iOS app has the background mode `remote-notification`.
 - Version: `MARKETING_VERSION` (`major.minor`) of the app targets, the same in Debug and Release and in both apps;
   the test target has none. `CURRENT_PROJECT_VERSION` stays 1; a release sets the build number.
@@ -751,7 +755,18 @@ iCloud sync of the library between the Mac and an iPhone through CloudKit (the p
 locally). Built so far: everything in `Shared/Sync/`, the hooks in `AppModel`, the Mac's settings. The iOS app
 syncs too (`MobileSync`: on by default when signed in to iCloud, never with `-sampleLibrary`; Settings → Sync).
 Checked against iCloud (Development) with a Debug Mac and a Debug iPhone: merging, reading both ways, a feed added
-on the iPhone organized on the Mac and back. Missing: deploying the schema to Production.
+on the iPhone organized on the Mac and back. The schema is deployed to Production (2026-11-26); the installed Mac
+(`make install`) and the iPhone (`make install-device`) sync there.
+
+- Schema changes: Development creates record types and fields by itself when a build first saves them (with a
+  value: an optional field that was never set isn't there). Production takes only what is deployed: CloudKit Console
+  → CloudKit Database → the container → Development → Schema → Record Types, check that every `SyncRecord.Kind` is
+  there with every field (6 system fields + the type's `allFields`; a missing one: make the app write it in
+  Development, don't add it by hand – encrypted fields must be `ENCRYPTED …`), then Deploy Schema Changes…, before
+  installing a Release build that writes the new field. Production never deletes a field or a type, nor changes its
+  type: an unused field is just no longer written, a renamed one is a new field. Without the deploy, saving such a
+  record fails in Production (the `sync` log), nothing else breaks. A change that adding a field can't solve raises
+  `SyncSchema.version`; a fresh start is a new zone uploaded from the Mac's library (every device has all of it).
 
 - Changes of the other device come only by push: `CKSyncEngine.fetchChanges()` fetches only zones a push flagged
   ("no zone IDs needing to be fetched" otherwise), so the fetch before a refresh finds nothing without one. The Mac asks
@@ -765,7 +780,7 @@ on the iPhone organized on the Mac and back. Missing: deploying the schema to Pr
 - Testing two Mac instances against each other doesn't show propagation: on one Mac they are one CloudKit device and
   don't get each other's changes. A second instance with an empty home (`CFFIXED_USER_HOME`) does get everything on
   its first, full fetch. The iPhone simulator can't sync: without iCloud Keychain (it can't be turned on there) the
-  account is "Temporarily Unavailable" for the encrypted fields. Use a device: `make run-device` (builds, installs
+  account is "Temporarily Unavailable" for the encrypted fields. Use a device: `make run-device` (Debug; builds, installs
   and launches; `DEVICE=<udid>` when more iPhones are paired, `xcrun devicectl list devices`; the iPhone unlocked,
   Developer Mode on), `xcrun devicectl device capture screenshot`, and `devicectl device copy from --domain-type
   appDataContainer --domain-identifier cz.jsyrovy.feedini --source "Library/Application Support/Feedini/library.json"`

@@ -13,6 +13,9 @@ IOS_APP       := $(DERIVED_DATA)/Build/Products/$(CONFIG)-iphonesimulator/Feedin
 SIMULATOR     ?= iPhone 17
 DEVICE_APP    := $(DERIVED_DATA)/Build/Products/$(CONFIG)-iphoneos/Feedini.app
 PHONES        := hardwareProperties.reality == 'physical' AND hardwareProperties.platform == 'iOS'
+# The CloudKit environment of a build (FEEDINI_CLOUDKIT_ENVIRONMENT in the project): Production in Release only.
+CLOUDKIT_ENVIRONMENT := $(if $(filter Release,$(CONFIG)),Production,Development)
+CLOUDKIT_DATA := $(if $(filter Release,$(CONFIG)),the real data of make install,test data of make run)
 
 # Builds are signed with the team (Apple Development), which CloudKit needs; Xcode makes the profiles. SIGNING=none
 # (CI) signs ad hoc without entitlements: the Mac app then says sync isn't available in this build, and the iOS app
@@ -33,7 +36,8 @@ XCODEBUILD_ANY := xcodebuild -project $(PROJECT) -configuration $(CONFIG) -deriv
 	$(SIGNING_FLAGS) FEEDINI_COMMIT=$(COMMIT)
 XCODEBUILD    := $(XCODEBUILD_ANY) -scheme $(SCHEME) -destination 'platform=macOS,arch=$(ARCH)'
 
-.PHONY: build build-ios run-ios run-device test coverage run install uninstall release publish format lint clean
+.PHONY: build build-ios run-ios run-device install-device device test coverage run install uninstall release publish \
+	format lint clean
 
 build:
 	$(XCODEBUILD) build
@@ -51,11 +55,20 @@ run-ios: build-ios
 	xcrun simctl install "$(SIMULATOR)" "$(IOS_APP)"
 	xcrun simctl launch --terminate-running-process "$(SIMULATOR)" cz.jsyrovy.feedini $(ARGS)
 
-# Builds the iOS app signed with the team, installs it on the iPhone DEVICE (its UDID; default: the only iPhone paired
-# with this Mac, see `xcrun devicectl list devices`) and runs it with the launch arguments ARGS. The iPhone must be
-# unlocked, with Developer Mode on. A Debug build syncs in the CloudKit Development environment: with a Debug Mac
-# (`make run`), not with an installed one (`make install`, Production).
+# The iOS app on the iPhone, signed with the team: run-device is the Debug build, which syncs in the CloudKit
+# Development environment (test data, with a Debug Mac from `make run`); install-device the Release build, which
+# syncs in Production (the real data, with the Mac of `make install`). Both install the app on the iPhone DEVICE (its
+# UDID; default: the only iPhone paired with this Mac, see `xcrun devicectl list devices`) and run it with the launch
+# arguments ARGS. The iPhone must be unlocked, with Developer Mode on. The environments don't share data: switching
+# one iPhone between them, delete the app first (its library and sync state belong to the other environment).
 run-device:
+	@$(MAKE) --no-print-directory device CONFIG=Debug
+
+install-device:
+	@$(MAKE) --no-print-directory device CONFIG=Release
+
+# Used by run-device and install-device, which choose CONFIG.
+device:
 	@device="$(DEVICE)"; \
 	if [ -z "$$device" ]; then \
 		device=$$(xcrun devicectl list devices --filter "$(PHONES)" --columns udid --hide-default-columns \
@@ -66,7 +79,7 @@ run-device:
 			exit 1; \
 		fi; \
 	fi; \
-	echo "iPhone $$device"; \
+	echo "$(CONFIG) build for iPhone $$device: CloudKit $(CLOUDKIT_ENVIRONMENT) ($(CLOUDKIT_DATA))"; \
 	$(XCODEBUILD_ANY) -allowProvisioningDeviceRegistration -scheme FeediniMobile \
 		-destination "platform=iOS,id=$$device" build && \
 	xcrun devicectl device install app --device "$$device" "$(DEVICE_APP)" && \
@@ -82,11 +95,13 @@ coverage:
 	xcrun xccov view --report --only-targets "$(RESULT_BUNDLE)"
 	xcrun xccov view --report --files-for-target Feedini.app "$(RESULT_BUNDLE)"
 
+# Debug build, opened in place: syncs in the CloudKit Development environment (test data).
 run: build
 	pkill -x Feedini || true
 	open "$(APP)"
 
 # Release build copied to INSTALL_DIR (default ~/Applications); stops any running Feedini, including a dev build.
+# Syncs in the CloudKit Production environment (the real data), like make install-device and a release.
 install:
 	$(MAKE) build CONFIG=Release
 	pkill -x Feedini || true
