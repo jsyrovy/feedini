@@ -125,6 +125,17 @@ struct EntryLink<Label: View>: View {
     }
 }
 
+/// The blue dot of an unread row (an empty place once read, so rows stay aligned).
+struct UnreadDot: View {
+    let isRead: Bool
+
+    var body: some View {
+        Circle()
+            .fill(isRead ? Color.clear : Color.accentColor)
+            .frame(width: 8, height: 8)
+    }
+}
+
 /// A story or an article in the list: unread dot, title, sources, age; a bookmark when saved.
 struct EntryRow: View {
     @Environment(AppModel.self) private var model
@@ -133,9 +144,7 @@ struct EntryRow: View {
     var body: some View {
         let sources = entry.sourceArticles.compactMap(model.library.sourceTitle(of:))
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Circle()
-                .fill(entry.isRead ? Color.clear : Color.accentColor)
-                .frame(width: 8, height: 8)
+            UnreadDot(isRead: entry.isRead)
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.title)
                     .font(.body.weight(entry.isRead ? .regular : .semibold))

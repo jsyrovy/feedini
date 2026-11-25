@@ -52,6 +52,23 @@ struct EntryDetailScreen: View {
     }
 }
 
+/// Mark as Read / Unread showing the state, as Save does: the list's blue dot while unread, an empty circle once read.
+private struct ReadButton: View {
+    let isRead: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            Label {
+                Text(isRead ? "Mark as Unread" : "Mark as Read")
+            } icon: {
+                Image(systemName: isRead ? "circle" : "circle.fill")
+                    .foregroundStyle(isRead ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.accentColor))
+            }
+        }
+    }
+}
+
 /// Next / previous in a detail: the rows next to the shown one where it is listed (`ListRow.neighbor`), and moving
 /// there.
 struct DetailSteps {
@@ -97,17 +114,23 @@ private struct StoryDetail: View {
             Section("\(entry.articles.count) Articles") {
                 ForEach(entry.articles) { article in
                     EntryLink(row: .article(entry.id, article.id), link: article.link) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(article.title)
-                                .font(.body.weight(article.isRead ? .regular : .semibold))
-                            Text(
-                                // The age first: a long feed name is cut, never the age.
-                                [RelativeTime.short(article.date, now: .now), model.library.sourceTitle(of: article)]
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            UnreadDot(isRead: article.isRead)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(article.title)
+                                    .font(.body.weight(article.isRead ? .regular : .semibold))
+                                Text(
+                                    // The age first: a long feed name is cut, never the age.
+                                    [
+                                        RelativeTime.short(article.date, now: .now),
+                                        model.library.sourceTitle(of: article),
+                                    ]
                                     .compactMap { $0 }.joined(separator: " · ")
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            }
                         }
                     }
                 }
@@ -116,9 +139,7 @@ private struct StoryDetail: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
-                Button(entry.isRead ? "Mark as Unread" : "Mark as Read", systemImage: "circle") {
-                    session.toggleRead(.story(entry.id))
-                }
+                ReadButton(isRead: entry.isRead) { session.toggleRead(.story(entry.id)) }
             }
             if #available(iOS 26, *) {
                 ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -170,12 +191,7 @@ private struct ArticleDetail: View {
                         Button("Reload Page", systemImage: "arrow.clockwise") { model.reloadPage(article.id) }
                             .disabled(model.pageStatus[article.id]?.isRunning == true)
                     }
-                    Button(
-                        article.isRead ? "Mark as Unread" : "Mark as Read",
-                        systemImage: article.isRead ? "circle" : "checkmark.circle"
-                    ) {
-                        session.toggleRead(row)
-                    }
+                    ReadButton(isRead: article.isRead) { session.toggleRead(row) }
                 }
                 // Saving on the left, next / previous, the switch on the right. Reload Page is up with Mark as Read
                 // (a saved link shows its page text always).
