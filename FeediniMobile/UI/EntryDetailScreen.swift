@@ -138,7 +138,8 @@ private struct StoryDetail: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .bottomBar) {
+            // Where an article has it too; next / previous at the right, where they are in an article.
+            ToolbarItem(placement: .topBarTrailing) {
                 ReadButton(isRead: entry.isRead) { session.toggleRead(.story(entry.id)) }
             }
             if #available(iOS 26, *) {
@@ -193,8 +194,8 @@ private struct ArticleDetail: View {
                     }
                     ReadButton(isRead: article.isRead) { session.toggleRead(row) }
                 }
-                // Saving on the left, next / previous, the switch on the right. Reload Page is up with Mark as Read
-                // (a saved link shows its page text always).
+                // Saving on the left, the switch, next / previous at the right in every detail. Reload Page is up
+                // with Mark as Read (a saved link shows its page text always).
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button(
                         article.isSaved ? "Unsave" : "Save", systemImage: article.isSaved ? "bookmark.fill" : "bookmark"
@@ -203,8 +204,6 @@ private struct ArticleDetail: View {
                     }
                 }
                 if #available(iOS 26, *) {
-                    ToolbarSpacer(.flexible, placement: .bottomBar)
-                    ToolbarItemGroup(placement: .bottomBar) { steps.buttons }
                     if views.count > 1 {
                         ToolbarSpacer(.flexible, placement: .bottomBar)
                         // The segmented control has a background of its own; the toolbar's glass around it would draw
@@ -212,14 +211,16 @@ private struct ArticleDetail: View {
                         ToolbarItem(placement: .bottomBar) { switcher }
                             .sharedBackgroundVisibility(.hidden)
                     }
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    ToolbarItemGroup(placement: .bottomBar) { steps.buttons }
                 } else {
                     ToolbarItemGroup(placement: .bottomBar) {
                         Spacer()
-                        steps.buttons
                         if views.count > 1 {
-                            Spacer()
                             switcher
+                            Spacer()
                         }
+                        steps.buttons
                     }
                 }
             }

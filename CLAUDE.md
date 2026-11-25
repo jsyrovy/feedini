@@ -310,8 +310,9 @@ list (newest first), detail.
   belongs to the root (`Navigation.page`), so neither a library change nor a row scrolled away closes it. iOS has no
   "Open Pages In" (the page always opens in the app; Safari's view can open it in Safari). Safari's view has cookies
   of its own: accepting a consent or logging in there doesn't help the page text. The bottom bar of an article: Save,
-  ˄ / ˅ (previous / next), the switch; Mark as Read / Unread and – while it shows page text – Reload Page are in the
-  navigation bar, so the bottom bar fits a 375-point iPhone. ˄ / ˅ (`DetailSteps`, also in a story's detail) move to
+  the switch, ˄ / ˅ (previous / next) at the right – where a story's detail has them too, so they stay in place
+  while moving on; Mark as Read / Unread (in every detail, showing the state) and – while an article shows page
+  text – Reload Page are in the navigation bar, so the bottom bar fits a 375-point iPhone. ˄ / ˅ (`DetailSteps`, also in a story's detail) move to
   the row next to the shown one where it is listed (`ListRow.neighbor`: the entries of the list, or the articles of
   its story), read it like opening it, and replace the detail in place, so Back returns to the list at once. iOS
   opens rows with `ReadingSession.open`, not `visit`: nothing is expanded there, so a story's row reads every article
