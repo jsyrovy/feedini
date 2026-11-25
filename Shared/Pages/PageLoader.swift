@@ -52,8 +52,9 @@ final class PageLoader {
         host.update { $0.forgetPageText(id) }
     }
 
-    /// P on a saved link: loads its page again – after the user accepted cookies or logged in with V –, then goes on
-    /// to a new summary if asked. The stored text stays until the new one is stored, also when loading fails.
+    /// P on a saved link, Reload Page on iOS: loads the page again – after the user accepted cookies or logged in
+    /// with V –, then goes on to a new summary if asked. The stored text stays until the new one is stored, also when
+    /// loading fails.
     func reload(_ id: Article.ID, summary: Bool = false) {
         guard host.library.articles[id] != nil, !isWorking(on: id) else { return }
         reloading.insert(id)

@@ -48,6 +48,31 @@ struct ReadRulesTests {
         #expect(ReadRules.toggle(.article(entry.id, unread.id), of: entry) == .markRead([unread.id]))
     }
 
+    @Test func aStoryRowsNeighborsAreTheEntriesNextToIt() {
+        let entries = [story([.stub(feed: feed.id)]), story([.stub(feed: feed.id)]), story([.stub(feed: feed.id)])]
+        let middle = ListRow.story(entries[1].id)
+
+        #expect(middle.neighbor(1, in: entries) == .story(entries[2].id))
+        #expect(middle.neighbor(-1, in: entries) == .story(entries[0].id))
+        #expect(ListRow.story(entries[2].id).neighbor(1, in: entries) == nil)
+        #expect(ListRow.story(entries[0].id).neighbor(-1, in: entries) == nil)
+        #expect(ListRow.story(.loose(.init())).neighbor(1, in: entries) == nil)
+    }
+
+    @Test func anArticleRowsNeighborsAreTheArticlesOfItsStory() {
+        let first = Article.stub(feed: feed.id)
+        let second = Article.stub(feed: feed.id)
+        let entry = story([first, second])
+        let entries = [story([.stub(feed: feed.id)]), entry]
+
+        #expect(ListRow.article(entry.id, first.id).neighbor(1, in: entries) == .article(entry.id, second.id))
+        #expect(ListRow.article(entry.id, second.id).neighbor(-1, in: entries) == .article(entry.id, first.id))
+        #expect(ListRow.article(entry.id, second.id).neighbor(1, in: entries) == nil)
+        #expect(ListRow.article(entry.id, first.id).neighbor(-1, in: entries) == nil)
+        #expect(ListRow.article(entry.id, .init()).neighbor(1, in: entries) == nil)
+        #expect(ListRow.article(.loose(.init()), first.id).neighbor(1, in: entries) == nil)
+    }
+
     @Test func rowsKnowTheirEntry() {
         let id = StoryEntry.ID.loose(.init())
         #expect(ListRow.story(id).entryID == id)

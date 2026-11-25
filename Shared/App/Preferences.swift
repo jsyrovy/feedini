@@ -92,7 +92,7 @@ extension Preferences {
 
 extension Preferences.ArticleView {
     /// The views an article can switch between on iOS: a saved link has no feed text, an article without a link no
-    /// page.
+    /// page. The web page opens in Safari's view over the detail.
     static func choices(for article: Article) -> [Self] {
         if article.link == nil {
             [.feedText]
@@ -103,9 +103,10 @@ extension Preferences.ArticleView {
         }
     }
 
-    /// What an opened article shows first on iOS: this view, or the first one it has.
+    /// The text an opened article shows on iOS: this view if it is a text the article has, else the first one (with
+    /// Web Page, a row opens the page instead, and the detail is opened for its text).
     func shown(for article: Article) -> Self {
-        let choices = Self.choices(for: article)
-        return choices.contains(self) ? self : choices[0]
+        let texts = Self.choices(for: article).filter { $0 != .webPage }
+        return texts.contains(self) ? self : texts[0]
     }
 }

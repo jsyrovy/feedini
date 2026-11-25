@@ -69,6 +69,20 @@ final class ReadingSession {
     /// Moves the cursor onto a row, which reads it (`ReadRules`).
     func visit(_ row: ListRow?) {
         guard row != cursor else { return }
+        read(row)
+    }
+
+    /// Opens a row on iOS, where nothing is expanded: a story's row reads every article it shows – also after one of
+    /// them was opened (`visit` takes that as expanding the story) and when the cursor is on the row already (an
+    /// article joined the story meanwhile).
+    func open(_ row: ListRow) {
+        if case .story(let id) = row {
+            expanded.remove(id)
+        }
+        read(row)
+    }
+
+    private func read(_ row: ListRow?) {
         move(to: row)
         guard let row, let entry = entry(row.entryID) else { return }
         if case .article = row {
@@ -216,18 +230,25 @@ final class ReadingSession {
         }
     }
 
-    /// When the AI puts a loose article into a story, the list entry changes its ID. The cursor follows the article:
-    /// into the expanded story when that shows several articles, else onto the story's row. Nothing is read by that.
+    /// When the AI puts a loose article into a story, the list entry changes its ID. The cursor follows the article
+    /// (`following`), into the expanded story when that shows several articles. Nothing is read by that.
     private func followArticlesIntoStories() {
-        guard let cursor, case .loose(let article) = cursor.entryID,
-            let storyID = model.library.stories.values.first(where: { $0.articleIDs.contains(article) })?.id
-        else { return }
-        let id = StoryEntry.ID.story(storyID)
-        if entry(id)?.isMultiArticle == true {
+        guard let cursor else { return }
+        let followed = following(cursor)
+        guard followed != cursor else { return }
+        if case .article(let id, _) = followed {
             expanded.insert(id)
-            self.cursor = .article(id, article)
-        } else {
-            self.cursor = .story(id)
         }
+        self.cursor = followed
+    }
+
+    /// Where a row's article is now: the row itself, or – when it was a loose article the AI put into a story since –
+    /// the article in the story when that shows several articles, else the story's row (an iOS detail follows it).
+    func following(_ row: ListRow) -> ListRow {
+        guard case .loose(let article) = row.entryID,
+            let storyID = model.library.stories.values.first(where: { $0.articleIDs.contains(article) })?.id
+        else { return row }
+        let id = StoryEntry.ID.story(storyID)
+        return entry(id)?.isMultiArticle == true ? .article(id, article) : .story(id)
     }
 }

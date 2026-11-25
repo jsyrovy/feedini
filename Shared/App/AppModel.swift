@@ -376,7 +376,8 @@ final class AppModel: LibraryHost {
         pageLoader.loadPage(id)
     }
 
-    /// A saved link's page loaded again, only its text (on the Mac `MacServices.reloadPage` adds the summary).
+    /// The page loaded again, only its text: a saved link's (P), or an article's page text (Reload Page on iOS). On
+    /// the Mac `MacServices.reloadPage` adds the summary.
     func reloadPage(_ id: Article.ID) {
         pageLoader.reload(id)
     }
@@ -404,11 +405,15 @@ final class AppModel: LibraryHost {
         sync?.pageTextStored(id)
     }
 
-    /// Stores a page text that came from another device.
+    /// Stores a page text that came from another device. An earlier failure to load the page here no longer applies;
+    /// loading that runs goes on, and a failed summary (T, Shift+S on the Mac) still has no summary.
     func storeSyncedPageText(_ text: String, for id: Article.ID) async throws {
         try await store.storePageText(text, for: id)
         guard library.articles[id] != nil else { return }
         applyRemote { $0.pageTextIDs.insert(id) }
+        if let work = pageStatus[id], !work.isRunning, !work.summary {
+            pageStatus.set(nil, for: id)
+        }
     }
 
     // MARK: Changes

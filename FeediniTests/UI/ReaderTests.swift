@@ -92,6 +92,23 @@ struct ReaderTests {
         #expect(isRead(second) && !isRead(first))
     }
 
+    @Test func openingAStoryOnIOSReadsAllItShowsEvenAfterOneOfItsArticles() {
+        let session = reader.session
+        session.open(.story(.story(story.id)))
+        #expect(isRead(first) && isRead(second))
+
+        // An article of the story opened, then one of its articles unread again (as a new one joining it).
+        session.open(.article(.story(story.id), first.id))
+        model.markUnread([second.id])
+        session.open(.story(.story(story.id)))
+        #expect(isRead(second))
+
+        // Opening the row the cursor is on reads it again.
+        model.markUnread([first.id])
+        session.open(.story(.story(story.id)))
+        #expect(isRead(first))
+    }
+
     @Test func changingTheSelectionDropsReadEntries() {
         reader.visit(.story(.loose(lone.id)))
         reader.selection = .feed(feed.id)
@@ -285,5 +302,22 @@ struct ReaderFollowsArticlesTests {
         #expect(reader.cursor == .story(.story(story.id)))
         #expect(reader.keptArticles.contains(first.id))
         #expect(reader.entries.contains { $0.id == .story(story.id) })
+    }
+
+    @Test func anOpenedRowFollowsItsArticleWithoutReadingAnything() {
+        let session = reader.session
+        let opened = ListRow.story(.loose(first.id))
+        session.open(opened)
+        model.markUnread([first.id])
+        #expect(session.following(opened) == opened)
+
+        let story = Story(title: "Story", articleIDs: [first.id, second.id])
+        model.update { $0.stories[story.id] = story }
+        #expect(session.following(opened) == .article(.story(story.id), first.id))
+        #expect(session.following(.story(.story(story.id))) == .story(.story(story.id)))
+        #expect(model.library.articles[first.id]?.isRead == false)
+
+        model.update { $0.stories[story.id]?.articleIDs = [first.id] }
+        #expect(session.following(opened) == .story(.story(story.id)))
     }
 }

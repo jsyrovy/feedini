@@ -1,26 +1,70 @@
-import SafariServices
 import SwiftUI
 
-/// An opened row: a story with several articles (its summary and articles) or an article. Opening it reads it.
+/// An opened row: a story with several articles (its summary and articles) or an article. Opening it reads it
+/// (`ReadingSession.open`), and so does moving to the next or previous row (`DetailSteps`). A loose article the AI
+/// puts into a story stays shown, as an article of the story.
 struct EntryDetailScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(ReadingSession.self) private var session
-    let row: ListRow
+    /// The row opened, then where next / previous moved. The route keeps the opened one, so Back returns to the list
+    /// at once.
+    @State private var row: ListRow
+    /// Whether the row was opened (read): coming back to the screen (Back from an article of the story) reads nothing.
+    @State private var isOpened = false
+
+    init(row: ListRow) {
+        _row = State(initialValue: row)
+    }
 
     var body: some View {
-        Group {
-            if let entry = session.entry(row.entryID) {
-                if case .story = row, entry.isMultiArticle {
-                    StoryDetail(entry: entry)
-                } else if let article = entry.singleArticle(at: row) {
-                    ArticleDetail(
-                        article: article, entry: entry, row: row, preferredView: model.preferences.articleView)
-                }
+        // Where its article is now: a loose article the AI put into a story stays shown, with its state.
+        let shown = session.following(row)
+        let entries = session.entries
+        let steps = DetailSteps(previous: shown.neighbor(-1, in: entries), next: shown.neighbor(1, in: entries)) {
+            row = $0
+        }
+        let entry = session.entry(shown.entryID)
+        // Not a `Group`: it would hand `onAppear` to each branch, and a branch shown after a library change ("Gone")
+        // would open the row again.
+        ZStack {
+            if let entry, case .story = shown, entry.isMultiArticle {
+                StoryDetail(entry: entry, steps: steps)
+                    .id(shown)
+            } else if let entry, let article = entry.singleArticle(at: shown) {
+                ArticleDetail(
+                    article: article, entry: entry, row: shown, preferredView: model.preferences.articleView,
+                    steps: steps
+                )
+                // The article, not the row: it keeps what it shows when it moves into a story.
+                .id(article.id)
             } else {
+                // The item, or its article, went away (a library change, retention).
                 ContentUnavailableView("Gone", systemImage: "tray", description: Text("This item isn't here anymore."))
             }
         }
-        .onAppear { session.visit(row) }
+        .onAppear {
+            if !isOpened {
+                isOpened = true
+                session.open(shown)
+            }
+        }
+        .onChange(of: row) { session.open(row) }
+    }
+}
+
+/// Next / previous in a detail: the rows next to the shown one where it is listed (`ListRow.neighbor`), and moving
+/// there.
+struct DetailSteps {
+    let previous: ListRow?
+    let next: ListRow?
+    let move: @MainActor (ListRow) -> Void
+
+    /// The two buttons, for the bottom bar.
+    @MainActor @ViewBuilder var buttons: some View {
+        Button("Previous", systemImage: "chevron.up") { previous.map(move) }
+            .disabled(previous == nil)
+        Button("Next", systemImage: "chevron.down") { next.map(move) }
+            .disabled(next == nil)
     }
 }
 
@@ -29,6 +73,7 @@ private struct StoryDetail: View {
     @Environment(AppModel.self) private var model
     @Environment(ReadingSession.self) private var session
     let entry: StoryEntry
+    let steps: DetailSteps
 
     var body: some View {
         List {
@@ -51,7 +96,7 @@ private struct StoryDetail: View {
             }
             Section("\(entry.articles.count) Articles") {
                 ForEach(entry.articles) { article in
-                    NavigationLink(value: Route.entry(.article(entry.id, article.id))) {
+                    EntryLink(row: .article(entry.id, article.id), link: article.link) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(article.title)
                                 .font(.body.weight(article.isRead ? .regular : .semibold))
@@ -73,76 +118,92 @@ private struct StoryDetail: View {
                     session.toggleRead(.story(entry.id))
                 }
             }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                ToolbarItemGroup(placement: .bottomBar) { steps.buttons }
+            } else {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Spacer()
+                    steps.buttons
+                }
+            }
         }
     }
 }
 
 /// An article: title, source, the TL;DR of its page or the summary of its story and the text from the feed or its
-/// page – or the page itself –, switched in the navigation bar; and the source page in Safari or the browser.
+/// page, or its source page in Safari's view over them, switched in the bottom bar.
 private struct ArticleDetail: View {
     @Environment(AppModel.self) private var model
     @Environment(ReadingSession.self) private var session
-    @Environment(\.openURL) private var openURL
+    @Environment(Navigation.self) private var navigation
     let article: Article
     let entry: StoryEntry
     let row: ListRow
-    @State private var page: URL?
-    /// What the detail shows: at first what Settings say, then what the switch says.
+    let steps: DetailSteps
+    /// The text the detail shows: at first what Settings say, then what the switch says.
     @State private var shown: Preferences.ArticleView
     /// The views the switch offers.
     private let views: [Preferences.ArticleView]
 
-    init(article: Article, entry: StoryEntry, row: ListRow, preferredView: Preferences.ArticleView) {
+    init(
+        article: Article, entry: StoryEntry, row: ListRow, preferredView: Preferences.ArticleView, steps: DetailSteps
+    ) {
         self.article = article
         self.entry = entry
         self.row = row
+        self.steps = steps
         views = Preferences.ArticleView.choices(for: article)
         _shown = State(initialValue: preferredView.shown(for: article))
     }
 
     var body: some View {
-        content
+        text
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if views.count > 1 {
-                    ToolbarItem(placement: .principal) {
-                        Picker("Show", selection: $shown) {
-                            ForEach(views, id: \.self) { view in
-                                Image(systemName: view.symbol)
-                                    .accessibilityLabel(view.title)
-                                    .tag(view)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .fixedSize()
+                // Up here: opening the article read it already, a reload is rare, and the bottom bar has no room left
+                // on narrow iPhones.
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if shown == .pageText {
+                        Button("Reload Page", systemImage: "arrow.clockwise") { model.reloadPage(article.id) }
+                            .disabled(model.pageStatus[article.id]?.isRunning == true)
                     }
-                }
-                ToolbarItemGroup(placement: .bottomBar) {
                     Button(
                         article.isRead ? "Mark as Unread" : "Mark as Read",
                         systemImage: article.isRead ? "circle" : "checkmark.circle"
                     ) {
                         session.toggleRead(row)
                     }
-                    Spacer()
+                }
+                // Saving on the left, next / previous, the switch on the right. Reload Page is up with Mark as Read
+                // (a saved link shows its page text always).
+                ToolbarItemGroup(placement: .bottomBar) {
                     Button(
                         article.isSaved ? "Unsave" : "Save", systemImage: article.isSaved ? "bookmark.fill" : "bookmark"
                     ) {
                         session.toggleSaved(row)
                     }
-                    if article.isSavedLink {
-                        Spacer()
-                        Button("Reload Page", systemImage: "arrow.clockwise") { model.reloadPage(article.id) }
-                            .disabled(model.pageStatus[article.id]?.isRunning == true)
+                }
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    ToolbarItemGroup(placement: .bottomBar) { steps.buttons }
+                    if views.count > 1 {
+                        ToolbarSpacer(.flexible, placement: .bottomBar)
+                        // The segmented control has a background of its own; the toolbar's glass around it would draw
+                        // a second outline.
+                        ToolbarItem(placement: .bottomBar) { switcher }
+                            .sharedBackgroundVisibility(.hidden)
                     }
-                    Spacer()
-                    if let link = article.link {
-                        Button("Open Page", systemImage: "safari") { open(link) }
+                } else {
+                    ToolbarItemGroup(placement: .bottomBar) {
+                        Spacer()
+                        steps.buttons
+                        if views.count > 1 {
+                            Spacer()
+                            switcher
+                        }
                     }
                 }
-            }
-            .sheet(item: $page) { url in
-                SafariView(url: url).ignoresSafeArea()
             }
             .task(id: shown) {
                 if shown == .pageText && !article.isSavedLink {
@@ -151,12 +212,31 @@ private struct ArticleDetail: View {
             }
     }
 
-    @ViewBuilder private var content: some View {
-        if shown == .webPage, let link = article.link {
-            WebPageView(url: link)
-        } else {
-            text
+    /// The switch's choice: the web page while it is open in Safari's view, else the text shown. Choosing the web page
+    /// opens it over the text, which Done returns to.
+    private var selection: Binding<Preferences.ArticleView> {
+        Binding(
+            get: { navigation.page != nil ? .webPage : shown },
+            set: { view in
+                if view == .webPage {
+                    navigation.page = article.link
+                } else {
+                    shown = view
+                }
+            })
+    }
+
+    /// The switch between the views of the article.
+    private var switcher: some View {
+        Picker("Show", selection: selection) {
+            ForEach(views, id: \.self) { view in
+                Image(systemName: view.symbol)
+                    .accessibilityLabel(view.title)
+                    .tag(view)
+            }
         }
+        .pickerStyle(.segmented)
+        .fixedSize()
     }
 
     private var text: some View {
@@ -193,14 +273,6 @@ private struct ArticleDetail: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-
-    private func open(_ url: URL) {
-        if model.preferences.pageOpening == .window {
-            page = url
-        } else {
-            openURL(url)
-        }
-    }
 }
 
 /// The text of the source page – loaded on request or as the preferred view, then stored – or how loading it goes. A
@@ -215,7 +287,8 @@ private struct PageTextSection: View {
     var body: some View {
         let work = model.pageStatus[article.id]
         VStack(alignment: .leading, spacing: 14) {
-            if let work, work.isRunning || !isStored {
+            // Loading, or why it failed – also a failed reload over the stored text, which stays.
+            if let work {
                 PageLoadStatus(phase: work.phase)
             }
             if isStored, let text {
@@ -258,19 +331,4 @@ extension Preferences.ArticleView {
         case .webPage: "globe"
         }
     }
-}
-
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
-}
-
-/// A web page in Safari's view inside the app (the user's Safari logins and cookies don't apply).
-struct SafariView: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        SFSafariViewController(url: url)
-    }
-
-    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
 }

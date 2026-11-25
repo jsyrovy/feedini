@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The stories and articles of a sidebar item. Opening a row reads it; a swipe marks it read or unread (leading) or
-/// saves it (trailing). Read rows stay until the list is left or refreshed.
+/// The stories and articles of a sidebar item. Opening a row reads it (`EntryLink`); a swipe marks it read or unread
+/// (leading) or saves it (trailing). Read rows stay until the list is left or refreshed.
 struct StoryListScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(ReadingSession.self) private var session
@@ -12,7 +12,7 @@ struct StoryListScreen: View {
     var body: some View {
         let entries = session.selection == selection ? session.entries : []
         List(entries) { entry in
-            NavigationLink(value: Route.entry(.story(entry.id))) {
+            EntryLink(row: .story(entry.id), link: entry.singleArticle(at: .story(entry.id))?.link) {
                 EntryRow(entry: entry)
             }
             .swipeActions(edge: .leading) {
@@ -88,6 +88,39 @@ struct StoryListScreen: View {
         case .topic(let id): library.topics[id]?.name ?? "Topic"
         case .folder(let id): library.folder(id)?.name ?? "Folder"
         case .feed(let id): library.feed(id)?.title ?? "Feed"
+        }
+    }
+}
+
+/// A row that opens an item: its detail, or – when Settings show articles as Web Page – an article's source page in
+/// Safari's view over the list, reading the article; touching and holding the row offers its text (the detail).
+struct EntryLink<Label: View>: View {
+    @Environment(AppModel.self) private var model
+    @Environment(ReadingSession.self) private var session
+    @Environment(Navigation.self) private var navigation
+    let row: ListRow
+    /// The source page of the article the row stands for, `nil` for a story with several articles (it has no single
+    /// page) or an article without a link.
+    let link: URL?
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        if model.preferences.articleView == .webPage, let link {
+            Button {
+                session.open(row)
+                navigation.page = link
+            } label: {
+                label
+            }
+            // Like a navigation link, not an accent-colored button.
+            .tint(.primary)
+            .contextMenu {
+                Button("Show Text", systemImage: "text.alignleft") { navigation.path.append(.entry(row)) }
+            }
+        } else {
+            NavigationLink(value: Route.entry(row)) {
+                label
+            }
         }
     }
 }

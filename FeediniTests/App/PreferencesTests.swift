@@ -107,10 +107,11 @@ struct PreferencesTests {
         #expect(Preferences.ArticleView.choices(for: article) == [.feedText, .pageText, .webPage])
         #expect(Preferences.ArticleView.choices(for: noLink) == [.feedText])
         #expect(Preferences.ArticleView.choices(for: link) == [.pageText, .webPage])
-        #expect(Preferences.ArticleView.webPage.shown(for: article) == .webPage)
-        #expect(Preferences.ArticleView.webPage.shown(for: noLink) == .feedText)
+        #expect(Preferences.ArticleView.pageText.shown(for: article) == .pageText)
+        #expect(Preferences.ArticleView.webPage.shown(for: article) == .feedText)
+        #expect(Preferences.ArticleView.pageText.shown(for: noLink) == .feedText)
         #expect(Preferences.ArticleView.feedText.shown(for: link) == .pageText)
-        #expect(Preferences.ArticleView.webPage.shown(for: link) == .webPage)
+        #expect(Preferences.ArticleView.webPage.shown(for: link) == .pageText)
     }
 
     @Test func aiDefaultsToHaikuWithLowEffort() {

@@ -89,7 +89,7 @@ Shared/       compiled into both apps
               folders), Saved (Library's saving of articles, names of removed feeds), SavedLink (pages saved by
               their address: comparing addresses, Library.saveLink), AIUsage (AIUsageDay: AI calls per day),
               StoryList (pure: entries, filtering by the sidebar selection, Saved, unread counts, ListOrder),
-              ReadRules (pure: what visiting a row and M do; ListRow, the rows of the list), UndoHistory (pure:
+              ReadRules (pure: what visiting a row and M do; ListRow, the rows of the list, and their neighbors), UndoHistory (pure:
               ReadingState, the steps of undo)
   Store/      LibraryStore (versioned JSON file, debounced atomic saving, page texts as files of their own),
               Retention (pure: what is forgotten when)
@@ -157,10 +157,12 @@ Feedini/      the Mac app
 FeediniMobile/ the iOS app
   App/        FeediniMobileApp (@main: the AppModel without AI, a ReadingSession, refreshing only in the foreground,
               every 5 minutes without a setting, the sample library in Debug), MobileSync (sync on by default, its setting)
-  UI/         RootView (NavigationStack: Route, `-screen` in Debug), SidebarScreen, StoryListScreen (+ EntryRow,
-              swipe actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail: feed text, page text
-              or web page switched in the navigation bar, Reload Page, SafariView), WebPageView (WKWebView),
-              SaveLinkSheet (PasteButton), SettingsScreen (+ FeedsScreen: adding,
+  UI/         RootView (NavigationStack: Route, Navigation (the path, the page in SafariView), `-screen` in Debug),
+              SidebarScreen, StoryListScreen (+ EntryRow, EntryLink: the detail or the page as Settings say, swipe
+              actions, Mark All as Read), EntryDetailScreen (StoryDetail, ArticleDetail: feed text or page
+              text or the web page in SafariView switched in the bottom bar, Reload Page; DetailSteps: next /
+              previous), SaveLinkSheet (PasteButton),
+              SettingsScreen (+ FeedsScreen: adding,
               removing, folders, OPML import and export)
 FeediniTests/ Swift Testing tests of the shared code and the Mac app, in folders named like theirs
   Fixtures/   claude CLI envelopes (success, is_error, no structured_output, wrong shape; anonymized IDs), feeds
@@ -295,10 +297,24 @@ list (newest first), detail.
   another article it shows the preferred view. The web page shown this way keeps the stored page text (only V forgets
   it), and it takes the keyboard focus only when clicked into (`EscapableWebView`: a refused focus goes back to the
   list), so J/K keep working. On iOS the setting (Settings → "Show Articles As") is what an opened article shows
-  first, without a delay (a tap is an explicit request); a segmented switch in its navigation bar (feed text, page
-  text, web page; a saved link has no feed text, an article without a link no switch;
-  `Preferences.ArticleView.choices(for:)`) changes it. The web page is a `WKWebView` of the app (`WebPageView`, links
-  open in the browser), not Safari's view; "Open Page" opens the page as "Open Pages In" says.
+  first, without a delay (a tap is an explicit request); a segmented switch in its bottom bar (feed text, page text,
+  web page; a saved link has no feed text, an article without a link no switch;
+  `Preferences.ArticleView.choices(for:)`) changes it. The web page isn't a view of the detail but Safari's view
+  (`SafariView`, a sheet: Safari can't be embedded or overlaid with controls) over the text (`shown(for:)`: the feed
+  text, a saved link's page text), with the switch on the web page while it is open; Done returns to the text. With
+  Web Page a row of an article with a link (in a list or a story's detail; `EntryLink`) doesn't open the detail but
+  reads the article and opens its page over the list – Done returns there –, and touching and holding it offers
+  "Show Text" (the detail, on the first text); a story with several articles still opens its detail. The sheet
+  belongs to the root (`Navigation.page`), so neither a library change nor a row scrolled away closes it. iOS has no
+  "Open Pages In" (the page always opens in the app; Safari's view can open it in Safari). Safari's view has cookies
+  of its own: accepting a consent or logging in there doesn't help the page text. The bottom bar of an article: Save,
+  ˄ / ˅ (previous / next), the switch; Mark as Read / Unread and – while it shows page text – Reload Page are in the
+  navigation bar, so the bottom bar fits a 375-point iPhone. ˄ / ˅ (`DetailSteps`, also in a story's detail) move to
+  the row next to the shown one where it is listed (`ListRow.neighbor`: the entries of the list, or the articles of
+  its story), read it like opening it, and replace the detail in place, so Back returns to the list at once. iOS
+  opens rows with `ReadingSession.open`, not `visit`: nothing is expanded there, so a story's row reads every article
+  it shows, also after one of its articles was opened and when the cursor is on it already. A detail reads when it
+  is opened or moved to with ˄ / ˅, not when it shows again (Back from an article of the story).
 - P (preview) shows the text of the source page instead of the feed text (loaded the first time, then stored); P
   again returns to the feed text. A text cut at `PageText.maxLength` ends with a pointer to V. Works without AI. On a
   saved link (no feed text) P loads the page again instead, also from the source page in the window.
@@ -399,7 +415,8 @@ Implementation:
   follows it
   on every library change (`AppModel.onLibraryChange`): the cursor moves to the article inside the (expanded) story
   when the story shows several articles, else onto the story's row – nothing is marked read by that. Kept articles
-  keep their IDs.
+  keep their IDs. An iOS detail showing that article follows it too (`ReadingSession.following`, used by both), with
+  what it shows and without reading anything, instead of saying "Gone".
 - Summaries in the detail (`SummaryView`): a story with several articles shows its summary between the title and
   the articles; a one-article story that needs one shows it above the feed text. Lines starting with "- "
   become bullet points. Without a summary yet: "Summarizing…" (or the error after repeated failures); an out-of-date

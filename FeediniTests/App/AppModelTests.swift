@@ -196,6 +196,27 @@ struct AppModelTests {
         #expect(model.library.pageTextIDs.isEmpty)
     }
 
+    @Test func aSyncedPageTextClearsAnEarlierLoadingFailureOnly() async throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let feed = Feed.stub("Tech")
+        let failed = Article.stub(feed: feed.id)
+        let loading = Article.stub(feed: feed.id)
+        let unsummarized = Article.stub(feed: feed.id)
+        model.update { $0 = Library(feeds: [feed], articles: [failed, loading, unsummarized]) }
+        model.pageStatus.fail(failed.id, "The server couldn't be found.")
+        model.pageStatus.set(PageStatus.Work(phase: .loading, summary: false), for: loading.id)
+        model.pageStatus.set(PageStatus.Work(phase: .failed("AI is off."), summary: true), for: unsummarized.id)
+
+        for article in [failed, loading, unsummarized] {
+            try await model.storeSyncedPageText("From the Mac.", for: article.id)
+        }
+
+        #expect(model.library.pageTextIDs == [failed.id, loading.id, unsummarized.id])
+        #expect(model.pageStatus[failed.id] == nil)
+        #expect(model.pageStatus[loading.id]?.phase == .loading)
+        #expect(model.pageStatus[unsummarized.id]?.phase == .failed("AI is off."))
+    }
+
     @Test func savingALinkAddsItToSavedAndLoadsItsPage() async throws {
         let extractor = FakePageExtractor()
         extractor.metadata = { _ in PageMetadata(title: "An Essay", site: "Example Magazine") }

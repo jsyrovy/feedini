@@ -1,3 +1,4 @@
+import SafariServices
 import SwiftUI
 
 /// Where the navigation stack is: a list of the sidebar, an item of a list.
@@ -6,16 +7,25 @@ enum Route: Hashable {
     case entry(ListRow)
 }
 
-/// Sidebar → list → detail in one navigation stack (iPhone). Opening a row reads it (`ReadingSession.visit`); going
+/// Where the app is: the navigation stack and the source page open in Safari's view over it. The page belongs to the
+/// root, not to a list or detail, so neither a change of the library nor a row scrolled away closes it.
+@MainActor
+@Observable
+final class Navigation {
+    var path: [Route] = []
+    var page: URL?
+}
+
+/// Sidebar → list → detail in one navigation stack (iPhone). Opening a row reads it (`ReadingSession.open`); going
 /// back to the sidebar leaves the list, so it shows only unread items next time.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(ReadingSession.self) private var session
-    @State private var path: [Route] = []
+    @State private var navigation = Navigation()
     @State private var isShowingSettings = false
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: $navigation.path) {
             SidebarScreen(isShowingSettings: $isShowingSettings)
                 .navigationDestination(for: Route.self) { route in
                     switch route {
@@ -24,13 +34,17 @@ struct RootView: View {
                     }
                 }
         }
-        .onChange(of: path) { _, new in
+        .environment(navigation)
+        .onChange(of: navigation.path) { _, new in
             if new.isEmpty {
                 session.leaveList()
             }
         }
         .sheet(isPresented: $isShowingSettings) {
             SettingsScreen()
+        }
+        .sheet(item: $navigation.page) { url in
+            SafariView(url: url).ignoresSafeArea()
         }
         .task {
             #if DEBUG
@@ -49,7 +63,7 @@ struct RootView: View {
                     try? await Task.sleep(for: .milliseconds(300))
                     guard let id = try? model.saveLink(arguments[index + 1]).articleID else { return }
                     session.selection = .saved
-                    path = [.list(.saved), .entry(.story(.savedArticle(id)))]
+                    navigation.path = [.list(.saved), .entry(.story(.savedArticle(id)))]
                 }
                 return
             }
@@ -59,16 +73,16 @@ struct RootView: View {
                 try? await Task.sleep(for: .milliseconds(300))
                 switch arguments[index + 1] {
                 case "saved":
-                    path = [.list(.saved)]
+                    navigation.path = [.list(.saved)]
                 case "story", "article":
-                    path = [.list(.all)]
+                    navigation.path = [.list(.all)]
                     session.selection = .all
                     let wanted = arguments[index + 1] == "story"
                     if let entry = session.entries.first(where: { $0.isMultiArticle == wanted }) {
-                        path.append(.entry(.story(entry.id)))
+                        navigation.path.append(.entry(.story(entry.id)))
                     }
                 case "list":
-                    path = [.list(.all)]
+                    navigation.path = [.list(.all)]
                 case "settings":
                     isShowingSettings = true
                 default:
@@ -77,4 +91,19 @@ struct RootView: View {
             }
         }
     #endif
+}
+
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
+}
+
+/// A web page in Safari's view inside the app (the user's Safari logins and cookies don't apply).
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        SFSafariViewController(url: url)
+    }
+
+    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
 }

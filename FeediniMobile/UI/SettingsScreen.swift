@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings: the feeds, how articles open, the order of the lists and how often feeds are refreshed.
+/// Settings: the feeds, what articles show, the order of the lists and how often feeds are refreshed.
 struct SettingsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(MobileSync.self) private var sync
@@ -19,10 +19,6 @@ struct SettingsScreen: View {
                     }
                 }
                 Section {
-                    Picker("Open Pages In", selection: $preferences.pageOpening) {
-                        Text("Feedini").tag(Preferences.PageOpening.window)
-                        Text("Browser").tag(Preferences.PageOpening.browser)
-                    }
                     Picker("Show Articles As", selection: $preferences.articleView) {
                         ForEach(Preferences.ArticleView.allCases, id: \.self) { view in
                             Text(view.title).tag(view)
@@ -33,8 +29,9 @@ struct SettingsScreen: View {
                     Text("Reading")
                 } footer: {
                     Text(
-                        "Page Text and Web Page load the article's page each time you open one. Feeds are refreshed "
-                            + "when Feedini opens, then every 5 minutes. Pull down to refresh.")
+                        "Page Text loads the article's page each time you open one. Web Page opens the page in "
+                            + "Safari's view instead of the article; touch and hold the article for its text. Feeds "
+                            + "are refreshed when Feedini opens, then every 5 minutes. Pull down to refresh.")
                 }
                 SyncSection(sync: sync)
                 Section {
